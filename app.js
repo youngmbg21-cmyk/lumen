@@ -616,6 +616,254 @@
     return wrap;
   }
 
+  /* -------------------- journal -------------------- */
+  const JOURNAL_PROMPTS = [
+    "What's one passage that stopped you, and why?",
+    "How did this piece make your body feel — literally?",
+    "What lingered after you closed the book?",
+    "What did this title do for you that you didn't expect?",
+    "If you could ask the author one question, what would it be?",
+    "Where did the book lose you, if anywhere?",
+    "What did you want more of?",
+    "What would younger-you have made of this?"
+  ];
+  const MOOD_TAGS = ["tender","charged","unsettled","curious","reflective","distracted","ravished","reverent","amused","uncomfortable","satisfied","wanting more"];
+
+  const journalState = { selectedId: null, search: "", moodFilter: "all" };
+
+  function newEntryDraft(prompt = null, bookId = null) {
+    return {
+      id: util.id("j"),
+      ts: Date.now(),
+      title: "",
+      body: "",
+      mood: [],
+      bookId,
+      prompt
+    };
+  }
+
+  function formatDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  function exportEntryMarkdown(entry) {
+    const book = entry.bookId ? BOOKS.find(b => b.id === entry.bookId) : null;
+    const lines = [];
+    lines.push(`# ${entry.title || "(untitled)"}`);
+    lines.push("");
+    lines.push(`*${formatDate(entry.ts)}*  ${entry.mood.length ? "· " + entry.mood.join(", ") : ""}`);
+    if (book) lines.push(`**On:** ${book.title} — ${book.author}`);
+    if (entry.prompt) lines.push(`> ${entry.prompt}`);
+    lines.push("");
+    lines.push(entry.body || "");
+    return lines.join("\n");
+  }
+
+  function downloadText(filename, text) {
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = util.el("a", { href: url, download: filename });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+
+  function renderJournal() {
+    const wrap = util.el("div", { class: "page stack-lg" });
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Journal" }),
+        util.el("h1", { text: "Private reflections" }),
+        util.el("p", { class: "lede", text: "A quiet place for reading thoughts. Freeform, prompted, or tied to a specific book. Never shared." })
+      ]),
+      util.el("div", { class: "row" }, [
+        util.el("button", { class: "btn", onclick: () => {
+          const prompt = JOURNAL_PROMPTS[Math.floor(Math.random() * JOURNAL_PROMPTS.length)];
+          const draft = newEntryDraft(prompt);
+          store.update(s => { s.journal.unshift(draft); });
+          journalState.selectedId = draft.id;
+          renderView();
+        } }, "Prompted entry"),
+        util.el("button", { class: "btn btn-primary", onclick: () => {
+          const draft = newEntryDraft();
+          store.update(s => { s.journal.unshift(draft); });
+          journalState.selectedId = draft.id;
+          renderView();
+        } }, "New entry")
+      ])
+    ]));
+
+    const shell = util.el("div", { class: "journal-shell" });
+    const listSide = util.el("div", { class: "stack" });
+    const editorSide = util.el("div", {});
+
+    // Filter bar
+    const filterBar = util.el("div", { class: "card card-quiet", style: { padding: "var(--s-3)" } });
+    const filterRow = util.el("div", { class: "row-wrap" });
+    filterRow.appendChild(util.el("input", {
+      class: "input", placeholder: "Search entries", value: journalState.search,
+      oninput: (e) => { journalState.search = e.target.value.toLowerCase(); paintList(); },
+      style: { maxWidth: "200px" }
+    }));
+    const moodSel = util.el("select", { class: "select", style: { maxWidth: "160px" }, onchange: (e) => { journalState.moodFilter = e.target.value; paintList(); } });
+    moodSel.appendChild(util.el("option", { value: "all" }, "All moods"));
+    MOOD_TAGS.forEach(m => moodSel.appendChild(util.el("option", { value: m, selected: journalState.moodFilter === m ? "selected" : null }, m)));
+    filterRow.appendChild(moodSel);
+    filterBar.appendChild(filterRow);
+    listSide.appendChild(filterBar);
+
+    const list = util.el("div", { class: "stack-sm" });
+    listSide.appendChild(list);
+
+    shell.appendChild(listSide);
+    shell.appendChild(editorSide);
+    wrap.appendChild(shell);
+
+    function entryMatches(e) {
+      if (journalState.search) {
+        const q = journalState.search;
+        if (!((e.title || "").toLowerCase().includes(q) || (e.body || "").toLowerCase().includes(q))) return false;
+      }
+      if (journalState.moodFilter !== "all" && !e.mood.includes(journalState.moodFilter)) return false;
+      return true;
+    }
+
+    function paintList() {
+      const entries = store.get().journal.filter(entryMatches);
+      list.innerHTML = "";
+      if (!entries.length) {
+        list.appendChild(ui.empty({
+          title: "No entries yet",
+          message: "Write your first reflection. The Journal is private and stays on your device.",
+          actions: [{ label: "Start with a prompt", variant: "btn-primary", onClick: () => {
+            const prompt = JOURNAL_PROMPTS[Math.floor(Math.random() * JOURNAL_PROMPTS.length)];
+            const draft = newEntryDraft(prompt);
+            store.update(s => { s.journal.unshift(draft); });
+            journalState.selectedId = draft.id;
+            renderView();
+          }}]
+        }));
+        return;
+      }
+      entries.forEach(e => {
+        const entry = util.el("div", {
+          class: "journal-entry",
+          "aria-current": journalState.selectedId === e.id ? "true" : null,
+          onclick: () => { journalState.selectedId = e.id; paintEditor(); }
+        }, [
+          util.el("div", { class: "journal-entry-date", text: formatDate(e.ts) }),
+          util.el("div", { class: "journal-entry-title", text: e.title || "(untitled)" }),
+          util.el("div", { class: "journal-entry-preview", text: e.body || "No body yet." }),
+          e.mood.length ? util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-2)" } }, e.mood.slice(0, 3).map(m => ui.tag(m))) : null
+        ].filter(Boolean));
+        list.appendChild(entry);
+      });
+    }
+
+    function paintEditor() {
+      const entry = store.get().journal.find(e => e.id === journalState.selectedId);
+      editorSide.innerHTML = "";
+      if (!entry) {
+        editorSide.appendChild(ui.empty({
+          title: "Pick an entry, or write a new one",
+          message: "Your journal is for you. Prompt-guided or freeform — both work."
+        }));
+        return;
+      }
+
+      const card = util.el("div", { class: "card journal-editor stack" });
+      card.appendChild(util.el("div", { class: "row", style: { justifyContent: "space-between" } }, [
+        util.el("div", { class: "t-tiny t-subtle", text: formatDate(entry.ts) }),
+        util.el("div", { class: "row" }, [
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
+            downloadText(`lumen-entry-${entry.id}.md`, exportEntryMarkdown(entry));
+            ui.toast("Entry exported as Markdown");
+          }}, "Export"),
+          util.el("button", { class: "btn btn-sm btn-danger", onclick: () => {
+            const deleted = { ...entry };
+            store.update(s => { s.journal = s.journal.filter(e => e.id !== entry.id); });
+            journalState.selectedId = null;
+            renderView();
+            ui.toast("Entry removed", {
+              action: "Undo",
+              onAction: () => {
+                store.update(s => { s.journal.unshift(deleted); });
+                journalState.selectedId = deleted.id;
+                renderView();
+              },
+              duration: 5000
+            });
+          }}, "Delete")
+        ])
+      ]));
+
+      if (entry.prompt) {
+        card.appendChild(util.el("div", { class: "journal-prompt" }, entry.prompt));
+      }
+
+      const titleInput = util.el("input", {
+        class: "input", placeholder: "Title (optional)", value: entry.title,
+        oninput: util.debounce((e) => {
+          store.update(s => {
+            const it = s.journal.find(x => x.id === entry.id);
+            if (it) it.title = e.target.value;
+          });
+        }, 120)
+      });
+      card.appendChild(titleInput);
+
+      const bodyArea = util.el("textarea", {
+        class: "textarea journal-body",
+        placeholder: "Write whatever needs to come out. Nothing leaves this device.",
+        value: entry.body,
+        oninput: util.debounce((e) => {
+          store.update(s => {
+            const it = s.journal.find(x => x.id === entry.id);
+            if (it) it.body = e.target.value;
+          });
+        }, 140)
+      });
+      bodyArea.value = entry.body;
+      card.appendChild(bodyArea);
+
+      // Mood chips
+      card.appendChild(util.el("div", { class: "field-label", text: "Mood tags" }));
+      const moodRow = util.el("div", { class: "row-wrap" });
+      MOOD_TAGS.forEach(m => moodRow.appendChild(ui.chip(m, {
+        pressed: entry.mood.includes(m),
+        onToggle: (on) => {
+          store.update(s => {
+            const it = s.journal.find(x => x.id === entry.id);
+            if (!it) return;
+            if (on && !it.mood.includes(m)) it.mood.push(m);
+            else if (!on) it.mood = it.mood.filter(x => x !== m);
+          });
+          paintList();
+        }
+      })));
+      card.appendChild(moodRow);
+
+      // Linked book
+      card.appendChild(util.el("div", { class: "field-label", text: "Linked book" }));
+      const bookSel = util.el("select", { class: "select", style: { maxWidth: "360px" }, onchange: (e) => {
+        store.update(s => {
+          const it = s.journal.find(x => x.id === entry.id);
+          if (it) it.bookId = e.target.value || null;
+        });
+        paintList();
+      }});
+      bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
+      BOOKS.forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
+      card.appendChild(bookSel);
+
+      editorSide.appendChild(card);
+    }
+
+    setTimeout(() => { paintList(); paintEditor(); }, 0);
+    return wrap;
+  }
+
   /* -------------------- chat (Sara + Friends) -------------------- */
   const chatState = { active: "sara", friendId: null };
 
@@ -1330,13 +1578,7 @@
     },
 
     journal() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Journal", "Quiet space for reflection. Your entries stay on this device."),
-        ui.empty({
-          title: "Journal arrives in Batch 6",
-          message: "Prompted or freeform entries, mood tags, links to books, searchable timeline."
-        })
-      ]);
+      return renderJournal();
     },
 
     vault() {
