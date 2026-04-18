@@ -624,6 +624,127 @@
     return wrap;
   }
 
+  /* -------------------- transparency -------------------- */
+  function renderTransparency() {
+    const wrap = util.el("div", { class: "page stack-lg" });
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Transparency" }),
+        util.el("h1", { text: "How Lumen reasons — and what it refuses to guess at" }),
+        util.el("p", { class: "lede", text: "Everything below is honest, including the limits. If the app can't be trusted in a sensitive subject area, it doesn't deserve to exist." })
+      ])
+    ]));
+
+    // Scoring explainer
+    const scoring = util.el("div", { class: "card stack" }, [
+      util.el("h3", { text: "How recommendations are scored" }),
+      util.el("p", { class: "t-muted", text: "Each book is evaluated against your profile across six numeric dimensions (heat, explicitness, emotional intensity, consent clarity, taboo tolerance, plot weight) and seven tag overlaps (tone, pacing, literary style, relationship dynamic, tropes, kink tags, orientation). Each dimension has a weight — adjustable in your profile. A score between 0 and 100 represents how well the book matches, weighted across all 13 dimensions." }),
+      util.el("h3", { text: "Confidence vs fit" }),
+      util.el("p", { class: "t-muted", text: "Fit says how well a title matches. Confidence says how much data Lumen had to evaluate — if your profile is thin or a book's metadata is sparse, confidence drops, even if the fit number looks high. A high-fit, low-confidence match is a guess. The app will tell you when that's the case." }),
+      util.el("h3", { text: "Hard exclusions are absolute" }),
+      util.el("p", { class: "t-muted", text: "Warnings you mark as hard exclusions always drop the matching book — regardless of score, regardless of confidence. A 'strict' warning strictness also applies a penalty proportional to the number of warnings, and drops scores heavily for critical warnings (underage content, consent violations, exploitation)." }),
+      util.el("h3", { text: "The Compare analysis is rule-based" }),
+      util.el("p", { class: "t-muted", text: "Plain-language verdicts come from templated reasoning over the score data — not from a live language model. This is honest by design: no hallucination, no made-up metadata, no unpredictable output. The trade-off is that the prose is less fluent than a generative model would produce." })
+    ]);
+    wrap.appendChild(scoring);
+
+    // Privacy
+    const privacy = util.el("div", { class: "card stack" }, [
+      util.el("h3", { text: "What stays on your device" }),
+      util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Sara conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
+      util.el("h3", { text: "What the vault passcode does and does not do" }),
+      util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." })
+    ]);
+    wrap.appendChild(privacy);
+
+    // What Lumen won't do
+    const wont = util.el("div", { class: "card stack" }, [
+      util.el("h3", { text: "What Lumen will not do" }),
+      util.el("ul", { style: { paddingLeft: "var(--s-5)", color: "var(--text-muted)", lineHeight: "1.8" } }, [
+        util.el("li", { text: "Nudge, gamify, streak, or otherwise encourage compulsive use." }),
+        util.el("li", { text: "Share anything — with you, a service, or a friend — without you explicitly asking." }),
+        util.el("li", { text: "Pretend to know more than it does. Confidence is always visible, and analyses name their own uncertainty." }),
+        util.el("li", { text: "Recommend books carrying your hard-excluded warnings. Ever." }),
+        util.el("li", { text: "Make aesthetic choices that override safety. If a historical text has period-typical problematic content, that's flagged even when the UI is calm." })
+      ])
+    ]);
+    wrap.appendChild(wont);
+
+    // Data controls
+    const data = util.el("div", { class: "card stack" }, [
+      util.el("h3", { text: "Data controls" }),
+      util.el("p", { class: "t-muted", text: "Export a snapshot of everything Lumen has stored for you, or import a prior snapshot to restore." }),
+      util.el("div", { class: "row-wrap" }, [
+        util.el("button", { class: "btn", onclick: () => {
+          downloadText(`lumen-export-${Date.now()}.json`, JSON.stringify(store.get(), null, 2));
+          ui.toast("Snapshot exported");
+        }}, "Export snapshot"),
+        util.el("label", { class: "btn" }, [
+          "Import snapshot",
+          util.el("input", { type: "file", accept: "application/json", style: { display: "none" }, onchange: (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const data = JSON.parse(reader.result);
+                if (!data || data.schema !== 1) throw new Error("Unsupported snapshot version");
+                store.set(data);
+                ui.toast("Snapshot imported");
+                renderView();
+              } catch (err) {
+                ui.toast("Could not import — file may be corrupt");
+              }
+            };
+            reader.readAsText(file);
+          }})
+        ]),
+        util.el("button", { class: "btn btn-danger", onclick: () => {
+          ui.modal({
+            title: "Wipe everything?",
+            body: "<p class=\"t-muted\">This clears your profile, reading states, journal, vault, and chats on this device. It cannot be undone.</p>",
+            primary: { label: "Wipe", onClick: () => {
+              store.reset();
+              vaultUnlocked = false;
+              localStorage.removeItem("lumen:v1");
+              ui.toast("Local data wiped");
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }}, "Wipe local data")
+      ])
+    ]);
+    wrap.appendChild(data);
+
+    // Keyboard shortcuts
+    const keys = util.el("div", { class: "card stack" }, [
+      util.el("h3", { text: "Keyboard shortcuts" }),
+      util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-3)" } }, [
+        shortcutRow("Open command palette", "⌘K / Ctrl+K"),
+        shortcutRow("Go to Home",           "G then H"),
+        shortcutRow("Go to Library",        "G then L"),
+        shortcutRow("Go to Compare",        "G then C"),
+        shortcutRow("Go to Chat",           "G then M"),
+        shortcutRow("Go to Journal",        "G then J"),
+        shortcutRow("Go to Vault",          "G then V"),
+        shortcutRow("Go to Profile",        "G then P"),
+        shortcutRow("Toggle theme",         "T"),
+        shortcutRow("Toggle discreet",      "D")
+      ])
+    ]);
+    wrap.appendChild(keys);
+
+    return wrap;
+  }
+
+  function shortcutRow(label, keys) {
+    return util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "center" } }, [
+      util.el("span", { class: "t-small t-muted", text: label }),
+      util.el("span", { class: "kbd-inline", text: keys })
+    ]);
+  }
+
   /* -------------------- vault -------------------- */
   function hashPasscode(pw) {
     // Prototype-only: a simple deterministic hash.
@@ -1824,6 +1945,24 @@
       }
       wrap.appendChild(picksCard);
 
+      // Weekly insight — seeded by week-of-year so it's stable-ish
+      const entriesThisWeek = s.journal.filter(e => Date.now() - e.ts < 1000 * 60 * 60 * 24 * 7).length;
+      const pinnedCount = s.vault.pinned.length;
+      const readingStateCount = Object.keys(s.bookStates).length;
+      if (entriesThisWeek || pinnedCount || readingStateCount) {
+        const insightsCard = util.el("div", { class: "card" });
+        insightsCard.appendChild(util.el("div", { class: "card-head" }, [
+          util.el("h3", { text: "This week" }),
+          util.el("span", { class: "card-sub t-subtle", text: "A quiet summary" })
+        ]));
+        const row = util.el("div", { class: "row-wrap", style: { gap: "var(--s-5)" } });
+        if (entriesThisWeek) row.appendChild(kpiBlock(entriesThisWeek, entriesThisWeek === 1 ? "journal entry" : "journal entries"));
+        if (pinnedCount)     row.appendChild(kpiBlock(pinnedCount,     pinnedCount === 1 ? "book pinned" : "books pinned"));
+        if (readingStateCount) row.appendChild(kpiBlock(readingStateCount, "books tracked"));
+        insightsCard.appendChild(row);
+        wrap.appendChild(insightsCard);
+      }
+
       // Currently reading
       if (currentReading.length) {
         const reading = util.el("div", { class: "card" });
@@ -1972,19 +2111,16 @@
     },
 
     transparency() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Transparency", "How Lumen reasons about fit, and what it refuses to guess at."),
-        util.el("div", { class: "card stack" }, [
-          util.el("h3", { text: "What Lumen does" }),
-          util.el("p", { class: "t-muted", text: "Lumen scores each title against your profile across numeric dimensions (heat, emotional intensity, consent clarity, and more) and tag overlaps (tone, pacing, style, relationship dynamic). Weights are adjustable. Hard exclusions are absolute." }),
-          util.el("h3", { text: "What stays on your device" }),
-          util.el("p", { class: "t-muted", text: "Your profile, reading states, journal entries, vault contents, and chat history are stored in your browser's local storage. Nothing is uploaded anywhere." }),
-          util.el("h3", { text: "What Lumen will not do" }),
-          util.el("p", { class: "t-muted", text: "Lumen does not gamify reading, reward streaks, nudge, or share anything by default. It treats its outputs as advisory, never authoritative." })
-        ])
-      ]);
+      return renderTransparency();
     }
   };
+
+  function kpiBlock(value, label) {
+    return util.el("div", {}, [
+      util.el("div", { class: "t-mono", style: { fontSize: "24px", color: "var(--accent)" }, text: String(value) }),
+      util.el("div", { class: "t-tiny t-subtle", text: label })
+    ]);
+  }
 
   function pageHead(title, lede) {
     return util.el("div", { class: "page-head" }, [
@@ -2179,6 +2315,114 @@
     });
   }
 
+  /* -------------------- command palette + keyboard -------------------- */
+  function openPalette() {
+    const commands = [
+      ...ROUTES.map(r => ({ label: `Go to ${r.label}`, hint: r.id, run: () => router.go(r.id) })),
+      { label: "Toggle theme", hint: "T", run: () => { store.update(s => { s.ui.theme = s.ui.theme === "dark" ? "light" : "dark"; }); applyUIFlags(); } },
+      { label: "Toggle discreet mode", hint: "D", run: () => { store.update(s => { s.ui.discreet = !s.ui.discreet; }); applyUIFlags(); } },
+      { label: "New journal entry", hint: "", run: () => {
+        const draft = newEntryDraft();
+        store.update(s => { s.journal.unshift(draft); });
+        journalState.selectedId = draft.id;
+        router.go("journal");
+      } },
+      { label: "Export snapshot", hint: "", run: () => {
+        downloadText(`lumen-export-${Date.now()}.json`, JSON.stringify(store.get(), null, 2));
+        ui.toast("Snapshot exported");
+      } },
+      { label: "Open Transparency", hint: "", run: () => router.go("transparency") }
+    ];
+
+    let host = document.getElementById("palette-host");
+    if (!host) {
+      host = util.el("div", { id: "palette-host", class: "modal-host", role: "dialog", "aria-modal": "true" });
+      document.body.appendChild(host);
+    }
+    host.innerHTML = "";
+    const close = () => { host.classList.remove("open"); setTimeout(() => host.innerHTML = "", 220); };
+
+    const palette = util.el("div", { class: "palette" });
+    const input = util.el("input", { class: "palette-input", placeholder: "Jump to…", autofocus: true });
+    palette.appendChild(input);
+    const list = util.el("div", { class: "palette-list" });
+    palette.appendChild(list);
+
+    let filtered = commands;
+    let idx = 0;
+    function paint() {
+      list.innerHTML = "";
+      filtered.forEach((c, i) => {
+        const item = util.el("div", { class: "palette-item", "aria-selected": i === idx ? "true" : "false",
+          onclick: () => { c.run(); close(); }
+        }, [
+          util.el("span", { text: c.label }),
+          c.hint ? util.el("span", { class: "kbd" }, c.hint) : null
+        ].filter(Boolean));
+        list.appendChild(item);
+      });
+    }
+    paint();
+
+    input.addEventListener("input", () => {
+      const q = input.value.toLowerCase().trim();
+      filtered = q ? commands.filter(c => c.label.toLowerCase().includes(q)) : commands;
+      idx = 0; paint();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { close(); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); idx = Math.min(idx + 1, filtered.length - 1); paint(); }
+      else if (e.key === "ArrowUp")   { e.preventDefault(); idx = Math.max(idx - 1, 0); paint(); }
+      else if (e.key === "Enter")     { e.preventDefault(); const c = filtered[idx]; if (c) { c.run(); close(); } }
+    });
+
+    host.appendChild(palette);
+    host.classList.add("open");
+    host.addEventListener("click", (e) => { if (e.target === host) close(); }, { once: true });
+    setTimeout(() => input.focus(), 20);
+  }
+
+  function setupKeyboard() {
+    let gTimer = null;
+    let gPending = false;
+    document.addEventListener("keydown", (e) => {
+      // Skip when typing in inputs
+      const tag = e.target.tagName;
+      const typing = tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable;
+
+      // Cmd/Ctrl-K palette — always available
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        openPalette();
+        return;
+      }
+
+      if (typing) return;
+
+      if (e.key.toLowerCase() === "g" && !e.metaKey && !e.ctrlKey) {
+        gPending = true;
+        clearTimeout(gTimer);
+        gTimer = setTimeout(() => { gPending = false; }, 900);
+        return;
+      }
+
+      if (gPending) {
+        const map = { h: "discover", l: "library", c: "compare", m: "chat", j: "journal", v: "vault", p: "profile", t: "transparency" };
+        const k = e.key.toLowerCase();
+        if (map[k]) { e.preventDefault(); router.go(map[k]); gPending = false; clearTimeout(gTimer); }
+        return;
+      }
+
+      if (e.key.toLowerCase() === "t" && !e.metaKey && !e.ctrlKey) {
+        store.update(s => { s.ui.theme = s.ui.theme === "dark" ? "light" : "dark"; });
+        applyUIFlags();
+      } else if (e.key.toLowerCase() === "d" && !e.metaKey && !e.ctrlKey) {
+        store.update(s => { s.ui.discreet = !s.ui.discreet; });
+        applyUIFlags();
+      }
+    });
+  }
+
   function boot() {
     applyUIFlags();
     renderView();
@@ -2198,6 +2442,7 @@
       }
     }, true);
 
+    setupKeyboard();
     adultGate();
   }
 
