@@ -231,8 +231,12 @@ body.theme-plum::before {
   opacity: 0.35;
   mix-blend-mode: overlay;
 }
-/* Ensure app chrome sits above the noise layer */
-.app, .app > *, .toast-host, #modal-host, .sara-panel, .sara-fab {
+/* Ensure the app shell sits above the noise layer.
+   Overlays (modal host, toast host, Sara panel, Sara FAB) use
+   position: fixed in their own rules — do NOT add them here, an
+   ID-specificity override would kill their fixed layout and they'd
+   lay out in-flow at the bottom of the document. */
+.app, .app > * {
   position: relative;
   z-index: 1;
 }
