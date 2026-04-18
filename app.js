@@ -3397,6 +3397,8 @@
 
     const themeBtn = buildThemeSwitcher(state.ui.theme);
 
+    const ageBadge = util.el("span", { class: "badge-pill", title: "Adults only" }, "18 · adults only");
+
     const saraLauncher = util.el("button", {
       class: "sara-launcher",
       "aria-label": "Open Sara",
@@ -3410,6 +3412,7 @@
     top.appendChild(saraLauncher);
     top.appendChild(discreetToggle);
     top.appendChild(themeBtn);
+    top.appendChild(ageBadge);
   }
 
   function renderView() {
