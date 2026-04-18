@@ -768,3 +768,10 @@ p  { margin: 0; }
   .toast-host { right: var(--s-3); left: var(--s-3); }
   .toast { max-width: none; }
 }
+
+/* Profile grid collapses on narrow screens */
+@media (max-width: 960px) {
+  .page > div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+}
