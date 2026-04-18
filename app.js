@@ -1590,13 +1590,39 @@
     { key: "orientation", label: "Orientation", group: "tag" }
   ];
 
-  const cmpState = { a: null, b: null };
+  const cmpState = { slots: [null, null, null], lastDeepAnalysis: null };
 
-  function pickerSelect(side, value, onChange) {
-    const sel = util.el("select", { class: "select", style: { minWidth: "260px" }, onchange: (e) => onChange(e.target.value || null) });
-    sel.appendChild(util.el("option", { value: "" }, `Pick ${side === "a" ? "a first" : "a second"} title…`));
-    BOOKS.forEach(b => sel.appendChild(util.el("option", { value: b.id, selected: value === b.id ? "selected" : null }, `${b.title} — ${b.author}`)));
-    return sel;
+  function openSlotPicker(slotIdx) {
+    const used = cmpState.slots.filter(Boolean);
+    const body = util.el("div", { class: "stack" });
+    body.appendChild(util.el("p", { class: "t-muted t-small", text: "Pick a title for this slot. You can have up to three." }));
+    const search = util.el("input", { class: "input", placeholder: "Search titles or authors…", autofocus: true });
+    body.appendChild(search);
+    const list = util.el("div", { class: "stack-sm", style: { maxHeight: "320px", overflowY: "auto", marginTop: "var(--s-2)" } });
+    body.appendChild(list);
+
+    function paint() {
+      const q = (search.value || "").toLowerCase();
+      list.innerHTML = "";
+      BOOKS
+        .filter(b => !used.includes(b.id))
+        .filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
+        .forEach(b => {
+          const row = util.el("button", { class: "btn btn-ghost", style: { justifyContent: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px" },
+            onclick: () => { cmpState.slots[slotIdx] = b.id; document.getElementById("modal-host")?.classList.remove("open"); setTimeout(() => renderView(), 100); }
+          }, [
+            util.el("div", {}, [
+              util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: b.title }),
+              util.el("div", { class: "t-tiny t-subtle", text: `${b.author} · ${util.fmtYear(b.year)}` })
+            ])
+          ]);
+          list.appendChild(row);
+        });
+    }
+    search.addEventListener("input", paint);
+    setTimeout(paint, 0);
+
+    ui.modal({ title: `Add title to slot ${slotIdx + 1}`, body, secondary: { label: "Cancel" } });
   }
 
   function categoryBars(scored, side) {
@@ -1616,10 +1642,34 @@
     return wrap;
   }
 
-  function radarSVG(scoredA, scoredB, size = 320) {
+  function categoryBarsMulti(scoredList) {
+    // Shows each dimension with one horizontal bar per book, colored by series
+    const wrap = util.el("div");
+    CMP_CATEGORIES.forEach(cat => {
+      const bars = util.el("div", { class: "cat-bars" });
+      scoredList.forEach((sc, i) => {
+        const pct = Math.round((sc.contributions[cat.key]?.score ?? 0) * 100);
+        const seriesClass = `series-${i + 1}`;
+        bars.appendChild(util.el("div", { class: "cat-bar-line" }, [
+          util.el("div", { class: "cat-series", text: sc.book.title }),
+          util.el("div", { class: `bar ${seriesClass}` }, [util.el("span", { style: { width: `${pct}%` } })]),
+          util.el("div", { class: "cat-bar-val", text: `${pct}` })
+        ]));
+      });
+      wrap.appendChild(util.el("div", { class: "cat-row-3" }, [
+        util.el("div", { class: "cat-label", text: cat.label }),
+        bars,
+        util.el("div")
+      ]));
+    });
+    return wrap;
+  }
+
+  function radarSVG(scoredList, size = 340) {
+    const list = Array.isArray(scoredList) ? scoredList.filter(Boolean) : [scoredList].filter(Boolean);
     const cats = CMP_CATEGORIES;
     const cx = size / 2, cy = size / 2;
-    const r = size / 2 - 28;
+    const r = size / 2 - 30;
     const N = cats.length;
     const angle = (i) => (-Math.PI / 2) + (i / N) * (Math.PI * 2);
     const pt = (i, v) => [cx + Math.cos(angle(i)) * r * v, cy + Math.sin(angle(i)) * r * v];
@@ -1630,7 +1680,6 @@
     svg.setAttribute("height", "auto");
     svg.style.maxWidth = `${size}px`;
 
-    // Web rings
     [0.25, 0.5, 0.75, 1].forEach(ring => {
       const pts = cats.map((_, i) => pt(i, ring).join(",")).join(" ");
       const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
@@ -1640,7 +1689,6 @@
       poly.setAttribute("stroke-width", "1");
       svg.appendChild(poly);
     });
-    // Axis lines + labels
     cats.forEach((cat, i) => {
       const [x, y] = pt(i, 1);
       const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
@@ -1660,64 +1708,69 @@
       svg.appendChild(txt);
     });
 
-    function plot(scored, color, fillOpacity) {
-      const pts = cats.map((c, i) => pt(i, scored.contributions[c.key]?.score ?? 0).join(",")).join(" ");
+    const palette = ["var(--accent)", "var(--info)", "var(--good)"];
+    list.forEach((scored, i) => {
+      const color = palette[i] || "var(--warn)";
+      const pts = cats.map((c, k) => pt(k, scored.contributions[c.key]?.score ?? 0).join(",")).join(" ");
       const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
       poly.setAttribute("points", pts);
       poly.setAttribute("fill", color);
-      poly.setAttribute("fill-opacity", String(fillOpacity));
+      poly.setAttribute("fill-opacity", "0.18");
       poly.setAttribute("stroke", color);
       poly.setAttribute("stroke-width", "1.5");
       svg.appendChild(poly);
-    }
-    if (scoredA) plot(scoredA, "var(--accent)", 0.22);
-    if (scoredB) plot(scoredB, "var(--info)",   0.22);
+    });
 
     return svg;
   }
 
-  function aiAnalysis(a, b, profile) {
-    if (!a || !b) return null;
-    const diff = (k) => ((a.contributions[k]?.score || 0) - (b.contributions[k]?.score || 0));
+  function quickAnalysis(scoredList, profile) {
+    if (!scoredList || scoredList.length < 2) return null;
 
-    const stronger = a.fitScore === b.fitScore
-      ? null
-      : (a.fitScore > b.fitScore ? a : b);
-    const weaker = stronger === a ? b : (stronger === b ? a : null);
-    const gap = Math.abs(a.fitScore - b.fitScore);
+    const sorted = [...scoredList].sort((a, b) => b.fitScore - a.fitScore);
+    const best = sorted[0];
+    const rest = sorted.slice(1);
+    const gap = best.fitScore - (rest[0]?.fitScore ?? best.fitScore);
+    const tiedBest = scoredList.filter(x => x.fitScore === best.fitScore);
 
     const verdict = (() => {
-      if (!stronger) return `Both titles land at ${a.fitScore}. On raw fit, they're indistinguishable — so the choice becomes about what you're in the mood for.`;
-      if (gap <= 5)  return `Close call. ${stronger.book.title} edges ahead by ${gap} points, but either is defensible.`;
-      if (gap <= 15) return `${stronger.book.title} is a clearer fit (${stronger.fitScore} vs ${weaker.fitScore}). ${weaker.book.title} is still viable if its particular texture appeals.`;
-      return `${stronger.book.title} is the stronger match by a wide margin (${stronger.fitScore} vs ${weaker.fitScore}). ${weaker.book.title} would be a substantial deviation from your stated profile.`;
+      if (tiedBest.length === scoredList.length) return `All ${scoredList.length} titles land at ${best.fitScore}. The decision becomes about what you're in the mood for, not which fits.`;
+      if (gap <= 5)  return `Close race. ${best.book.title} edges ahead at ${best.fitScore} — but any of these is defensible.`;
+      if (gap <= 15) return `${best.book.title} is the clearer fit (${best.fitScore} vs ${rest.map(r => r.fitScore).join(" / ")}).`;
+      return `${best.book.title} is the strong favourite (${best.fitScore}). The others are substantial deviations from your current profile.`;
     })();
 
     const differences = [];
-    const pushDiff = (key, label, formatA, formatB) => {
+    const pairs = [];
+    for (let i = 0; i < scoredList.length; i++)
+      for (let j = i + 1; j < scoredList.length; j++)
+        pairs.push([scoredList[i], scoredList[j]]);
+
+    const pickDiff = (a, b, key, label) => {
       const sa = a.contributions[key]?.score || 0;
       const sb = b.contributions[key]?.score || 0;
-      if (Math.abs(sa - sb) < 0.25) return;
+      if (Math.abs(sa - sb) < 0.25) return null;
       const leader = sa > sb ? a : b;
-      const lag    = sa > sb ? b : a;
-      differences.push(`${leader.book.title} fits ${label} better — ${formatA(leader.book)} vs ${formatB(lag.book)}.`);
+      return `${leader.book.title} wins on ${label}`;
     };
-    pushDiff("heat",    "on heat",        (x) => `${x.heat_level}/5`,      (x) => `${x.heat_level}/5`);
-    pushDiff("emotion", "on emotional intensity", (x) => `${x.emotional_intensity}/5`, (x) => `${x.emotional_intensity}/5`);
-    pushDiff("consent", "on consent clarity", (x) => `clarity ${x.consent_clarity}/5`, (x) => `clarity ${x.consent_clarity}/5`);
-    pushDiff("plot",    "on story architecture", (x) => `plot weight ${x.plot_weight}/5`, (x) => `plot weight ${x.plot_weight}/5`);
+    pairs.forEach(([a, b]) => {
+      ["heat", "emotion", "consent", "plot"].forEach(key => {
+        const label = CMP_CATEGORIES.find(c => c.key === key).label.toLowerCase();
+        const d = pickDiff(a, b, key, label);
+        if (d) differences.push(d);
+      });
+    });
 
     const tradeoffs = [];
-    if (a.criticallyWarned || b.criticallyWarned) {
-      const flagged = a.criticallyWarned ? a.book.title : b.book.title;
-      tradeoffs.push(`${flagged} carries a critical warning. Treat this as an informed choice, not a recommendation.`);
+    scoredList.forEach(sc => {
+      if (sc.criticallyWarned) tradeoffs.push(`${sc.book.title} carries a critical warning — treat as an informed choice.`);
+    });
+    if (scoredList.some(s => s.warnPenalty > 1)) {
+      tradeoffs.push(`Warning strictness (${profile.warnStrict}) is depressing at least one score; loosening it would change the picture.`);
     }
-    if (a.warnPenalty > 1 || b.warnPenalty > 1) {
-      tradeoffs.push(`Warning strictness (${profile.warnStrict}) is depressing at least one score; loosening it in your profile would change this comparison.`);
-    }
-    if (a.confidence < 60 || b.confidence < 60) {
-      const low = a.confidence < b.confidence ? a : b;
-      tradeoffs.push(`Confidence on ${low.book.title} is ${low.confidence}%. Metadata may be thin, or your taste profile doesn't give it many signals to match against.`);
+    const lowConf = scoredList.filter(s => s.confidence < 60);
+    if (lowConf.length) {
+      tradeoffs.push(`Confidence is low on ${lowConf.map(s => s.book.title).join(", ")} — metadata is thin, or your taste profile has few signals to match against.`);
     }
 
     const bestFor = (scored) => {
@@ -1726,22 +1779,23 @@
         .sort((x, y) => y[1].contrib - x[1].contrib)
         .slice(0, 3)
         .map(([k]) => CMP_CATEGORIES.find(c => c.key === k)?.label || k);
-      if (top.length === 0) return `a gentle middle-of-the-road choice across your preferences`;
+      if (!top.length) return "a middle-of-the-road choice across your preferences";
       return `readers who want ${top.join(", ").toLowerCase()}`;
     };
 
-    const ifYouLiked = stronger
-      ? `If ${stronger.book.title} lands for you, ${weaker.book.title} may feel like a softer or sharper echo depending on which dimensions you weigh most.`
-      : `Since these two are tied on raw fit, think about which one better matches tonight's mood.`;
+    const bestForMap = scoredList.map(sc => ({ title: sc.book.title, text: bestFor(sc) }));
 
-    const thinMetadata = (a.confidence + b.confidence) / 2 < 55;
+    const ifYouLiked = tiedBest.length < scoredList.length
+      ? `If ${best.book.title} lands for you, the others may feel like softer or sharper echoes depending on which dimensions you weigh most.`
+      : `These are tied on raw fit — think about tonight's mood, not this week's score.`;
+
+    const thinMetadata = (scoredList.reduce((a, s) => a + s.confidence, 0) / scoredList.length) < 55;
 
     return {
       verdict,
-      differences: differences.slice(0, 4),
+      differences: [...new Set(differences)].slice(0, 6),
       tradeoffs,
-      bestForA: bestFor(a),
-      bestForB: bestFor(b),
+      bestForMap,
       ifYouLiked,
       thinMetadata
     };
@@ -1773,57 +1827,90 @@
 
   function renderCompare() {
     const s = store.get();
+
     // Seed from Library deep-link
     const seed = sessionStorage.getItem("lumen:compare-seed");
-    if (seed) { cmpState.a = cmpState.a || seed; sessionStorage.removeItem("lumen:compare-seed"); }
+    if (seed) {
+      if (!cmpState.slots.includes(seed)) {
+        const emptyIdx = cmpState.slots.findIndex(x => !x);
+        if (emptyIdx !== -1) cmpState.slots[emptyIdx] = seed;
+        else cmpState.slots[0] = seed;
+      }
+      sessionStorage.removeItem("lumen:compare-seed");
+    }
 
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Compare" }),
-        util.el("h1", { text: "Side by side" }),
-        util.el("p", { class: "lede", text: "Pick two titles. You'll get weighted scores, category-by-category bars, a radar shape, and a plain-language verdict — all against your profile." })
+        util.el("h1", { text: "Lineup" }),
+        util.el("p", { class: "lede", text: "Place up to three titles side by side. You'll get per-book scores, category-by-category bars, a radar shape, and a quick verdict — all against your profile. Hit Run analysis for the deeper pass." })
       ])
     ]));
 
-    const pickers = util.el("div", { class: "card", style: { padding: "var(--s-4)" } });
-    const pickerRow = util.el("div", { class: "row-wrap" });
-    pickerRow.appendChild(pickerSelect("a", cmpState.a, (v) => { cmpState.a = v; paint(); }));
-    pickerRow.appendChild(pickerSelect("b", cmpState.b, (v) => { cmpState.b = v; paint(); }));
-    pickerRow.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => { cmpState.a = null; cmpState.b = null; paint(); } }, "Clear"));
-    pickers.appendChild(pickerRow);
-    wrap.appendChild(pickers);
+    // Slot row
+    const slotsCard = util.el("div", { class: "card", style: { padding: "var(--s-4)" } });
+    const slots = util.el("div", { class: "cmp-slots" });
+    cmpState.slots.forEach((id, idx) => {
+      const b = id ? BOOKS.find(x => x.id === id) : null;
+      if (b) {
+        const filled = util.el("div", { class: "cmp-slot" });
+        filled.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
+        filled.appendChild(util.el("div", { class: "cmp-slot-title", text: b.title }));
+        filled.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
+        filled.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => openSlotPicker(idx) }, "Replace"),
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; renderView(); } }, "Remove")
+        ]));
+        slots.appendChild(filled);
+      } else {
+        slots.appendChild(util.el("div", { class: "cmp-slot empty", onclick: () => openSlotPicker(idx) }, [
+          util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }),
+          util.el("div", { class: "t-small", text: "+ Add title" })
+        ]));
+      }
+    });
+    slotsCard.appendChild(slots);
+
+    const actionsRow = util.el("div", { class: "row", style: { marginTop: "var(--s-3)", justifyContent: "space-between" } });
+    const filledCount = cmpState.slots.filter(Boolean).length;
+    actionsRow.appendChild(util.el("div", { class: "t-small t-subtle", text: `${filledCount} of 3 slots filled` }));
+    actionsRow.appendChild(util.el("div", { class: "row" }, [
+      util.el("button", { class: "btn btn-ghost btn-sm", disabled: filledCount === 0 || null, onclick: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } }, "Clear all"),
+      util.el("button", { class: "btn btn-primary", disabled: filledCount < 2 || null, onclick: () => runDeepAnalysis() }, "Run analysis")
+    ]));
+    slotsCard.appendChild(actionsRow);
+
+    wrap.appendChild(slotsCard);
 
     const body = util.el("div", { id: "cmp-body", class: "stack-lg" });
     wrap.appendChild(body);
 
     function paint() {
       body.innerHTML = "";
-      if (!cmpState.a && !cmpState.b) {
+      const filled = cmpState.slots.filter(Boolean);
+      if (filled.length === 0) {
         body.appendChild(ui.empty({
-          title: "Choose two titles to compare",
+          title: "Pick up to three titles",
           message: "Scores are evaluated against your current profile. Change your profile and the picture changes."
         }));
         return;
       }
-
-      const scoredList = Engine.compareBooks([cmpState.a, cmpState.b].filter(Boolean), s.profile, s.weights);
-      const scoredA = scoredList.find(x => x.book.id === cmpState.a);
-      const scoredB = scoredList.find(x => x.book.id === cmpState.b);
-
-      if (!scoredA || !scoredB) {
+      if (filled.length === 1) {
+        const scored = Engine.compareBooks(filled, s.profile, s.weights)[0];
         body.appendChild(ui.empty({
-          title: "One more to go",
-          message: `${scoredA ? scoredB ? "" : "Pick a second title." : "Pick a first title."}`
+          title: "Add at least one more",
+          message: "Comparison needs two titles minimum. Below is your first slot, scored against your profile."
         }));
-        if (scoredA || scoredB) body.appendChild(cmpCard(scoredA || scoredB));
+        body.appendChild(cmpCard(scored));
         return;
       }
 
-      // Scorecards side by side
-      const grid = util.el("div", { class: "cmp-grid" });
-      grid.appendChild(cmpCard(scoredA));
-      grid.appendChild(cmpCard(scoredB));
+      const scoredList = Engine.compareBooks(filled, s.profile, s.weights);
+
+      // Scorecards
+      const grid = util.el("div", { class: "cmp-grid cmp-" + filled.length });
+      scoredList.forEach(sc => grid.appendChild(cmpCard(sc)));
       body.appendChild(grid);
 
       // Radar + legend
@@ -1833,27 +1920,40 @@
         util.el("span", { class: "card-sub t-subtle", text: "Each axis is one scored dimension" })
       ]));
       const radarBox = util.el("div", { class: "radar-wrap" });
-      radarBox.appendChild(radarSVG(scoredA, scoredB, 340));
+      radarBox.appendChild(radarSVG(scoredList, 340));
       radarCard.appendChild(radarBox);
-      radarCard.appendChild(util.el("div", { class: "radar-legend" }, [
-        util.el("span", {}, [util.el("span", { class: "swatch", style: { background: "var(--accent)" } }), scoredA.book.title]),
-        util.el("span", {}, [util.el("span", { class: "swatch", style: { background: "var(--info)" } }),  scoredB.book.title])
-      ]));
+      const legend = util.el("div", { class: "radar-legend" });
+      scoredList.forEach((sc, i) => {
+        legend.appendChild(util.el("span", {}, [
+          util.el("span", { class: `swatch s${i + 1}` }),
+          sc.book.title
+        ]));
+      });
+      radarCard.appendChild(legend);
       body.appendChild(radarCard);
 
-      // AI Analysis
-      const ai = aiAnalysis(scoredA, scoredB, s.profile);
+      // Category breakdown (multi-series)
+      const catsCard = util.el("div", { class: "card" });
+      catsCard.appendChild(util.el("div", { class: "card-head" }, [
+        util.el("h3", { text: "Category breakdown" }),
+        util.el("span", { class: "card-sub t-subtle", text: "Fit per dimension, 0–100" })
+      ]));
+      catsCard.appendChild(categoryBarsMulti(scoredList));
+      body.appendChild(catsCard);
+
+      // Quick analysis
+      const ai = quickAnalysis(scoredList, s.profile);
       const aiCard = util.el("div", { class: "card stack" });
       aiCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Analysis" }),
+        util.el("h3", { text: "Quick analysis" }),
         util.el("div", { class: "row" }, [
-          util.el("span", { class: "card-sub t-subtle", text: "Advisory, not authoritative" }),
+          util.el("span", { class: "card-sub t-subtle", text: "Auto · rule-based" }),
           util.el("button", { class: "btn btn-sm", onclick: () => {
             saveAnalysis({
-              titleA: scoredA.book.title,
-              titleB: scoredB.book.title,
-              fitA: scoredA.fitScore,
-              fitB: scoredB.fitScore,
+              titleA: scoredList[0].book.title,
+              titleB: scoredList.slice(1).map(s => s.book.title).join(" & "),
+              fitA: scoredList[0].fitScore,
+              fitB: scoredList[1]?.fitScore ?? 0,
               verdict: ai.verdict
             });
           }}, "Save to Vault")
@@ -1871,30 +1971,59 @@
         ]));
       }
 
-      const bestForGrid = util.el("div", { class: "cmp-grid" });
-      bestForGrid.appendChild(util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: `${scoredA.book.title} · best for` }),
-        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: ai.bestForA })
-      ]));
-      bestForGrid.appendChild(util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: `${scoredB.book.title} · best for` }),
-        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: ai.bestForB })
-      ]));
+      const bestForGrid = util.el("div", { class: `cmp-grid cmp-${filled.length}` });
+      ai.bestForMap.forEach(m => bestForGrid.appendChild(util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: `${m.title} · best for` }),
+        util.el("p", { class: "t-muted t-small", style: { marginTop: "var(--s-2)" }, text: m.text })
+      ])));
       aiCard.appendChild(bestForGrid);
 
       if (ai.tradeoffs.length) {
-        ai.tradeoffs.forEach(t => aiCard.appendChild(util.el("div", { class: t.startsWith("critical") || t.includes("critical") ? "caution" : "tradeoff" }, t)));
+        ai.tradeoffs.forEach(t => aiCard.appendChild(util.el("div", { class: t.includes("critical") ? "caution" : "tradeoff" }, t)));
       }
       aiCard.appendChild(util.el("p", { class: "t-muted t-small", text: ai.ifYouLiked }));
       if (ai.thinMetadata) {
-        aiCard.appendChild(util.el("div", { class: "tradeoff" }, "Confidence is moderate on both — metadata is thin or your profile has few expressed tastes. Take the verdict with a grain of salt."));
+        aiCard.appendChild(util.el("div", { class: "tradeoff" }, "Confidence is moderate across the lineup — metadata is thin or your profile has few expressed tastes. Take the verdict with a grain of salt."));
       }
 
       body.appendChild(aiCard);
+
+      // Deep analysis (if run) — Batch 4 will populate this; Batch 3 leaves the scaffold
+      if (cmpState.lastDeepAnalysis) {
+        body.appendChild(renderDeepAnalysis(cmpState.lastDeepAnalysis));
+      }
     }
+
+    function runDeepAnalysis() {
+      const filled = cmpState.slots.filter(Boolean);
+      if (filled.length < 2) return;
+      const scoredList = Engine.compareBooks(filled, s.profile, s.weights);
+      if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
+        cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, s.profile);
+        ui.toast("Deep analysis ready");
+        renderView();
+      } else {
+        ui.toast("Deep analysis module not yet loaded");
+      }
+    }
+
+    // Expose so Batch 4's Run button can call externally
+    renderCompare._runDeep = runDeepAnalysis;
 
     setTimeout(paint, 0);
     return wrap;
+  }
+
+  function renderDeepAnalysis(payload) {
+    // Populated in Batch 4. For now render a lightweight placeholder.
+    const card = util.el("div", { class: "card stack" });
+    card.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Deep analysis" }),
+      util.el("span", { class: "card-sub t-subtle", text: "Structured output" })
+    ]));
+    if (payload && payload._render) return payload._render();
+    card.appendChild(util.el("p", { class: "t-muted t-small", text: "Deep analysis module arrives in Batch 4." }));
+    return card;
   }
 
   /* -------------------- views -------------------- */
