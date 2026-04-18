@@ -2899,9 +2899,9 @@
           actions: [{ label: "Edit profile", variant: "btn-primary", onClick: () => router.go("profile") }]
         }));
       } else {
-        const grid = util.el("div", { class: "row-wrap", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--s-4)" } });
-        picks.forEach(p => grid.appendChild(bookCardMini(p, () => ui.toast(`Opens full detail in Batch 3 · ${p.book.title}`))));
-        picksCard.appendChild(grid);
+        const list = util.el("div", { class: "rank-list" });
+        picks.forEach((p, i) => list.appendChild(rankCardBig(p, i + 1, (sc) => openBookDetail(sc.book.id))));
+        picksCard.appendChild(list);
       }
       wrap.appendChild(picksCard);
 
@@ -3085,6 +3085,105 @@
       util.el("div", { class: "t-mono", style: { fontSize: "24px", color: "var(--accent)" }, text: String(value) }),
       util.el("div", { class: "t-tiny t-subtle", text: label })
     ]);
+  }
+
+  /* ---------- Rank card (ranked-list, donut charts) ---------- */
+  function donutSVG(value, label) {
+    const V = Math.max(0, Math.min(100, Math.round(value || 0)));
+    const CIRC = 2 * Math.PI * 22;            // radius 22 → circumference
+    const offset = CIRC * (1 - V / 100);
+    const toneClass = V >= 70 ? "good" : V >= 45 ? "warn" : "danger";
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "donut " + toneClass);
+    svg.setAttribute("viewBox", "0 0 54 54");
+    svg.setAttribute("width", "54"); svg.setAttribute("height", "54");
+    svg.setAttribute("aria-label", `${label}: ${V}%`);
+    svg.setAttribute("role", "img");
+
+    const track = document.createElementNS(NS, "circle");
+    track.setAttribute("class", "track");
+    track.setAttribute("cx", "27"); track.setAttribute("cy", "27"); track.setAttribute("r", "22");
+    svg.appendChild(track);
+
+    const fill = document.createElementNS(NS, "circle");
+    fill.setAttribute("class", "fill");
+    fill.setAttribute("cx", "27"); fill.setAttribute("cy", "27"); fill.setAttribute("r", "22");
+    fill.setAttribute("stroke-dasharray", CIRC.toFixed(3));
+    fill.setAttribute("stroke-dashoffset", offset.toFixed(3));
+    svg.appendChild(fill);
+
+    const text = document.createElementNS(NS, "text");
+    text.setAttribute("x", "27"); text.setAttribute("y", "27");
+    text.textContent = String(V);
+    svg.appendChild(text);
+    return svg;
+  }
+
+  function toRoman(n) {
+    const map = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+    let out = "", r = n;
+    for (const [v, s] of map) while (r >= v) { out += s; r -= v; }
+    return out || "I";
+  }
+
+  function rankCardBig(scored, rank, onClick) {
+    const { book, fitScore, confidence, why } = scored;
+    const card = util.el("a", {
+      class: "rank-card",
+      href: "#",
+      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); }
+    });
+
+    card.appendChild(util.el("div", { class: "rank-numeral", text: toRoman(rank) }));
+
+    const body = util.el("div", { class: "rank-body" });
+    body.appendChild(util.el("div", { class: "rank-eyebrow", text: util.humanise(book.subgenre || book.category || "") }));
+    body.appendChild(util.el("h4", { text: book.title }));
+    body.appendChild(util.el("div", { class: "rank-meta", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    body.appendChild(util.el("p", { class: "rank-blurb", text: book.description }));
+
+    const reasons = [];
+    (why.reasons || []).forEach(r => reasons.push({ cls: "", text: r }));
+    (why.partials || []).forEach(r => reasons.push({ cls: "partial", text: r }));
+    (why.penalties || []).forEach(r => reasons.push({ cls: "penalty", text: r }));
+    if (reasons.length) {
+      const whyBlock = util.el("div", { class: "why-block" });
+      const list = util.el("ul", { class: "why-list" });
+      reasons.slice(0, 4).forEach(r => list.appendChild(util.el("li", { class: r.cls, text: r.text })));
+      whyBlock.appendChild(list);
+      body.appendChild(whyBlock);
+    }
+    card.appendChild(body);
+
+    const aside = util.el("div", { class: "rank-aside" });
+    const fitRow = util.el("div", { class: "donut-row" });
+    fitRow.appendChild(donutSVG(fitScore, "Fit"));
+    fitRow.appendChild(util.el("div", { class: "donut-meta" }, [
+      "Fit",
+      util.el("div", { class: "donut-note", text: fitScore >= 70 ? "strong match" : fitScore >= 45 ? "moderate fit" : "loose fit" })
+    ]));
+    aside.appendChild(fitRow);
+
+    const confRow = util.el("div", { class: "donut-row" });
+    confRow.appendChild(donutSVG(confidence, "Confidence"));
+    confRow.appendChild(util.el("div", { class: "donut-meta" }, [
+      "Confidence",
+      util.el("div", { class: "donut-note", text: confidence >= 70 ? "signal-rich" : confidence >= 45 ? "moderate signal" : "thin data" })
+    ]));
+    aside.appendChild(confRow);
+
+    if (book.content_warnings && book.content_warnings.length) {
+      const warns = util.el("div", { class: "warnings-block" });
+      warns.appendChild(util.el("div", { class: "warnings-head", text: `Content warnings · ${book.content_warnings.length}` }));
+      const ul = util.el("ul");
+      book.content_warnings.slice(0, 4).forEach(w => ul.appendChild(util.el("li", { text: w.replace(/-/g, " ") })));
+      warns.appendChild(ul);
+      aside.appendChild(warns);
+    }
+    card.appendChild(aside);
+
+    return card;
   }
 
   /* ---------- Home KPI composition ---------- */
