@@ -775,3 +775,108 @@ p  { margin: 0; }
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ============================================================
+   Compare surface — scorecards, bars, radar
+   ============================================================ */
+.cmp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-4);
+}
+.cmp-grid.with-radar {
+  grid-template-columns: 1fr 1fr;
+}
+@media (max-width: 880px) {
+  .cmp-grid, .cmp-grid.with-radar { grid-template-columns: 1fr; }
+}
+.cmp-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-3);
+  align-items: baseline;
+}
+.cmp-score {
+  font-family: var(--font-mono);
+  font-size: 42px;
+  line-height: 1;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+}
+.cmp-score-sub { font-size: 11px; color: var(--text-subtle); letter-spacing: 0.14em; text-transform: uppercase; }
+
+.bar {
+  position: relative;
+  height: 6px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.bar > span {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: var(--accent);
+  transition: width var(--dur-2) var(--ease);
+}
+.bar.good > span { background: var(--good); }
+.bar.warn > span { background: var(--warn); }
+
+.cat-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 44px;
+  gap: var(--s-3);
+  align-items: center;
+  padding: 6px 0;
+  font-size: 12px;
+}
+.cat-row + .cat-row { border-top: 1px solid var(--border); }
+.cat-row .cat-label { color: var(--text-muted); }
+.cat-row .cat-val { font-family: var(--font-mono); text-align: right; color: var(--text); }
+
+.radar-wrap {
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  padding: var(--s-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.radar-legend {
+  display: flex;
+  gap: var(--s-4);
+  justify-content: center;
+  margin-top: var(--s-3);
+  font-size: 12px;
+}
+.radar-legend .swatch {
+  display: inline-block;
+  width: 10px; height: 10px; border-radius: 2px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.verdict {
+  padding: var(--s-5);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--r-3);
+}
+.verdict h3 { font-family: var(--font-serif); color: var(--text); }
+.tradeoff {
+  padding: var(--s-4);
+  background: var(--bg-sunken);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-2);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.caution {
+  padding: var(--s-4);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--r-2);
+  font-size: 13px;
+  color: var(--text);
+}

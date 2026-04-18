@@ -616,6 +616,319 @@
     return wrap;
   }
 
+  /* -------------------- compare -------------------- */
+  const CMP_CATEGORIES = [
+    { key: "heat",     label: "Heat",        group: "numeric" },
+    { key: "explicit", label: "Explicit",    group: "numeric" },
+    { key: "emotion",  label: "Emotion",     group: "numeric" },
+    { key: "consent",  label: "Consent",     group: "numeric" },
+    { key: "taboo",    label: "Taboo fit",   group: "numeric" },
+    { key: "plot",     label: "Plot/scene",  group: "numeric" },
+    { key: "tone",     label: "Tone",        group: "tag" },
+    { key: "pacing",   label: "Pacing",      group: "tag" },
+    { key: "style",    label: "Style",       group: "tag" },
+    { key: "dynamic",  label: "Dynamic",     group: "tag" },
+    { key: "trope",    label: "Tropes",      group: "tag" },
+    { key: "kink",     label: "Kinks",       group: "tag" },
+    { key: "orientation", label: "Orientation", group: "tag" }
+  ];
+
+  const cmpState = { a: null, b: null };
+
+  function pickerSelect(side, value, onChange) {
+    const sel = util.el("select", { class: "select", style: { minWidth: "260px" }, onchange: (e) => onChange(e.target.value || null) });
+    sel.appendChild(util.el("option", { value: "" }, `Pick ${side === "a" ? "a first" : "a second"} title…`));
+    BOOKS.forEach(b => sel.appendChild(util.el("option", { value: b.id, selected: value === b.id ? "selected" : null }, `${b.title} — ${b.author}`)));
+    return sel;
+  }
+
+  function categoryBars(scored, side) {
+    const wrap = util.el("div");
+    CMP_CATEGORIES.forEach(cat => {
+      const c = scored.contributions[cat.key];
+      const pct = Math.round((c?.score ?? 0) * 100);
+      const variant = pct >= 75 ? "good" : pct >= 40 ? "" : "warn";
+      wrap.appendChild(util.el("div", { class: "cat-row" }, [
+        util.el("div", { class: "cat-label", text: cat.label }),
+        util.el("div", { class: "bar" + (variant ? ` ${variant}` : "") }, [
+          util.el("span", { style: { width: `${pct}%` } })
+        ]),
+        util.el("div", { class: "cat-val", text: `${pct}` })
+      ]));
+    });
+    return wrap;
+  }
+
+  function radarSVG(scoredA, scoredB, size = 320) {
+    const cats = CMP_CATEGORIES;
+    const cx = size / 2, cy = size / 2;
+    const r = size / 2 - 28;
+    const N = cats.length;
+    const angle = (i) => (-Math.PI / 2) + (i / N) * (Math.PI * 2);
+    const pt = (i, v) => [cx + Math.cos(angle(i)) * r * v, cy + Math.sin(angle(i)) * r * v];
+
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `0 0 ${size} ${size}`);
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "auto");
+    svg.style.maxWidth = `${size}px`;
+
+    // Web rings
+    [0.25, 0.5, 0.75, 1].forEach(ring => {
+      const pts = cats.map((_, i) => pt(i, ring).join(",")).join(" ");
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", "none");
+      poly.setAttribute("stroke", "var(--border)");
+      poly.setAttribute("stroke-width", "1");
+      svg.appendChild(poly);
+    });
+    // Axis lines + labels
+    cats.forEach((cat, i) => {
+      const [x, y] = pt(i, 1);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", cx); line.setAttribute("y1", cy);
+      line.setAttribute("x2", x);  line.setAttribute("y2", y);
+      line.setAttribute("stroke", "var(--border)");
+      line.setAttribute("stroke-width", "1");
+      svg.appendChild(line);
+      const [lx, ly] = pt(i, 1.12);
+      const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      txt.setAttribute("x", lx); txt.setAttribute("y", ly);
+      txt.setAttribute("fill", "var(--text-subtle)");
+      txt.setAttribute("font-size", "10");
+      txt.setAttribute("text-anchor", "middle");
+      txt.setAttribute("dominant-baseline", "middle");
+      txt.textContent = cat.label;
+      svg.appendChild(txt);
+    });
+
+    function plot(scored, color, fillOpacity) {
+      const pts = cats.map((c, i) => pt(i, scored.contributions[c.key]?.score ?? 0).join(",")).join(" ");
+      const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      poly.setAttribute("points", pts);
+      poly.setAttribute("fill", color);
+      poly.setAttribute("fill-opacity", String(fillOpacity));
+      poly.setAttribute("stroke", color);
+      poly.setAttribute("stroke-width", "1.5");
+      svg.appendChild(poly);
+    }
+    if (scoredA) plot(scoredA, "var(--accent)", 0.22);
+    if (scoredB) plot(scoredB, "var(--info)",   0.22);
+
+    return svg;
+  }
+
+  function aiAnalysis(a, b, profile) {
+    if (!a || !b) return null;
+    const diff = (k) => ((a.contributions[k]?.score || 0) - (b.contributions[k]?.score || 0));
+
+    const stronger = a.fitScore === b.fitScore
+      ? null
+      : (a.fitScore > b.fitScore ? a : b);
+    const weaker = stronger === a ? b : (stronger === b ? a : null);
+    const gap = Math.abs(a.fitScore - b.fitScore);
+
+    const verdict = (() => {
+      if (!stronger) return `Both titles land at ${a.fitScore}. On raw fit, they're indistinguishable — so the choice becomes about what you're in the mood for.`;
+      if (gap <= 5)  return `Close call. ${stronger.book.title} edges ahead by ${gap} points, but either is defensible.`;
+      if (gap <= 15) return `${stronger.book.title} is a clearer fit (${stronger.fitScore} vs ${weaker.fitScore}). ${weaker.book.title} is still viable if its particular texture appeals.`;
+      return `${stronger.book.title} is the stronger match by a wide margin (${stronger.fitScore} vs ${weaker.fitScore}). ${weaker.book.title} would be a substantial deviation from your stated profile.`;
+    })();
+
+    const differences = [];
+    const pushDiff = (key, label, formatA, formatB) => {
+      const sa = a.contributions[key]?.score || 0;
+      const sb = b.contributions[key]?.score || 0;
+      if (Math.abs(sa - sb) < 0.25) return;
+      const leader = sa > sb ? a : b;
+      const lag    = sa > sb ? b : a;
+      differences.push(`${leader.book.title} fits ${label} better — ${formatA(leader.book)} vs ${formatB(lag.book)}.`);
+    };
+    pushDiff("heat",    "on heat",        (x) => `${x.heat_level}/5`,      (x) => `${x.heat_level}/5`);
+    pushDiff("emotion", "on emotional intensity", (x) => `${x.emotional_intensity}/5`, (x) => `${x.emotional_intensity}/5`);
+    pushDiff("consent", "on consent clarity", (x) => `clarity ${x.consent_clarity}/5`, (x) => `clarity ${x.consent_clarity}/5`);
+    pushDiff("plot",    "on story architecture", (x) => `plot weight ${x.plot_weight}/5`, (x) => `plot weight ${x.plot_weight}/5`);
+
+    const tradeoffs = [];
+    if (a.criticallyWarned || b.criticallyWarned) {
+      const flagged = a.criticallyWarned ? a.book.title : b.book.title;
+      tradeoffs.push(`${flagged} carries a critical warning. Treat this as an informed choice, not a recommendation.`);
+    }
+    if (a.warnPenalty > 1 || b.warnPenalty > 1) {
+      tradeoffs.push(`Warning strictness (${profile.warnStrict}) is depressing at least one score; loosening it in your profile would change this comparison.`);
+    }
+    if (a.confidence < 60 || b.confidence < 60) {
+      const low = a.confidence < b.confidence ? a : b;
+      tradeoffs.push(`Confidence on ${low.book.title} is ${low.confidence}%. Metadata may be thin, or your taste profile doesn't give it many signals to match against.`);
+    }
+
+    const bestFor = (scored) => {
+      const top = Object.entries(scored.contributions)
+        .filter(([, v]) => v.score >= 0.75)
+        .sort((x, y) => y[1].contrib - x[1].contrib)
+        .slice(0, 3)
+        .map(([k]) => CMP_CATEGORIES.find(c => c.key === k)?.label || k);
+      if (top.length === 0) return `a gentle middle-of-the-road choice across your preferences`;
+      return `readers who want ${top.join(", ").toLowerCase()}`;
+    };
+
+    const ifYouLiked = stronger
+      ? `If ${stronger.book.title} lands for you, ${weaker.book.title} may feel like a softer or sharper echo depending on which dimensions you weigh most.`
+      : `Since these two are tied on raw fit, think about which one better matches tonight's mood.`;
+
+    const thinMetadata = (a.confidence + b.confidence) / 2 < 55;
+
+    return {
+      verdict,
+      differences: differences.slice(0, 4),
+      tradeoffs,
+      bestForA: bestFor(a),
+      bestForB: bestFor(b),
+      ifYouLiked,
+      thinMetadata
+    };
+  }
+
+  function cmpCard(scored) {
+    const book = scored.book;
+    const card = util.el("div", { class: "card card-raised stack" });
+    card.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+    card.appendChild(util.el("h3", { class: "t-serif", text: book.title }));
+    card.appendChild(util.el("div", { class: "t-small t-subtle", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    card.appendChild(util.el("div", { class: "cmp-head", style: { marginTop: "var(--s-4)" } }, [
+      util.el("div", {}, [
+        util.el("div", { class: "cmp-score-sub", text: "Fit score" }),
+        util.el("div", { class: "cmp-score", text: `${scored.fitScore}` })
+      ]),
+      util.el("div", { style: { textAlign: "right" } }, [
+        util.el("div", { class: "cmp-score-sub", text: "Confidence" }),
+        util.el("div", { class: "t-mono", style: { fontSize: "20px" }, text: `${scored.confidence}%` })
+      ])
+    ]));
+    card.appendChild(util.el("div", { class: "bar", style: { marginTop: "var(--s-3)" } }, [
+      util.el("span", { style: { width: `${scored.confidence}%` } })
+    ]));
+    card.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Category breakdown" }));
+    card.appendChild(categoryBars(scored));
+    return card;
+  }
+
+  function renderCompare() {
+    const s = store.get();
+    // Seed from Library deep-link
+    const seed = sessionStorage.getItem("lumen:compare-seed");
+    if (seed) { cmpState.a = cmpState.a || seed; sessionStorage.removeItem("lumen:compare-seed"); }
+
+    const wrap = util.el("div", { class: "page stack-lg" });
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Compare" }),
+        util.el("h1", { text: "Side by side" }),
+        util.el("p", { class: "lede", text: "Pick two titles. You'll get weighted scores, category-by-category bars, a radar shape, and a plain-language verdict — all against your profile." })
+      ])
+    ]));
+
+    const pickers = util.el("div", { class: "card", style: { padding: "var(--s-4)" } });
+    const pickerRow = util.el("div", { class: "row-wrap" });
+    pickerRow.appendChild(pickerSelect("a", cmpState.a, (v) => { cmpState.a = v; paint(); }));
+    pickerRow.appendChild(pickerSelect("b", cmpState.b, (v) => { cmpState.b = v; paint(); }));
+    pickerRow.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => { cmpState.a = null; cmpState.b = null; paint(); } }, "Clear"));
+    pickers.appendChild(pickerRow);
+    wrap.appendChild(pickers);
+
+    const body = util.el("div", { id: "cmp-body", class: "stack-lg" });
+    wrap.appendChild(body);
+
+    function paint() {
+      body.innerHTML = "";
+      if (!cmpState.a && !cmpState.b) {
+        body.appendChild(ui.empty({
+          title: "Choose two titles to compare",
+          message: "Scores are evaluated against your current profile. Change your profile and the picture changes."
+        }));
+        return;
+      }
+
+      const scoredList = Engine.compareBooks([cmpState.a, cmpState.b].filter(Boolean), s.profile, s.weights);
+      const scoredA = scoredList.find(x => x.book.id === cmpState.a);
+      const scoredB = scoredList.find(x => x.book.id === cmpState.b);
+
+      if (!scoredA || !scoredB) {
+        body.appendChild(ui.empty({
+          title: "One more to go",
+          message: `${scoredA ? scoredB ? "" : "Pick a second title." : "Pick a first title."}`
+        }));
+        if (scoredA || scoredB) body.appendChild(cmpCard(scoredA || scoredB));
+        return;
+      }
+
+      // Scorecards side by side
+      const grid = util.el("div", { class: "cmp-grid" });
+      grid.appendChild(cmpCard(scoredA));
+      grid.appendChild(cmpCard(scoredB));
+      body.appendChild(grid);
+
+      // Radar + legend
+      const radarCard = util.el("div", { class: "card" });
+      radarCard.appendChild(util.el("div", { class: "card-head" }, [
+        util.el("h3", { text: "Shape of the fit" }),
+        util.el("span", { class: "card-sub t-subtle", text: "Each axis is one scored dimension" })
+      ]));
+      const radarBox = util.el("div", { class: "radar-wrap" });
+      radarBox.appendChild(radarSVG(scoredA, scoredB, 340));
+      radarCard.appendChild(radarBox);
+      radarCard.appendChild(util.el("div", { class: "radar-legend" }, [
+        util.el("span", {}, [util.el("span", { class: "swatch", style: { background: "var(--accent)" } }), scoredA.book.title]),
+        util.el("span", {}, [util.el("span", { class: "swatch", style: { background: "var(--info)" } }),  scoredB.book.title])
+      ]));
+      body.appendChild(radarCard);
+
+      // AI Analysis
+      const ai = aiAnalysis(scoredA, scoredB, s.profile);
+      const aiCard = util.el("div", { class: "card stack" });
+      aiCard.appendChild(util.el("div", { class: "card-head" }, [
+        util.el("h3", { text: "Analysis" }),
+        util.el("span", { class: "card-sub t-subtle", text: "Advisory, not authoritative" })
+      ]));
+      aiCard.appendChild(util.el("div", { class: "verdict" }, [
+        util.el("div", { class: "t-eyebrow", text: "Verdict" }),
+        util.el("p", { style: { marginTop: "var(--s-2)", fontSize: "15px", lineHeight: "1.55" }, text: ai.verdict })
+      ]));
+
+      if (ai.differences.length) {
+        aiCard.appendChild(util.el("div", {}, [
+          util.el("div", { class: "field-label", text: "Where they diverge" }),
+          util.el("ul", { style: { paddingLeft: "var(--s-4)" } }, ai.differences.map(d => util.el("li", { class: "t-muted t-small", style: { marginTop: "4px" }, text: d })))
+        ]));
+      }
+
+      const bestForGrid = util.el("div", { class: "cmp-grid" });
+      bestForGrid.appendChild(util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: `${scoredA.book.title} · best for` }),
+        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: ai.bestForA })
+      ]));
+      bestForGrid.appendChild(util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: `${scoredB.book.title} · best for` }),
+        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: ai.bestForB })
+      ]));
+      aiCard.appendChild(bestForGrid);
+
+      if (ai.tradeoffs.length) {
+        ai.tradeoffs.forEach(t => aiCard.appendChild(util.el("div", { class: t.startsWith("critical") || t.includes("critical") ? "caution" : "tradeoff" }, t)));
+      }
+      aiCard.appendChild(util.el("p", { class: "t-muted t-small", text: ai.ifYouLiked }));
+      if (ai.thinMetadata) {
+        aiCard.appendChild(util.el("div", { class: "tradeoff" }, "Confidence is moderate on both — metadata is thin or your profile has few expressed tastes. Take the verdict with a grain of salt."));
+      }
+
+      body.appendChild(aiCard);
+    }
+
+    setTimeout(paint, 0);
+    return wrap;
+  }
+
   /* -------------------- views -------------------- */
   const views = {
     discover() {
@@ -693,13 +1006,7 @@
     },
 
     compare() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Compare", "Pick two titles. A VCFO-inspired scorecard shows where each one lands for you."),
-        ui.empty({
-          title: "Comparison engine arrives in Batch 4",
-          message: "You'll get weighted category bars, a radar, tradeoff callouts, confidence, and a plain-language AI verdict."
-        })
-      ]);
+      return renderCompare();
     },
 
     chat() {
