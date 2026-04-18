@@ -927,13 +927,22 @@
     ].forEach(([l, v]) => metaPills.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
     body.appendChild(metaPills);
 
-    // Extra actions row
-    body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-4)" } }, [
-      util.el("button", { class: "btn btn-sm", onclick: () => {
-        pinBook(bookId);
-        openBookDetail(bookId);
-      } }, "Pin to Vault")
-    ]));
+    // Extra actions row. Pin goes to Vault; a "View source" link is
+    // surfaced whenever the book has a source URL (Project Gutenberg,
+    // Google Books, Internet Archive, etc.) so the expanded view also
+    // points at the original text.
+    const actions = util.el("div", { class: "row", style: { marginTop: "var(--s-4)", flexWrap: "wrap", gap: "var(--s-2)" } });
+    actions.appendChild(util.el("button", { class: "btn btn-sm", onclick: () => {
+      pinBook(bookId);
+      openBookDetail(bookId);
+    } }, "Pin to Vault"));
+    if (book.source_url) {
+      actions.appendChild(util.el("a", {
+        class: "btn btn-sm btn-ghost",
+        href: book.source_url, target: "_blank", rel: "noopener noreferrer"
+      }, "View source"));
+    }
+    body.appendChild(actions);
 
     ui.modal({
       title: "",
