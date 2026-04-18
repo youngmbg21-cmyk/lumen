@@ -3020,13 +3020,12 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 .textarea { resize: vertical; min-height: 96px; font-family: var(--font-sans); }
 
-/* ---------- Hero decorative orbs ---------- */
-.page-head,
+/* Hero orbs on page-heads were trialled and removed — intentionally
+   left as a reusable opt-in via the .hero class on other surfaces. */
 .hero {
   position: relative;
   overflow: hidden;
 }
-.page-head::before,
 .hero::before {
   content: "";
   position: absolute;
@@ -3037,7 +3036,6 @@ body[data-privacy-blur="on"] .app-main::after {
   pointer-events: none;
   z-index: 0;
 }
-.page-head::after,
 .hero::after {
   content: "";
   position: absolute;
@@ -3048,7 +3046,7 @@ body[data-privacy-blur="on"] .app-main::after {
   pointer-events: none;
   z-index: 0;
 }
-.page-head > * { position: relative; z-index: 1; }
+.hero > * { position: relative; z-index: 1; }
 
 /* ---------- Advisory note (new) ---------- */
 .advisory,
@@ -3212,32 +3210,15 @@ body[data-privacy-blur="on"] .app-main::after {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.page-head > * { animation: fadeUp 0.5s var(--ease) both; }
-.page-head > *:nth-child(1) { animation-delay: 0s; }
-.page-head > *:nth-child(2) { animation-delay: 0.15s; }
-.page-head > *:nth-child(3) { animation-delay: 0.25s; }
-.kpi-grid .kpi-card { animation: fadeUp 0.5s var(--ease) both; }
-.kpi-grid .kpi-card:nth-child(1) { animation-delay: 0.10s; }
-.kpi-grid .kpi-card:nth-child(2) { animation-delay: 0.15s; }
-.kpi-grid .kpi-card:nth-child(3) { animation-delay: 0.20s; }
-.kpi-grid .kpi-card:nth-child(4) { animation-delay: 0.25s; }
-.kpi-grid .kpi-card:nth-child(5) { animation-delay: 0.30s; }
-.kpi-grid .kpi-card:nth-child(6) { animation-delay: 0.35s; }
-.rank-list > * { animation: fadeUp 0.5s var(--ease) both; }
-.rank-list > *:nth-child(1) { animation-delay: 0.30s; }
-.rank-list > *:nth-child(2) { animation-delay: 0.40s; }
-.rank-list > *:nth-child(3) { animation-delay: 0.50s; }
+/* fadeUp keyframe kept for opt-in use elsewhere. Staggered default
+   bindings on page-head / kpi / rank-list were reverted. */
 
 @keyframes pulse {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(122, 140, 111, 0.6); }
   50%      { opacity: 0.7; box-shadow: 0 0 0 6px rgba(122, 140, 111, 0); }
 }
-.sara-launcher .dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--sage);
-  animation: pulse 2s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(122, 140, 111, 0.6);
-}
+/* Sara launcher dot reverted to a quiet accent pip. Pulse keyframe
+   kept above for opt-in use elsewhere. */
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

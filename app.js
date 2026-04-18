@@ -2871,9 +2871,6 @@
         ])
       ]));
 
-      // Live dashboard KPI row
-      wrap.appendChild(buildHomeKpis(s, result));
-
       // Sara check-in
       wrap.appendChild(util.el("div", { class: "card card-accent" }, [
         util.el("div", { class: "t-eyebrow", text: "Sara · your guide" }),
@@ -2899,24 +2896,27 @@
           actions: [{ label: "Edit profile", variant: "btn-primary", onClick: () => router.go("profile") }]
         }));
       } else {
-        const list = util.el("div", { class: "rank-list" });
-        picks.forEach((p, i) => list.appendChild(rankCardBig(p, i + 1, (sc) => openBookDetail(sc.book.id))));
-        picksCard.appendChild(list);
+        const grid = util.el("div", { class: "row-wrap", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--s-4)" } });
+        picks.forEach(p => grid.appendChild(bookCardMini(p, (sc) => openBookDetail(sc.book.id))));
+        picksCard.appendChild(grid);
       }
       wrap.appendChild(picksCard);
 
-      // Weekly KPI strip — journal / pinned / tracked
+      // Weekly insight — a quiet recap of your week
       const entriesThisWeek = s.journal.filter(e => Date.now() - e.ts < 1000 * 60 * 60 * 24 * 7).length;
       const pinnedCount = s.vault.pinned.length;
       const readingStateCount = Object.keys(s.bookStates).length;
       if (entriesThisWeek || pinnedCount || readingStateCount) {
-        const insightsCard = util.el("div", { class: "panel" });
-        insightsCard.appendChild(util.el("div", { class: "ornament ornament-fleuron" }, "This week"));
-        insightsCard.appendChild(buildKpiGrid([
-          { label: "Journal entries", value: entriesThisWeek,   unit: "", sub: entriesThisWeek === 1 ? "recorded this week" : "recorded this week", tone: "default" },
-          { label: "Pinned books",    value: pinnedCount,       sub: "saved to your vault",         tone: "gold" },
-          { label: "Books tracked",   value: readingStateCount, sub: "in a reading state",          tone: "good" }
+        const insightsCard = util.el("div", { class: "card" });
+        insightsCard.appendChild(util.el("div", { class: "card-head" }, [
+          util.el("h3", { text: "This week" }),
+          util.el("span", { class: "card-sub t-subtle", text: "A quiet summary" })
         ]));
+        const row = util.el("div", { class: "row-wrap", style: { gap: "var(--s-5)" } });
+        if (entriesThisWeek)     row.appendChild(kpiBlock(entriesThisWeek, entriesThisWeek === 1 ? "journal entry" : "journal entries"));
+        if (pinnedCount)         row.appendChild(kpiBlock(pinnedCount,     pinnedCount === 1 ? "book pinned" : "books pinned"));
+        if (readingStateCount)   row.appendChild(kpiBlock(readingStateCount, "books tracked"));
+        insightsCard.appendChild(row);
         wrap.appendChild(insightsCard);
       }
 
