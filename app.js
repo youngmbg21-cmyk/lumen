@@ -340,6 +340,282 @@
     host.appendChild(list);
   }
 
+  /* -------------------- library -------------------- */
+  const libState = {
+    query: "",
+    readingFilter: "all",
+    category: "all",
+    sort: "fit",
+    minFit: 0
+  };
+
+  function setReadingState(bookId, state) {
+    store.update(s => {
+      if (state === "none") delete s.bookStates[bookId];
+      else s.bookStates[bookId] = state;
+    });
+  }
+
+  function getReadingState(bookId) {
+    return store.get().bookStates[bookId] || "none";
+  }
+
+  function addCustomTag(bookId, tag) {
+    const clean = tag.trim().toLowerCase().replace(/\s+/g, "-");
+    if (!clean) return;
+    store.update(s => {
+      s.tags[bookId] = s.tags[bookId] || [];
+      if (!s.tags[bookId].includes(clean)) s.tags[bookId].push(clean);
+    });
+  }
+
+  function removeCustomTag(bookId, tag) {
+    store.update(s => {
+      if (!s.tags[bookId]) return;
+      s.tags[bookId] = s.tags[bookId].filter(t => t !== tag);
+      if (s.tags[bookId].length === 0) delete s.tags[bookId];
+    });
+  }
+
+  function readingStateBadge(bookId) {
+    const st = getReadingState(bookId);
+    if (st === "none") return null;
+    const def = READING_STATES.find(x => x.id === st);
+    const variant = st === "read" ? "good" : st === "reading" ? "accent" : st === "want" ? "warn" : "danger";
+    return ui.tag(def.short, variant);
+  }
+
+  function readingStateSelect(bookId) {
+    const current = getReadingState(bookId);
+    const wrap = util.el("div", { class: "row-wrap" });
+    READING_STATES.forEach(st => {
+      wrap.appendChild(ui.chip(st.label, {
+        pressed: current === st.id,
+        onToggle: () => { setReadingState(bookId, st.id); openBookDetail(bookId); }
+      }));
+    });
+    return wrap;
+  }
+
+  function bookCardFull(book, scored) {
+    const state = getReadingState(book.id);
+    const card = util.el("div", { class: "card card-raised", style: { cursor: "pointer", display: "flex", flexDirection: "column" },
+      onclick: () => openBookDetail(book.id)
+    });
+    const head = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
+      util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }),
+      scored ? util.el("div", { class: "t-mono", style: { color: "var(--accent)", fontSize: "18px" }, text: `${scored.fitScore}` }) : null
+    ].filter(Boolean));
+    card.appendChild(head);
+    card.appendChild(util.el("h3", { class: "t-serif", style: { marginTop: "var(--s-2)", fontSize: "18px" }, text: book.title }));
+    card.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "2px" }, text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    card.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-3)", flex: "1 1 auto" }, text: book.description.slice(0, 160) + (book.description.length > 160 ? "…" : "") }));
+    const badges = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } });
+    const rsBadge = readingStateBadge(book.id);
+    if (rsBadge) badges.appendChild(rsBadge);
+    if (book.content_warnings.length) badges.appendChild(ui.tag(`${book.content_warnings.length} warning${book.content_warnings.length > 1 ? "s" : ""}`, "warn"));
+    if (scored && scored.confidence < 60) badges.appendChild(ui.tag(`low confidence`, "danger"));
+    card.appendChild(badges);
+    return card;
+  }
+
+  function openBookDetail(bookId) {
+    const book = BOOKS.find(b => b.id === bookId);
+    if (!book) return;
+    const s = store.get();
+    const scored = Engine.compareBooks([bookId], s.profile, s.weights)[0];
+    const userTags = s.tags[bookId] || [];
+
+    const body = util.el("div", { class: "stack" });
+    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+    body.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "22px", marginTop: "4px" }, text: book.title }));
+    body.appendChild(util.el("div", { class: "t-small t-subtle", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
+
+    // Score block
+    if (scored) {
+      const scoreBlock = util.el("div", { class: "card card-quiet", style: { marginTop: "var(--s-3)" } }, [
+        util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
+          util.el("div", {}, [
+            util.el("div", { class: "t-eyebrow", text: "Fit for you" }),
+            util.el("div", { class: "t-mono", style: { fontSize: "28px", color: "var(--accent)" }, text: `${scored.fitScore}` })
+          ]),
+          util.el("div", { style: { textAlign: "right" } }, [
+            util.el("div", { class: "t-tiny t-subtle", text: "Confidence" }),
+            util.el("div", { class: "t-mono", text: `${scored.confidence}%` })
+          ])
+        ])
+      ]);
+      if (scored.why.reasons.length) {
+        const reasons = util.el("ul", { style: { marginTop: "var(--s-3)", paddingLeft: "var(--s-4)" } });
+        scored.why.reasons.forEach(r => reasons.appendChild(util.el("li", { class: "t-small t-muted", text: r })));
+        scoreBlock.appendChild(reasons);
+      }
+      body.appendChild(scoreBlock);
+    }
+
+    body.appendChild(util.el("p", { class: "t-muted", style: { marginTop: "var(--s-3)" }, text: book.description }));
+
+    // Reading state
+    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Reading state" }));
+    body.appendChild(readingStateSelect(bookId));
+
+    // Custom tags
+    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Your tags" }));
+    const tagRow = util.el("div", { class: "row-wrap" });
+    userTags.forEach(t => {
+      tagRow.appendChild(util.el("span", { class: "tag tag-outline" }, [
+        t.replace(/-/g, " "),
+        util.el("button", { class: "t-tiny", style: { marginLeft: "6px", color: "var(--text-subtle)" }, onclick: () => { removeCustomTag(bookId, t); openBookDetail(bookId); } }, "×")
+      ]));
+    });
+    const input = util.el("input", { class: "input", placeholder: "Add a tag and press Enter", style: { maxWidth: "240px" }, onkeydown: (e) => {
+      if (e.key === "Enter" && input.value.trim()) { addCustomTag(bookId, input.value); input.value = ""; openBookDetail(bookId); }
+    } });
+    tagRow.appendChild(input);
+    body.appendChild(tagRow);
+
+    // Content warnings
+    if (book.content_warnings.length) {
+      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Content warnings" }));
+      const warns = util.el("div", { class: "row-wrap" });
+      book.content_warnings.forEach(w => warns.appendChild(ui.tag(w, "warn")));
+      body.appendChild(warns);
+    }
+
+    // Metadata pills
+    const meta = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
+    [
+      ["Heat", book.heat_level],
+      ["Explicit", book.explicitness],
+      ["Emotion", book.emotional_intensity],
+      ["Consent", book.consent_clarity],
+      ["Taboo", book.taboo_level],
+      ["Plot", book.plot_weight]
+    ].forEach(([l, v]) => meta.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
+    body.appendChild(meta);
+
+    ui.modal({
+      title: "",
+      body,
+      primary: { label: "Compare with…", onClick: () => {
+        sessionStorage.setItem("lumen:compare-seed", bookId);
+        router.go("compare");
+      } },
+      secondary: { label: "Close" }
+    });
+  }
+
+  function renderLibrary() {
+    const s = store.get();
+    const ranked = Engine.rankRecommendations(s.profile, s.weights);
+    const scoredMap = Object.fromEntries(ranked.scored.map(x => [x.book.id, x]));
+
+    const wrap = util.el("div", { class: "page stack-lg" });
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Library" }),
+        util.el("h1", { text: "Everything in the catalogue" }),
+        util.el("p", { class: "lede", text: `${BOOKS.length} titles · filter by how you want to read them, or drop anything that doesn't pass your exclusions.` })
+      ])
+    ]));
+
+    // Filter bar
+    const filters = util.el("div", { class: "card card-quiet", style: { padding: "var(--s-4)" } });
+    const filterRow = util.el("div", { class: "row-wrap" });
+
+    const searchInput = util.el("input", {
+      class: "input", placeholder: "Search titles or authors", style: { maxWidth: "260px" },
+      value: libState.query,
+      oninput: (e) => { libState.query = e.target.value.toLowerCase(); updateGrid(); }
+    });
+    filterRow.appendChild(searchInput);
+
+    const rfOptions = [{ id: "all", label: "All" }, ...READING_STATES.filter(r => r.id !== "none")];
+    const rfSegmented = util.el("div", { class: "segmented" });
+    rfOptions.forEach(opt => {
+      const b = util.el("button", {
+        type: "button",
+        "aria-pressed": libState.readingFilter === opt.id ? "true" : "false",
+        onclick: () => {
+          libState.readingFilter = opt.id;
+          rfSegmented.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x.dataset.v === opt.id ? "true" : "false"));
+          updateGrid();
+        },
+        "data-v": opt.id
+      }, opt.label);
+      rfSegmented.appendChild(b);
+    });
+    filterRow.appendChild(rfSegmented);
+
+    const categories = ["all", ...new Set(BOOKS.map(b => b.category))];
+    const catSelect = util.el("select", {
+      class: "select", style: { maxWidth: "260px" },
+      onchange: (e) => { libState.category = e.target.value; updateGrid(); }
+    });
+    categories.forEach(c => {
+      const o = util.el("option", { value: c, selected: libState.category === c ? "selected" : null }, c === "all" ? "All categories" : util.humanise(c));
+      catSelect.appendChild(o);
+    });
+    filterRow.appendChild(catSelect);
+
+    const sortSelect = util.el("select", {
+      class: "select", style: { maxWidth: "180px" },
+      onchange: (e) => { libState.sort = e.target.value; updateGrid(); }
+    });
+    [
+      ["fit", "Sort: best fit"],
+      ["title", "Sort: title"],
+      ["year", "Sort: year"]
+    ].forEach(([v, l]) => sortSelect.appendChild(util.el("option", { value: v, selected: libState.sort === v ? "selected" : null }, l)));
+    filterRow.appendChild(sortSelect);
+
+    filters.appendChild(filterRow);
+    wrap.appendChild(filters);
+
+    // Stats
+    const stats = util.el("div", { class: "row-wrap t-small t-subtle", id: "lib-stats" });
+    wrap.appendChild(stats);
+
+    // Grid
+    const grid = util.el("div", { id: "lib-grid", style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--s-4)" } });
+    wrap.appendChild(grid);
+
+    function updateGrid() {
+      const q = libState.query;
+      let filtered = BOOKS.filter(b => {
+        if (q && !(b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))) return false;
+        if (libState.category !== "all" && b.category !== libState.category) return false;
+        if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
+        return true;
+      });
+      filtered.sort((a, b) => {
+        if (libState.sort === "fit") {
+          const sa = scoredMap[a.id]?.fitScore ?? -1;
+          const sb = scoredMap[b.id]?.fitScore ?? -1;
+          return sb - sa;
+        }
+        if (libState.sort === "title") return a.title.localeCompare(b.title);
+        if (libState.sort === "year")  return a.year - b.year;
+        return 0;
+      });
+
+      const excluded = BOOKS.length - Engine.applyHardExclusions(BOOKS, Engine.normalizeProfile(s.profile)).length;
+      stats.innerHTML = "";
+      stats.appendChild(util.el("span", {}, `Showing ${filtered.length} of ${BOOKS.length}`));
+      if (excluded > 0) stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
+
+      grid.innerHTML = "";
+      if (!filtered.length) {
+        grid.appendChild(ui.empty({ title: "Nothing matches those filters", message: "Try clearing the search or reading-state filter." }));
+        return;
+      }
+      filtered.forEach(b => grid.appendChild(bookCardFull(b, scoredMap[b.id])));
+    }
+
+    setTimeout(updateGrid, 0);
+    return wrap;
+  }
+
   /* -------------------- views -------------------- */
   const views = {
     discover() {
@@ -413,29 +689,7 @@
     },
 
     library() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Library", "Everything available to explore, with your reading state visible at a glance."),
-        ui.empty({
-          title: "The library renders next",
-          message: "Batch 3 wires up the catalog grid, reading-state filters (Want to read, Currently reading, Already read, Not for me), and custom tags.",
-          actions: [
-            { label: "Preview via Compare", variant: "btn-ghost", onClick: () => router.go("compare") }
-          ]
-        })
-      ]);
-    },
-
-    library() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Library", "Everything available to explore, with your reading state visible at a glance."),
-        ui.empty({
-          title: "The library renders next",
-          message: "Batch 3 wires up the catalog grid, reading-state filters (Want to read, Currently reading, Already read, Not for me), and custom tags.",
-          actions: [
-            { label: "Preview via Compare", variant: "btn-ghost", onClick: () => router.go("compare") }
-          ]
-        })
-      ]);
+      return renderLibrary();
     },
 
     compare() {
