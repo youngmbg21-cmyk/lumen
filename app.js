@@ -631,7 +631,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Library" }),
-        util.el("h1", { text: "Your saved collection" }),
+        util.el("h1", { html: "Your saved <em>collection</em>" }),
         util.el("p", { class: "lede", text: `${totalVisible} title${totalVisible === 1 ? "" : "s"}${discoveredCount ? ` · ${discoveredCount} from Discovery` : ""} · dismiss anything that doesn't belong` })
       ])
     ]));
@@ -766,7 +766,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Discovery" }),
-        util.el("h1", { text: "Search the web. Ask the engine." }),
+        util.el("h1", { html: "Search the web. <em>Ask</em> the engine." }),
         util.el("p", { class: "lede", text: "Pull real titles from Google Books, have Claude read each blurb, and drop what resonates straight into your library." })
       ])
     ]));
@@ -1068,7 +1068,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Settings" }),
-        util.el("h1", { text: "Settings" }),
+        util.el("h1", { html: "<em>Settings</em>" }),
         util.el("p", { class: "lede", text: "Keys and configuration. Everything here is stored locally on this device." })
       ])
     ]));
@@ -1274,7 +1274,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Transparency" }),
-        util.el("h1", { text: "How Lumen reasons — and what it refuses to guess at" }),
+        util.el("h1", { html: "How Lumen <em>reasons</em> — and what it refuses to guess at" }),
         util.el("p", { class: "lede", text: "Everything below is honest, including the limits. If the app can't be trusted in a sensitive subject area, it doesn't deserve to exist." })
       ])
     ]));
@@ -1480,7 +1480,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Vault" }),
-        util.el("h1", { text: "Your private space" }),
+        util.el("h1", { html: "Your <em>private</em> space" }),
         util.el("p", { class: "lede", text: "Pinned books, saved comparisons, private notes. All local. Optional passcode gates re-entry." })
       ]),
       util.el("div", { class: "row" }, [
@@ -1707,7 +1707,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Journal" }),
-        util.el("h1", { text: "Private reflections" }),
+        util.el("h1", { html: "Private <em>reflections</em>" }),
         util.el("p", { class: "lede", text: "A quiet place for reading thoughts. Freeform, prompted, or tied to a specific book. Never shared." })
       ]),
       util.el("div", { class: "row" }, [
@@ -2054,7 +2054,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Connections" }),
-        util.el("h1", { text: "Your private social layer" }),
+        util.el("h1", { html: "Your private <em>social</em> layer" }),
         util.el("p", { class: "lede", text: "Sara lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
       ])
     ]));
@@ -2520,7 +2520,7 @@
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Compare" }),
-        util.el("h1", { text: "Lineup" }),
+        util.el("h1", { html: "<em>Lineup</em>" }),
         util.el("p", { class: "lede", text: "Place up to three titles side by side. You'll get per-book scores, category-by-category bars, a radar shape, and a quick verdict — all against your profile. Hit Run analysis for the deeper pass." })
       ])
     ]));
@@ -2862,7 +2862,7 @@
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
           util.el("div", { class: "t-eyebrow", text: "Home" }),
-          util.el("h1", { text: greeting }),
+          util.el("h1", { html: greeting.replace(/Lumen/, "<em>Lumen</em>").replace(/back/, "<em>back</em>") }),
           util.el("p", { class: "lede", text: "A private, taste-aware reading companion. Nothing leaves your device." })
         ]),
         util.el("div", { class: "row" }, [
@@ -2966,7 +2966,7 @@
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
           util.el("div", { class: "t-eyebrow", text: "Profile" }),
-          util.el("h1", { text: "Your reader profile" }),
+          util.el("h1", { html: "Your <em>reader</em> profile" }),
           util.el("p", { class: "lede", text: "What you tell Lumen here shapes every recommendation. All values stay on this device." })
         ]),
         util.el("div", { class: "row" }, [
