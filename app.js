@@ -494,6 +494,14 @@
     ].forEach(([l, v]) => meta.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
     body.appendChild(meta);
 
+    // Extra actions row
+    body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-4)" } }, [
+      util.el("button", { class: "btn btn-sm", onclick: () => {
+        pinBook(bookId);
+        openBookDetail(bookId);
+      } }, "Pin to Vault")
+    ]));
+
     ui.modal({
       title: "",
       body,
@@ -614,6 +622,262 @@
 
     setTimeout(updateGrid, 0);
     return wrap;
+  }
+
+  /* -------------------- vault -------------------- */
+  function hashPasscode(pw) {
+    // Prototype-only: a simple deterministic hash.
+    // This is NOT real security — see the transparency tab.
+    let h = 0;
+    for (let i = 0; i < pw.length; i++) h = (h * 31 + pw.charCodeAt(i)) | 0;
+    return "h" + (h >>> 0).toString(36);
+  }
+
+  let vaultUnlocked = false;
+
+  function pinBook(bookId, note = "") {
+    store.update(s => {
+      if (s.vault.pinned.find(p => p.bookId === bookId)) return;
+      s.vault.pinned.push({ id: util.id("p"), bookId, note, ts: Date.now() });
+    });
+    ui.toast("Pinned to Vault");
+  }
+
+  function unpinBook(pinId) {
+    store.update(s => { s.vault.pinned = s.vault.pinned.filter(p => p.id !== pinId); });
+  }
+
+  function saveAnalysis(analysisPayload) {
+    store.update(s => {
+      s.vault.analyses.unshift({ id: util.id("a"), ts: Date.now(), ...analysisPayload });
+    });
+    ui.toast("Analysis saved to Vault");
+  }
+
+  function addVaultNote(text) {
+    if (!text.trim()) return;
+    store.update(s => { s.vault.notes.unshift({ id: util.id("n"), text, ts: Date.now() }); });
+  }
+
+  function renderVault() {
+    const s = store.get();
+    const hasPasscode = !!s.vault.passcodeHash;
+
+    if (hasPasscode && !vaultUnlocked) {
+      const wrap = util.el("div", { class: "page" });
+      const gate = util.el("div", { class: "vault-gate stack" });
+      gate.appendChild(util.el("div", { class: "t-eyebrow", text: "Vault" }));
+      gate.appendChild(util.el("h2", { text: "Locked" }));
+      gate.appendChild(util.el("p", { class: "t-muted t-small", text: "Enter your passcode to unlock. Prototype-only — see Transparency for what this protects against (and what it doesn't)." }));
+      const input = util.el("input", {
+        class: "input",
+        type: "password",
+        placeholder: "Passcode",
+        style: { textAlign: "center" },
+        onkeydown: (e) => { if (e.key === "Enter") tryUnlock(); }
+      });
+      gate.appendChild(input);
+      gate.appendChild(util.el("div", { class: "row", style: { justifyContent: "center" } }, [
+        util.el("button", { class: "btn btn-primary", onclick: tryUnlock }, "Unlock"),
+        util.el("button", { class: "btn btn-ghost", onclick: () => {
+          ui.modal({
+            title: "Remove passcode?",
+            body: "<p class=\"t-muted\">This clears the passcode and unlocks your vault. You can set a new one later.</p>",
+            primary: { label: "Remove", onClick: () => {
+              store.update(s2 => { s2.vault.passcodeHash = null; });
+              vaultUnlocked = true;
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }}, "Forgot passcode")
+      ]));
+      wrap.appendChild(gate);
+
+      function tryUnlock() {
+        if (hashPasscode(input.value) === store.get().vault.passcodeHash) {
+          vaultUnlocked = true;
+          ui.toast("Vault unlocked");
+          renderView();
+        } else {
+          input.value = "";
+          ui.toast("Incorrect passcode");
+        }
+      }
+      return wrap;
+    }
+
+    const wrap = util.el("div", { class: "page stack-lg" });
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Vault" }),
+        util.el("h1", { text: "Your private space" }),
+        util.el("p", { class: "lede", text: "Pinned books, saved comparisons, private notes. All local. Optional passcode gates re-entry." })
+      ]),
+      util.el("div", { class: "row" }, [
+        hasPasscode
+          ? util.el("button", { class: "btn", onclick: () => {
+              ui.modal({
+                title: "Remove passcode?",
+                body: "<p class=\"t-muted\">The vault will be unlocked by default.</p>",
+                primary: { label: "Remove", onClick: () => {
+                  store.update(s2 => { s2.vault.passcodeHash = null; });
+                  ui.toast("Passcode removed");
+                }},
+                secondary: { label: "Cancel" }
+              });
+            }}, "Remove passcode")
+          : util.el("button", { class: "btn", onclick: () => promptPasscode() }, "Set passcode"),
+        util.el("button", { class: "btn btn-ghost", onclick: () => { vaultUnlocked = false; renderView(); }, disabled: !hasPasscode || null }, "Lock")
+      ])
+    ]));
+
+    // Pinned books
+    const pinned = s.vault.pinned;
+    const pinnedCard = util.el("div", { class: "card vault-section" });
+    pinnedCard.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Pinned books" }),
+      util.el("span", { class: "card-sub t-subtle", text: `${pinned.length} pinned` })
+    ]));
+    if (!pinned.length) {
+      pinnedCard.appendChild(ui.empty({
+        title: "Nothing pinned yet",
+        message: "Open a book from the Library and use 'Pin to Vault' to save it here."
+      }));
+    } else {
+      const grid = util.el("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--s-3)" } });
+      pinned.forEach(p => {
+        const book = BOOKS.find(b => b.id === p.bookId);
+        if (!book) return;
+        const tile = util.el("div", { class: "vault-tile" });
+        tile.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+        tile.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: book.title }));
+        tile.appendChild(util.el("div", { class: "t-small t-subtle", text: book.author }));
+        if (p.note) tile.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: p.note }));
+        tile.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-3)", justifyContent: "space-between" } }, [
+          util.el("button", { class: "btn btn-sm", onclick: () => openBookDetail(book.id) }, "Open"),
+          util.el("button", { class: "btn btn-sm btn-danger", onclick: () => { unpinBook(p.id); renderView(); } }, "Unpin")
+        ]));
+        grid.appendChild(tile);
+      });
+      pinnedCard.appendChild(grid);
+    }
+    wrap.appendChild(pinnedCard);
+
+    // Saved analyses
+    const analyses = s.vault.analyses;
+    const analysesCard = util.el("div", { class: "card vault-section" });
+    analysesCard.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Saved analyses" }),
+      util.el("span", { class: "card-sub t-subtle", text: `${analyses.length} saved` })
+    ]));
+    if (!analyses.length) {
+      analysesCard.appendChild(ui.empty({
+        title: "No analyses saved",
+        message: "When you compare two books, use 'Save analysis' to keep the verdict here."
+      }));
+    } else {
+      analyses.slice(0, 10).forEach(a => {
+        const tile = util.el("div", { class: "vault-tile" });
+        tile.appendChild(util.el("div", { class: "t-tiny t-subtle", text: formatDate(a.ts) }));
+        tile.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: `${a.titleA} vs ${a.titleB}` }));
+        tile.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: a.verdict }));
+        tile.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-3)", justifyContent: "flex-end" } }, [
+          util.el("button", { class: "btn btn-sm btn-danger", onclick: () => {
+            store.update(s2 => { s2.vault.analyses = s2.vault.analyses.filter(x => x.id !== a.id); });
+            renderView();
+          }}, "Remove")
+        ]));
+        analysesCard.appendChild(tile);
+      });
+    }
+    wrap.appendChild(analysesCard);
+
+    // Private notes
+    const notesCard = util.el("div", { class: "card vault-section" });
+    notesCard.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Private notes" }),
+      util.el("span", { class: "card-sub t-subtle", text: `${s.vault.notes.length} notes` })
+    ]));
+    const noteInput = util.el("textarea", { class: "textarea", placeholder: "A private note — nothing leaves this device." });
+    notesCard.appendChild(noteInput);
+    notesCard.appendChild(util.el("div", { class: "row", style: { justifyContent: "flex-end", marginTop: "var(--s-2)" } }, [
+      util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+        addVaultNote(noteInput.value);
+        noteInput.value = "";
+        renderView();
+      }}, "Save note")
+    ]));
+    if (s.vault.notes.length) {
+      const stack = util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-4)" } });
+      s.vault.notes.forEach(n => {
+        const tile = util.el("div", { class: "vault-tile" }, [
+          util.el("div", { class: "t-tiny t-subtle", text: formatDate(n.ts) }),
+          util.el("p", { class: "t-muted t-small", style: { marginTop: "var(--s-2)", whiteSpace: "pre-wrap" }, text: n.text }),
+          util.el("div", { class: "row", style: { marginTop: "var(--s-2)", justifyContent: "flex-end" } }, [
+            util.el("button", { class: "btn btn-sm btn-danger", onclick: () => {
+              store.update(s2 => { s2.vault.notes = s2.vault.notes.filter(x => x.id !== n.id); });
+              renderView();
+            }}, "Delete")
+          ])
+        ]);
+        stack.appendChild(tile);
+      });
+      notesCard.appendChild(stack);
+    }
+    wrap.appendChild(notesCard);
+
+    // Privacy tools
+    const privCard = util.el("div", { class: "card vault-section" });
+    privCard.appendChild(util.el("div", { class: "card-head" }, [ util.el("h3", { text: "Privacy tools" }) ]));
+    privCard.appendChild(util.el("div", { class: "stack" }, [
+      privacyToggleRow("Blur on blur", "Blur the screen when this window loses focus.", "privacyBlur"),
+      privacyToggleRow("Discreet mode", "Soften titles and imagery for shared-screen situations.", "discreet")
+    ]));
+    wrap.appendChild(privCard);
+
+    return wrap;
+  }
+
+  function privacyToggleRow(label, help, key) {
+    const row = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "flex-start" } });
+    row.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", style: { fontWeight: "600" }, text: label }),
+      util.el("div", { class: "t-small t-subtle", text: help })
+    ]));
+    const s = store.get();
+    const current = key === "privacyBlur" ? !!s.ui.privacyBlur : !!s.ui.discreet;
+    const toggle = util.el("label", { class: "toggle" });
+    const input = util.el("input", { type: "checkbox", checked: current ? "checked" : null, onchange: (e) => {
+      store.update(st => {
+        if (key === "privacyBlur") st.ui.privacyBlur = e.target.checked;
+        else st.ui.discreet = e.target.checked;
+      });
+      applyUIFlags();
+    }});
+    toggle.appendChild(input);
+    toggle.appendChild(util.el("span", { class: "toggle-track" }));
+    row.appendChild(toggle);
+    return row;
+  }
+
+  function promptPasscode() {
+    const body = util.el("div", { class: "stack" });
+    body.appendChild(util.el("p", { class: "t-muted t-small", text: "A passcode gates re-entry to the Vault on this device. Prototype-only — see Transparency for what this does and does not protect." }));
+    const input = util.el("input", { class: "input", type: "password", placeholder: "Choose a passcode" });
+    body.appendChild(input);
+    ui.modal({
+      title: "Set a passcode",
+      body,
+      primary: { label: "Save", onClick: () => {
+        const pw = input.value;
+        if (!pw) return;
+        store.update(s => { s.vault.passcodeHash = hashPasscode(pw); });
+        ui.toast("Passcode set");
+        renderView();
+      }},
+      secondary: { label: "Cancel" }
+    });
   }
 
   /* -------------------- journal -------------------- */
@@ -1453,7 +1717,18 @@
       const aiCard = util.el("div", { class: "card stack" });
       aiCard.appendChild(util.el("div", { class: "card-head" }, [
         util.el("h3", { text: "Analysis" }),
-        util.el("span", { class: "card-sub t-subtle", text: "Advisory, not authoritative" })
+        util.el("div", { class: "row" }, [
+          util.el("span", { class: "card-sub t-subtle", text: "Advisory, not authoritative" }),
+          util.el("button", { class: "btn btn-sm", onclick: () => {
+            saveAnalysis({
+              titleA: scoredA.book.title,
+              titleB: scoredB.book.title,
+              fitA: scoredA.fitScore,
+              fitB: scoredB.fitScore,
+              verdict: ai.verdict
+            });
+          }}, "Save to Vault")
+        ])
       ]));
       aiCard.appendChild(util.el("div", { class: "verdict" }, [
         util.el("div", { class: "t-eyebrow", text: "Verdict" }),
@@ -1582,13 +1857,7 @@
     },
 
     vault() {
-      return util.el("div", { class: "page stack-lg" }, [
-        pageHead("Vault", "A discreet space for saved items, private notes, and bookmarked analyses."),
-        ui.empty({
-          title: "Vault arrives in Batch 7",
-          message: "Optional passcode gate, pinned collections, saved comparisons, blur-on-blur."
-        })
-      ]);
+      return renderVault();
     },
 
     profile() {
@@ -1914,6 +2183,21 @@
     applyUIFlags();
     renderView();
     window.addEventListener("hashchange", () => { renderSidebar(); renderTopbar(); renderView(); });
+
+    // Blur-on-blur privacy: user-opt-in via Vault > Privacy tools
+    window.addEventListener("blur", () => {
+      if (store.get().ui.privacyBlur) document.body.setAttribute("data-privacy-blur", "on");
+    });
+    window.addEventListener("focus", () => {
+      document.body.removeAttribute("data-privacy-blur");
+    });
+    document.addEventListener("click", (e) => {
+      if (document.body.getAttribute("data-privacy-blur") === "on") {
+        e.preventDefault();
+        document.body.removeAttribute("data-privacy-blur");
+      }
+    }, true);
+
     adultGate();
   }
 

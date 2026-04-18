@@ -1062,3 +1062,62 @@ p  { margin: 0; }
   font-size: 16px;
   color: var(--text);
 }
+
+/* ============================================================
+   Vault + privacy treatments
+   ============================================================ */
+.vault-gate {
+  max-width: 440px;
+  margin: var(--s-8) auto;
+  text-align: center;
+  padding: var(--s-7) var(--s-5);
+  border: 1px solid var(--border-bold);
+  border-radius: var(--r-4);
+  background: var(--bg-raised);
+  box-shadow: var(--shadow-3);
+}
+.vault-gate h2 { font-family: var(--font-serif); margin-bottom: var(--s-3); }
+.vault-tile {
+  padding: var(--s-4);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+}
+.vault-section + .vault-section { margin-top: var(--s-5); }
+
+/* Blur-on-blur: applied when the window loses focus. Off by default. */
+body[data-privacy-blur="on"] .app-main,
+body[data-privacy-blur="on"] .app-side .nav-link,
+body[data-privacy-blur="on"] .app-top .crumb {
+  filter: blur(10px);
+  transition: filter var(--dur-2) var(--ease);
+}
+body[data-privacy-blur="on"] .app-main::after {
+  content: "Screen hidden — click to resume";
+  position: fixed; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-size: 18px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  z-index: 5;
+  cursor: pointer;
+}
+
+/* Discreet mode: soften book titles and imagery */
+[data-discreet="on"] h1,
+[data-discreet="on"] h2,
+[data-discreet="on"] h3 {
+  filter: saturate(0.6);
+}
+[data-discreet="on"] .t-eyebrow {
+  opacity: 0.6;
+}
+[data-discreet="on"] .chat-msg,
+[data-discreet="on"] .journal-entry-preview {
+  filter: blur(0.4px);
+}
+[data-discreet="on"] .chat-msg:hover,
+[data-discreet="on"] .journal-entry-preview:hover {
+  filter: none;
+}
