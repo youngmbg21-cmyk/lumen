@@ -333,63 +333,174 @@
     return wrap;
   }
 
-  // Render the right-hand Profile snapshot card — editorial layout with
-  // uppercase label rows and italic Cormorant values like "3/5", "≥5/5".
-  // All values recompute on every slider / chip interaction.
-  function refreshProfilePreview() {
-    const host = document.getElementById("profile-snapshot");
-    if (!host) return;
-    host.innerHTML = "";
+  // Descriptors for the italic word under the numeric on each KPI card.
+  // Kept concise so the card reads like the attached fit-score reference.
+  function kpiDescriptorFive(value) {
+    if (value >= 5) return "Maxed";
+    if (value >= 4) return "High";
+    if (value >= 3) return "Moderate";
+    if (value >= 2) return "Low";
+    return "Minimal";
+  }
+  function kpiDescriptorConsent(value) {
+    if (value >= 5) return "On-page only";
+    if (value >= 4) return "Clear";
+    if (value >= 3) return "Moderate";
+    return "Period-tolerant";
+  }
+  function kpiDescriptorTaboo(value) {
+    if (value >= 5) return "Open";
+    if (value >= 4) return "Permissive";
+    if (value >= 3) return "Selective";
+    if (value >= 2) return "Cautious";
+    return "Safe-first";
+  }
+  function kpiDescriptorFit(value) {
+    if (value >= 75) return "Strong";
+    if (value >= 55) return "Moderate";
+    if (value >= 35) return "Loose";
+    return "Thin";
+  }
+
+  // Small radial ring used by each KPI card. Takes a 0..1 fill and a
+  // short inner text. Styled via .kpi-ring in CSS — stroke colour shifts
+  // with .low / .mid / .high tone classes. 54×54 matches the attached
+  // fit-score card proportions. The circles live inside a rotated group
+  // so the arc starts at 12 o'clock while the centre label stays upright.
+  function kpiRing(fill, innerText, tone) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const R = 22;
+    const CIRC = 2 * Math.PI * R;
+    const safeFill = Math.max(0, Math.min(1, Number(fill) || 0));
+    const offset = CIRC * (1 - safeFill);
+    svg.setAttribute("class", "kpi-ring-svg " + (tone || ""));
+    svg.setAttribute("viewBox", "0 0 54 54");
+    svg.setAttribute("width", "54"); svg.setAttribute("height", "54");
+    svg.setAttribute("aria-hidden", "true");
+
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("transform", "rotate(-90 27 27)");
+
+    const track = document.createElementNS(NS, "circle");
+    track.setAttribute("class", "track");
+    track.setAttribute("cx", "27"); track.setAttribute("cy", "27"); track.setAttribute("r", String(R));
+    g.appendChild(track);
+
+    const fillRing = document.createElementNS(NS, "circle");
+    fillRing.setAttribute("class", "fill");
+    fillRing.setAttribute("cx", "27"); fillRing.setAttribute("cy", "27"); fillRing.setAttribute("r", String(R));
+    fillRing.setAttribute("stroke-dasharray", CIRC.toFixed(3));
+    fillRing.setAttribute("stroke-dashoffset", offset.toFixed(3));
+    g.appendChild(fillRing);
+
+    svg.appendChild(g);
+
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", "27"); t.setAttribute("y", "27");
+    t.textContent = innerText;
+    svg.appendChild(t);
+    return svg;
+  }
+
+  function kpiToneFromFraction(fill) {
+    if (fill >= 0.7) return "high";
+    if (fill >= 0.4) return "mid";
+    return "low";
+  }
+
+  // One KPI card. Mirrors the attached fit-score reference: ring on the
+  // left, uppercase label + italic descriptor on the right.
+  function buildKpiCard({ label, valueHtml, fill, innerText, tone, descriptor, title }) {
+    const card = util.el("div", { class: "kpi-card", title: title || label });
+    const ring = util.el("div", { class: "kpi-ring" }, [kpiRing(fill, innerText, tone)]);
+    card.appendChild(ring);
+    const body = util.el("div", { class: "kpi-body" });
+    body.appendChild(util.el("div", { class: "kpi-label", text: label }));
+    if (valueHtml) {
+      body.appendChild(util.el("div", { class: "kpi-value", html: valueHtml }));
+    }
+    body.appendChild(util.el("div", { class: "kpi-sub", text: descriptor }));
+    card.appendChild(body);
+    return card;
+  }
+
+  // Compute the single Fit Score KPI — the mean fit across the current
+  // user library for the active profile. Falls back to a neutral 50 when
+  // there is nothing in the library yet so the card still has something
+  // to render.
+  function computeProfileFitScore(s) {
+    const pool = listAllBooks().filter(b => !(s.hidden || {})[b.id]);
+    if (!pool.length) return { value: 50, hasData: false };
+    const ranked = Engine.rankRecommendations(s.profile, s.weights, pool);
+    const scored = ranked.scored || [];
+    if (!scored.length) return { value: 50, hasData: false };
+    const mean = Math.round(scored.reduce((acc, x) => acc + x.fitScore, 0) / scored.length);
+    return { value: Math.max(0, Math.min(100, mean)), hasData: true };
+  }
+
+  // Build the full KPI strip (8 cards). Caller places it in the DOM.
+  function buildProfileKpiStrip() {
     const s = store.get();
     const p = s.profile;
     const tagKeys = ["tone", "pacing", "style", "dynamic", "trope", "kink", "orientation"];
     const tagsSelected = tagKeys.reduce((acc, k) => acc + ((p[k] || []).length), 0);
+    const fit = computeProfileFitScore(s);
 
-    host.appendChild(util.el("div", { class: "snapshot-head" }, [
-      util.el("h3", { html: "Profile <em>snapshot</em>" }),
-      util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
-    ]));
+    const strip = util.el("div", { class: "kpi-strip" });
 
-    const list = util.el("div", { class: "snapshot-list" });
-    const row = (label, valueHtml) => {
-      const r = util.el("div", { class: "snapshot-row" });
-      r.appendChild(util.el("span", { class: "snapshot-label", text: label }));
-      r.appendChild(util.el("span", { class: "snapshot-value", html: valueHtml }));
-      return r;
+    const fiveCard = (label, value, descriptorFn = kpiDescriptorFive, prefix = "") => {
+      const fill = Math.max(0, Math.min(1, value / 5));
+      return buildKpiCard({
+        label, fill,
+        innerText: String(value),
+        tone: kpiToneFromFraction(fill),
+        valueHtml: `${prefix}${value}<span class="kpi-of">/5</span>`,
+        descriptor: descriptorFn(value)
+      });
     };
-    list.appendChild(row("Heat",            `${p.heat}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Explicit",        `${p.explicit}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Emotion",         `${p.emotion}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Consent floor",   `<span class="snap-gte">≥</span>${p.consent}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Taboo tolerance", `${p.taboo}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Plot weight",     `${p.plot}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Tags selected",   `${tagsSelected}`));
-    host.appendChild(list);
 
-    const actions = util.el("div", { class: "snapshot-actions" });
-    actions.appendChild(util.el("button", {
-      class: "hero-cta",
-      onclick: () => {
-        router.go("discover");
-        ui.toast("Recommendations refreshed from your profile");
-      }
-    }, "Run recommendations"));
-    actions.appendChild(util.el("button", {
-      class: "btn btn-small",
-      onclick: () => {
-        ui.modal({
-          title: "Reset profile?",
-          body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
-          primary: { label: "Reset", onClick: () => {
-            store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
-            renderView();
-            ui.toast("Profile reset");
-          }},
-          secondary: { label: "Cancel" }
-        });
-      }
-    }, "Reset profile"));
-    host.appendChild(actions);
+    strip.appendChild(fiveCard("Heat",     p.heat));
+    strip.appendChild(fiveCard("Explicit", p.explicit));
+    strip.appendChild(fiveCard("Emotion",  p.emotion));
+    strip.appendChild(fiveCard("Consent floor", p.consent, kpiDescriptorConsent, "≥"));
+    strip.appendChild(fiveCard("Taboo tolerance", p.taboo, kpiDescriptorTaboo));
+    strip.appendChild(fiveCard("Plot weight", p.plot));
+
+    // Tags selected — no ceiling, so the ring fills proportionally up to
+    // a soft cap of 20 (anything above reads as "extensive").
+    const tagFill = Math.max(0, Math.min(1, tagsSelected / 20));
+    strip.appendChild(buildKpiCard({
+      label: "Tags selected",
+      fill: tagFill,
+      innerText: String(tagsSelected),
+      tone: kpiToneFromFraction(tagFill),
+      valueHtml: `${tagsSelected}`,
+      descriptor: tagsSelected === 0 ? "None yet" : tagsSelected >= 10 ? "Extensive" : tagsSelected >= 4 ? "Shaped" : "Sparse"
+    }));
+
+    // Fit score — the premium card that mirrors the attached reference.
+    const fitFill = fit.value / 100;
+    strip.appendChild(buildKpiCard({
+      label: "Fit score",
+      fill: fitFill,
+      innerText: String(fit.value),
+      tone: kpiToneFromFraction(fitFill),
+      valueHtml: `${fit.value}<span class="kpi-of">/100</span>`,
+      descriptor: fit.hasData ? kpiDescriptorFit(fit.value) : "No library yet"
+    }));
+
+    return strip;
+  }
+
+  // Re-renders the live KPI strip in place. Called from slider/chip/
+  // segmented updates so values animate with every tweak. Name kept
+  // (refreshProfilePreview) so existing callsites continue to work.
+  function refreshProfilePreview() {
+    const host = document.getElementById("profile-kpi-strip");
+    if (!host) return;
+    host.innerHTML = "";
+    host.appendChild(buildProfileKpiStrip());
   }
 
   /* -------------------- library -------------------- */
@@ -3454,7 +3565,7 @@
     },
 
     profile() {
-      const wrap = util.el("div", { class: "page profile-page" });
+      const wrap = util.el("div", { class: "page profile-page stack-lg" });
 
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
@@ -3466,7 +3577,70 @@
         ])
       ]));
 
-      const grid = util.el("div", { class: "profile-shell" });
+      // --- Top band: KPI strip → Content controls → actions row -----------
+      // KPIs carry the visual priority; the content controls bar is kept
+      // slim and horizontal so it sits comfortably underneath without
+      // crowding the page.
+      const topBand = util.el("div", { class: "profile-top stack" });
+
+      const kpiCard = util.el("div", { class: "card profile-kpi-card" });
+      kpiCard.appendChild(util.el("div", { class: "profile-kpi-head" }, [
+        util.el("div", {}, [
+          util.el("h3", { html: "Profile <em>snapshot</em>" }),
+          util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
+        ])
+      ]));
+      kpiCard.appendChild(util.el("div", { id: "profile-kpi-strip" }, [buildProfileKpiStrip()]));
+      topBand.appendChild(kpiCard);
+
+      // Content Controls — promoted out of the sidebar and placed as a
+      // slim full-width bar directly under the KPI strip.
+      const controlsBar = util.el("div", { class: "card profile-controls-bar" });
+      const controlsHead = util.el("div", { class: "profile-controls-head" }, [
+        util.el("h3", { html: "Content <em>controls</em>" }),
+        util.el("span", { class: "t-small t-subtle", text: "Warning strictness — tone of the filter" })
+      ]);
+      const controlsBody = util.el("div", { class: "profile-controls-body" });
+      controlsBody.appendChild(segmented("warnStrict", [
+        { label: "Lenient",  value: "permissive" },
+        { label: "Moderate", value: "moderate" },
+        { label: "Strict",   value: "strict" }
+      ]));
+      controlsBody.appendChild(util.el("p", { class: "field-help", text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
+      controlsBar.appendChild(controlsHead);
+      controlsBar.appendChild(controlsBody);
+      topBand.appendChild(controlsBar);
+
+      // Quiet actions row — completes the top band. The old sidebar's
+      // "Run recommendations" and "Reset profile" buttons live here so
+      // nothing is lost from the previous layout.
+      const actionsRow = util.el("div", { class: "profile-top-actions" });
+      actionsRow.appendChild(util.el("button", {
+        class: "btn btn-primary",
+        onclick: () => {
+          router.go("discover");
+          ui.toast("Recommendations refreshed from your profile");
+        }
+      }, "Run recommendations →"));
+      actionsRow.appendChild(util.el("button", {
+        class: "btn",
+        onclick: () => {
+          ui.modal({
+            title: "Reset profile?",
+            body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
+            primary: { label: "Reset", onClick: () => {
+              store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
+              renderView();
+              ui.toast("Profile reset");
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }
+      }, "Reset profile"));
+      topBand.appendChild(actionsRow);
+
+      wrap.appendChild(topBand);
+
       const col = util.el("div", { class: "stack-lg" });
 
       // --- Sliders (two-column pairing matching the mockup) ---------------
@@ -3543,27 +3717,7 @@
       });
       col.appendChild(scenariosCard);
 
-      grid.appendChild(col);
-
-      // --- Right sidebar: Profile snapshot + Content controls -------------
-      const side = util.el("div", { class: "profile-side" });
-
-      const snapshotCard = util.el("div", { class: "card", id: "profile-snapshot" });
-      side.appendChild(snapshotCard);
-
-      const controlsCard = util.el("div", { class: "card stack" });
-      controlsCard.appendChild(util.el("h3", { html: "Content <em>controls</em>" }));
-      controlsCard.appendChild(buildFieldLabel("Warning strictness", "tone of the filter"));
-      controlsCard.appendChild(segmented("warnStrict", [
-        { label: "Lenient",  value: "permissive" },
-        { label: "Moderate", value: "moderate" },
-        { label: "Strict",   value: "strict" }
-      ]));
-      controlsCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
-      side.appendChild(controlsCard);
-
-      grid.appendChild(side);
-      wrap.appendChild(grid);
+      wrap.appendChild(col);
 
       setTimeout(refreshProfilePreview, 0);
       return wrap;
