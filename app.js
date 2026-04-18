@@ -2193,6 +2193,17 @@
       }
     }, state.ui.theme === "dark" ? "Light mode" : "Dark mode");
 
+    const saraLauncher = util.el("button", {
+      class: "sara-launcher",
+      "aria-label": "Open Sara",
+      title: "Open Sara (your reading companion)",
+      onclick: () => window.LumenSara && window.LumenSara.toggle()
+    }, [
+      util.el("span", { class: "dot" }),
+      util.el("span", { text: "Ask Sara" })
+    ]);
+
+    top.appendChild(saraLauncher);
     top.appendChild(discreetToggle);
     top.appendChild(themeBtn);
   }
@@ -2211,6 +2222,12 @@
       }));
     }
     root.focus();
+    if (window.LumenSara) {
+      window.LumenSara.setContext({
+        route: r.id,
+        chips: [{ label: "You're on: " + r.label }]
+      });
+    }
   }
 
   function applyUIFlags() {
@@ -2331,7 +2348,9 @@
         downloadText(`lumen-export-${Date.now()}.json`, JSON.stringify(store.get(), null, 2));
         ui.toast("Snapshot exported");
       } },
-      { label: "Open Transparency", hint: "", run: () => router.go("transparency") }
+      { label: "Open Transparency", hint: "", run: () => router.go("transparency") },
+      { label: "Open Sara",          hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
+      { label: "Close Sara",         hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
     ];
 
     let host = document.getElementById("palette-host");
@@ -2419,6 +2438,8 @@
       } else if (e.key.toLowerCase() === "d" && !e.metaKey && !e.ctrlKey) {
         store.update(s => { s.ui.discreet = !s.ui.discreet; });
         applyUIFlags();
+      } else if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey) {
+        if (window.LumenSara) window.LumenSara.toggle();
       }
     });
   }
@@ -2443,10 +2464,14 @@
     }, true);
 
     setupKeyboard();
+
+    // Mount Sara (persistent floating assistant) once at shell level.
+    if (window.LumenSara) window.LumenSara.boot();
+
     adultGate();
   }
 
   // Expose a small surface for later batches to hook into.
-  window.Lumen = { store, router, ui, util, views, ROUTES };
+  window.Lumen = { store, router, ui, util, views, ROUTES, saraRespond };
   document.addEventListener("DOMContentLoaded", boot);
 })();

@@ -1171,6 +1171,183 @@ body[data-privacy-blur="on"] .app-main::after {
   color: var(--text-muted);
 }
 
+/* ============================================================
+   Floating Sara — launcher + docked panel
+   ============================================================ */
+.sara-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 6px 12px 6px 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-dim);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.sara-launcher:hover { background: var(--accent-dim); border-color: var(--accent); }
+.sara-launcher .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Mobile floating action button */
+.sara-fab {
+  position: fixed;
+  right: var(--s-4);
+  bottom: calc(var(--shell-topbar) + var(--s-4));
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: var(--shadow-3);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 20px;
+  z-index: 60;
+}
+@media (max-width: 880px) {
+  .sara-fab { display: flex; }
+  .sara-launcher { display: none; }
+}
+
+.sara-panel {
+  position: fixed;
+  top: calc(var(--shell-topbar) + var(--s-3));
+  right: var(--s-4);
+  width: 380px;
+  max-width: calc(100vw - var(--s-5));
+  height: calc(100vh - var(--shell-topbar) - var(--s-7));
+  max-height: 680px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 70;
+  transform: translateY(12px) scale(0.98);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+}
+.sara-panel.open {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.sara-panel.wide { width: 460px; }
+.sara-panel.tall { height: calc(100vh - var(--shell-topbar) - var(--s-5)); }
+
+@media (max-width: 880px) {
+  .sara-panel {
+    top: auto;
+    bottom: calc(var(--shell-topbar) + var(--s-3));
+    right: var(--s-3);
+    left: var(--s-3);
+    width: auto;
+    max-width: none;
+    height: 70vh;
+  }
+}
+
+.sara-head {
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+.sara-head .sara-title {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  color: var(--text);
+}
+.sara-head .sara-sub {
+  font-size: 11px;
+  color: var(--text-subtle);
+  margin-top: 1px;
+}
+.sara-head-actions { display: flex; gap: 4px; }
+
+.sara-context {
+  padding: var(--s-2) var(--s-4);
+  background: var(--bg-sunken);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 34px;
+  align-items: center;
+}
+.sara-context:empty { display: none; }
+.sara-context .ctx-chip {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.sara-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  background: var(--bg-sunken);
+}
+.sara-body .chat-msg { max-width: 100%; }
+
+.sara-suggestions {
+  display: flex;
+  gap: 6px;
+  padding: var(--s-2) var(--s-4);
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sara-suggestions .chip { flex-shrink: 0; font-size: 11px; padding: 4px 10px; }
+
+.sara-compose {
+  display: flex;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  align-items: flex-end;
+}
+.sara-compose textarea {
+  flex: 1 1 auto;
+  resize: none;
+  min-height: 36px;
+  max-height: 140px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: var(--font-sans);
+}
+.sara-compose textarea:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 /* Discreet mode: soften book titles and imagery */
 [data-discreet="on"] h1,
 [data-discreet="on"] h2,
