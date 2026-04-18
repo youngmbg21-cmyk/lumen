@@ -6,7 +6,11 @@
 (function () {
   "use strict";
 
-  const { BOOKS, VOCAB, SCENARIOS, DEFAULT_WEIGHTS, DEFAULT_PROFILE, READING_STATES, ALL_WARNINGS } = window.LumenData;
+  // Catalogue is no longer hard-coded. BOOKS is kept in the destructure
+  // but resolves to an empty array from data.js; every surface now reads
+  // from user state via listAllBooks() / findBook(). SEED_BOOKS is the
+  // opt-in starter library, loaded explicitly from Settings.
+  const { BOOKS, SEED_BOOKS, VOCAB, SCENARIOS, DEFAULT_WEIGHTS, DEFAULT_PROFILE, READING_STATES, ALL_WARNINGS } = window.LumenData;
   const Engine = window.LumenEngine;
 
   /* -------------------- util -------------------- */
@@ -323,12 +327,26 @@
     if (!host) return;
     host.innerHTML = "";
     const s = store.get();
-    const result = Engine.rankRecommendations(s.profile, s.weights);
-    const top = result.scored.slice(0, 3);
+    const pool = listAllBooks();
     host.appendChild(util.el("div", { class: "card-head" }, [
       util.el("h3", { text: "Live preview" }),
-      util.el("span", { class: "card-sub t-subtle", text: `${result.matched} of ${result.screened} pass your filters` })
+      util.el("span", { class: "card-sub t-subtle", text: pool.length ? `${pool.length} saved title${pool.length === 1 ? "" : "s"}` : "no saved titles yet" })
     ]));
+    if (!pool.length) {
+      host.appendChild(ui.empty({
+        title: "Your library is empty",
+        message: "Add books from Discovery or load the starter library in Settings to see how your profile ranks them.",
+        actions: [
+          { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
+          { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
+        ]
+      }));
+      return;
+    }
+    const result = Engine.rankRecommendations(s.profile, s.weights, pool);
+    const top = result.scored.slice(0, 3);
+    const matchLine = util.el("div", { class: "t-small t-subtle", style: { marginTop: "var(--s-1)" }, text: `${result.matched} of ${result.screened} pass your filters` });
+    host.appendChild(matchLine);
     if (!top.length) {
       host.appendChild(ui.empty({ title: "No matches yet", message: "Loosen an exclusion or warning strictness." }));
       return;
@@ -383,8 +401,20 @@
     });
   }
 
-  // Merged view of catalogue + user-discovered books.
+  // User-state-backed book model. Two possible shapes are stored in
+  // s.discovered: (a) rich seed entries that came from Settings →
+  // "Load starter library" and carry full engine-scoring metadata, and
+  // (b) lightweight entries from a Discovery web search with the
+  // Claude-analyzed fields. discoveredAsBook normalises either into a
+  // book-like object the rest of the app can reason about.
   function discoveredAsBook(d) {
+    const isRichSeed = d && Array.isArray(d.content_warnings) && d.heat_level != null && Array.isArray(d.tone);
+    if (isRichSeed) {
+      return Object.assign({}, d, {
+        _seed: d.source === "seed",
+        _discovered: d.source !== "seed"
+      });
+    }
     return {
       id: d.id,
       title: d.title,
@@ -411,17 +441,53 @@
     };
   }
   function findBook(bookId) {
-    const hit = BOOKS.find(b => b.id === bookId);
-    if (hit) return hit;
     const d = (store.get().discovered || []).find(x => x.id === bookId);
     return d ? discoveredAsBook(d) : null;
   }
   function listAllBooks() {
-    const discovered = (store.get().discovered || []).map(discoveredAsBook);
-    return BOOKS.concat(discovered);
+    return (store.get().discovered || []).map(discoveredAsBook);
+  }
+  // Books the user has explicitly saved — currently the same as
+  // listAllBooks() minus hidden. Compare will restrict to this set.
+  function listSavedBooks() {
+    const hidden = store.get().hidden || {};
+    return listAllBooks().filter(b => !hidden[b.id]);
   }
   function isHidden(bookId) {
     return !!store.get().hidden[bookId];
+  }
+
+  // Seed-loading. Pulls the starter library out of SEED_BOOKS and
+  // appends any titles the user doesn't already have in state.
+  function loadStarterLibrary() {
+    const state = store.get();
+    const haveIds = new Set((state.discovered || []).map(d => d.id));
+    const fresh = (SEED_BOOKS || []).filter(b => !haveIds.has(b.id));
+    if (!fresh.length) return 0;
+    store.update(st => {
+      st.discovered = st.discovered || [];
+      fresh.forEach(b => {
+        st.discovered.push(Object.assign({}, b, { source: "seed", addedAt: Date.now() }));
+      });
+    });
+    return fresh.length;
+  }
+  function unloadStarterLibrary() {
+    const state = store.get();
+    const seedIds = new Set((state.discovered || []).filter(d => d.source === "seed").map(d => d.id));
+    if (!seedIds.size) return 0;
+    store.update(st => {
+      st.discovered = (st.discovered || []).filter(d => d.source !== "seed");
+      seedIds.forEach(id => {
+        delete st.bookStates[id];
+        delete st.tags[id];
+        delete st.hidden[id];
+      });
+    });
+    return seedIds.size;
+  }
+  function hasStarterLibraryLoaded() {
+    return (store.get().discovered || []).some(d => d.source === "seed");
   }
 
   function dismissFromLibrary(bookId) {
@@ -526,8 +592,11 @@
     const book = findBook(bookId);
     if (!book) return;
     const s = store.get();
-    const scored = BOOKS.some(b => b.id === bookId)
-      ? Engine.compareBooks([bookId], s.profile, s.weights)[0]
+    // Score the book against the user's profile, pulling book data
+    // exclusively from user state (no hard-coded catalogue).
+    const pool = listAllBooks();
+    const scored = pool.some(b => b.id === bookId)
+      ? Engine.compareBooks([bookId], s.profile, s.weights, pool)[0]
       : null;
     const userTags = s.tags[bookId] || [];
 
@@ -632,7 +701,9 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Library" }),
         util.el("h1", { html: "Your saved <em>collection</em>" }),
-        util.el("p", { class: "lede", text: `${totalVisible} title${totalVisible === 1 ? "" : "s"}${discoveredCount ? ` · ${discoveredCount} from Discovery` : ""} · dismiss anything that doesn't belong` })
+        util.el("p", { class: "lede", text: totalVisible
+          ? `${totalVisible} title${totalVisible === 1 ? "" : "s"}${discoveredCount ? ` · ${discoveredCount} from Discovery` : ""} · dismiss anything that doesn't belong`
+          : "Nothing saved yet — add titles from Discovery or load the starter library from Settings." })
       ])
     ]));
 
@@ -728,10 +799,10 @@
         if (allBooks.length === 0) {
           grid.appendChild(ui.empty({
             title: "Your library is empty",
-            message: "You've dismissed everything in the catalogue. Restore items from Settings, or add new titles via Discovery.",
+            message: "Lumen has nothing saved yet. Search the web from Discovery to add titles, or load the starter library of historical classics from Settings.",
             actions: [
-              { label: "Open Settings", variant: "btn-ghost",   onClick: () => router.go("settings") },
-              { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") }
+              { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
+              { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
             ]
           }));
         } else {
@@ -1198,6 +1269,52 @@
     ]));
     wrap.appendChild(gbCard);
 
+    // --- Starter library -------------------------------------------------
+    const starterLoaded = hasStarterLibraryLoaded();
+    const starterCount = (SEED_BOOKS || []).length;
+    const loadedCount = (store.get().discovered || []).filter(d => d.source === "seed").length;
+    const starterCard = util.el("div", { class: "card settings-card stack" });
+    starterCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Starter library" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `An optional bundle of ${starterCount} historical and classical titles (Fanny Hill, Kama Sutra, Venus in Furs, The Decameron, and more). Loading it populates your library so Home, Compare, and your profile preview have something to rank.` })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (starterLoaded ? "settings-badge-ok" : "settings-badge-missing"),
+        text: starterLoaded ? `${loadedCount} loaded` : "Not loaded"
+      })
+    ]));
+    starterCard.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)" } }, [
+      util.el("button", {
+        class: "btn btn-primary btn-sm",
+        disabled: starterLoaded && loadedCount === starterCount ? "disabled" : null,
+        onclick: () => {
+          const added = loadStarterLibrary();
+          if (added) ui.toast(`Loaded ${added} title${added === 1 ? "" : "s"} into your library`);
+          else ui.toast("Starter library is already fully loaded");
+          renderView();
+        }
+      }, starterLoaded ? "Top up" : "Load starter library"),
+      util.el("button", {
+        class: "btn btn-sm",
+        disabled: !starterLoaded || null,
+        onclick: () => {
+          ui.modal({
+            title: "Remove the starter library?",
+            body: "<p class=\"t-muted\">Every starter title is removed from your library along with any reading state or tags you attached to them. Books you added from Discovery are untouched.</p>",
+            primary: { label: "Remove", onClick: () => {
+              const removed = unloadStarterLibrary();
+              ui.toast(`Removed ${removed} starter title${removed === 1 ? "" : "s"}`);
+              renderView();
+            } },
+            secondary: { label: "Cancel" }
+          });
+        }
+      }, "Remove starter titles")
+    ]));
+    starterCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Starter titles are tagged internally as seed data and live alongside anything you add from Discovery. You can dismiss individual titles from the Library at any time." }));
+    wrap.appendChild(starterCard);
+
     // --- Hidden books -----------------------------------------------------
     const hiddenIds = Object.keys(store.get().hidden || {});
     const hiddenCard = util.el("div", { class: "card settings-card stack" });
@@ -1516,7 +1633,7 @@
     } else {
       const grid = util.el("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "var(--s-3)" } });
       pinned.forEach(p => {
-        const book = BOOKS.find(b => b.id === p.bookId);
+        const book = findBook(p.bookId);
         if (!book) return;
         const tile = util.el("div", { class: "vault-tile" });
         tile.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
@@ -1682,7 +1799,7 @@
   }
 
   function exportEntryMarkdown(entry) {
-    const book = entry.bookId ? BOOKS.find(b => b.id === entry.bookId) : null;
+    const book = entry.bookId ? findBook(entry.bookId) : null;
     const lines = [];
     lines.push(`# ${entry.title || "(untitled)"}`);
     lines.push("");
@@ -1887,7 +2004,7 @@
         paintList();
       }});
       bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
-      BOOKS.forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
+      listAllBooks().forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
       card.appendChild(bookSel);
 
       editorSide.appendChild(card);
@@ -1909,8 +2026,8 @@
       profile,
       strictness: profile.warnStrict,
       topTags: ["tone", "kink", "dynamic", "trope"].flatMap(k => profile[k].slice(0, 2)),
-      currentReading: readingIds.map(id => BOOKS.find(b => b.id === id)).filter(Boolean),
-      wantToRead: wantIds.map(id => BOOKS.find(b => b.id === id)).filter(Boolean),
+      currentReading: readingIds.map(id => findBook(id)).filter(Boolean),
+      wantToRead: wantIds.map(id => findBook(id)).filter(Boolean),
       excludes: profile.exclude
     };
   }
@@ -1919,22 +2036,22 @@
     const text = userText.toLowerCase();
     const ctx = saraContextSummary();
     const s = store.get();
-    const ranked = Engine.rankRecommendations(s.profile, s.weights);
+    const pool = listAllBooks();
+    const ranked = Engine.rankRecommendations(s.profile, s.weights, pool);
     saraCtx = saraCtx || (window.LumenSara && window.LumenSara.context) || {};
 
     // Resolve referential phrases via live context
-    let bookMentioned = BOOKS.find(b =>
+    let bookMentioned = pool.find(b =>
       text.includes(b.title.toLowerCase()) ||
       text.includes(b.title.toLowerCase().split(" ").slice(0, 2).join(" ").toLowerCase())
     );
     const referential = /\b(this book|this title|it|that one)\b/.test(text);
     if (!bookMentioned && referential) {
-      // Pick the book most likely being referenced based on route
       if (saraCtx.route === "compare" && (saraCtx.compareSlots || []).length) {
-        bookMentioned = BOOKS.find(b => saraCtx.compareSlots.includes(b.title));
+        bookMentioned = pool.find(b => saraCtx.compareSlots.includes(b.title));
       } else if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
         const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
-        if (entry && entry.bookId) bookMentioned = BOOKS.find(b => b.id === entry.bookId);
+        if (entry && entry.bookId) bookMentioned = findBook(entry.bookId);
       }
     }
 
@@ -1989,7 +2106,7 @@
     if (/\b(reflect|journal|feel|felt|thought|prompt)\b/.test(text)) {
       if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
         const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
-        const book = entry && entry.bookId ? BOOKS.find(b => b.id === entry.bookId) : null;
+        const book = entry && entry.bookId ? findBook(entry.bookId) : null;
         if (book) replies.push(`For your entry on **${book.title}**, try: "Where in the book did you lose your footing, and what caught you there?"`);
         else       replies.push(`A prompt for this entry: "What did you want more of, and what was on the page already?"`);
       } else {
@@ -2002,7 +2119,7 @@
     }
 
     if (bookMentioned) {
-      const scored = Engine.compareBooks([bookMentioned.id], s.profile, s.weights)[0];
+      const scored = Engine.compareBooks([bookMentioned.id], s.profile, s.weights, pool)[0];
       replies.push(`**${bookMentioned.title}** lands at ${scored.fitScore} for you with ${scored.confidence}% confidence. ${scored.why.reasons[0] || "It matches your baseline without strong conflicts."}`);
       if (bookMentioned.content_warnings.length) {
         replies.push(`Worth flagging: it carries ${bookMentioned.content_warnings.length} content warning${bookMentioned.content_warnings.length > 1 ? "s" : ""} — ${bookMentioned.content_warnings.slice(0, 2).map(w => w.replace(/-/g, " ")).join(", ")}.`);
@@ -2179,7 +2296,7 @@
       if (!f.messages.length) body.appendChild(util.el("div", { class: "t-small t-subtle", style: { textAlign: "center", padding: "var(--s-5)" }, text: "No messages yet. Start a conversation." }));
       f.messages.forEach(m => {
         if (m.role === "share" && m.bookId) {
-          const book = BOOKS.find(b => b.id === m.bookId);
+          const book = findBook(m.bookId);
           if (book) {
             body.appendChild(util.el("div", { class: "book-share" }, [
               util.el("div", { class: "t-eyebrow", text: "Shared a title" }),
@@ -2201,7 +2318,12 @@
           body: (() => {
             const d = util.el("div", { class: "stack" });
             const sel = util.el("select", { class: "select", id: "share-book" });
-            BOOKS.forEach(b => sel.appendChild(util.el("option", { value: b.id }, b.title)));
+            const saved = listSavedBooks();
+            if (!saved.length) {
+              sel.appendChild(util.el("option", { value: "", disabled: "disabled", selected: "selected" }, "No saved books to share yet"));
+            } else {
+              saved.forEach(b => sel.appendChild(util.el("option", { value: b.id }, b.title)));
+            }
             const note = util.el("textarea", { class: "textarea", id: "share-note", placeholder: "Optional note…" });
             d.appendChild(sel); d.appendChild(note);
             return d;
@@ -2529,7 +2651,7 @@
     const slotsCard = util.el("div", { class: "card", style: { padding: "var(--s-4)" } });
     const slots = util.el("div", { class: "cmp-slots" });
     cmpState.slots.forEach((id, idx) => {
-      const b = id ? BOOKS.find(x => x.id === id) : null;
+      const b = id ? findBook(id) : null;
       if (b) {
         const filled = util.el("div", { class: "cmp-slot" });
         filled.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
@@ -2566,6 +2688,17 @@
     function paint() {
       body.innerHTML = "";
       const filled = cmpState.slots.filter(Boolean);
+      if (!listAllBooks().length) {
+        body.appendChild(ui.empty({
+          title: "Nothing saved to compare yet",
+          message: "Compare draws from books in your Library. Add titles from Discovery or load the starter library in Settings, then come back here.",
+          actions: [
+            { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
+            { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
+          ]
+        }));
+        return;
+      }
       if (filled.length === 0) {
         body.appendChild(ui.empty({
           title: "Pick up to three titles",
@@ -2574,7 +2707,7 @@
         return;
       }
       if (filled.length === 1) {
-        const scored = Engine.compareBooks(filled, s.profile, s.weights)[0];
+        const scored = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks())[0];
         body.appendChild(ui.empty({
           title: "Add at least one more",
           message: "Comparison needs two titles minimum. Below is your first slot, scored against your profile."
@@ -2583,7 +2716,7 @@
         return;
       }
 
-      const scoredList = Engine.compareBooks(filled, s.profile, s.weights);
+      const scoredList = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks());
 
       // Scorecards
       const grid = util.el("div", { class: "cmp-grid cmp-" + filled.length });
@@ -2666,7 +2799,7 @@
       const filled = cmpState.slots.filter(Boolean);
       if (filled.length < 2) return;
       const fresh = store.get();
-      const scoredList = Engine.compareBooks(filled, fresh.profile, fresh.weights);
+      const scoredList = Engine.compareBooks(filled, fresh.profile, fresh.weights, listAllBooks());
       if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
         cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, fresh.profile);
         ui.toast("Deep analysis ready · scroll down to read it", {
@@ -2851,11 +2984,12 @@
     discover() {
       const s = store.get();
       const greeting = s.ui.onboardingDone ? "Welcome back." : "Welcome to Lumen.";
-      const result = Engine.rankRecommendations(s.profile, s.weights);
+      const pool = listAllBooks();
+      const result = Engine.rankRecommendations(s.profile, s.weights, pool);
       const picks = result.scored.slice(0, 3);
 
       const currentReadingIds = Object.entries(s.bookStates).filter(([, v]) => v === "reading").map(([k]) => k);
-      const currentReading = currentReadingIds.map(id => BOOKS.find(b => b.id === id)).filter(Boolean);
+      const currentReading = currentReadingIds.map(id => findBook(id)).filter(Boolean);
 
       const wrap = util.el("div", { class: "page stack-lg" });
 
@@ -2887,9 +3021,18 @@
       const picksCard = util.el("div", { class: "card" });
       picksCard.appendChild(util.el("div", { class: "card-head" }, [
         util.el("h3", { text: "Daily picks" }),
-        util.el("span", { class: "card-sub t-subtle", text: `Drawn from your profile · ${result.matched} matches` })
+        util.el("span", { class: "card-sub t-subtle", text: pool.length ? `Drawn from your profile · ${result.matched} matches` : "your library is the source" })
       ]));
-      if (!picks.length) {
+      if (!pool.length) {
+        picksCard.appendChild(ui.empty({
+          title: "Your library is empty",
+          message: "Lumen has no titles to rank yet. Search the web from Discovery, or load the starter library of historical classics from Settings.",
+          actions: [
+            { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
+            { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
+          ]
+        }));
+      } else if (!picks.length) {
         picksCard.appendChild(ui.empty({
           title: "Nothing passes your filters yet",
           message: "Your exclusions or warning strictness are ruling everything out. Loosen one of them in your profile.",
@@ -3453,7 +3596,7 @@
       chips.push({ label: "Compare" });
       const titles = (cmpState.slots || [cmpState.a, cmpState.b])
         .filter(Boolean)
-        .map(id => BOOKS.find(b => b.id === id)?.title)
+        .map(id => findBook(id)?.title)
         .filter(Boolean);
       titles.forEach(t => chips.push({ label: t }));
       ctx.compareSlots = titles;
@@ -3463,7 +3606,7 @@
       if (entry) {
         chips.push({ label: entry.title ? `Entry: ${entry.title}` : "Untitled entry" });
         if (entry.bookId) {
-          const b = BOOKS.find(x => x.id === entry.bookId);
+          const b = findBook(entry.bookId);
           if (b) chips.push({ label: `On: ${b.title}` });
         }
         ctx.journalEntryId = entry.id;

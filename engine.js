@@ -7,7 +7,8 @@
 (function () {
   "use strict";
 
-  const { BOOKS } = window.LumenData;
+  // No default catalogue — callers pass the book list they want scored.
+  const BOOKS = [];
 
   function normalizeProfile(p) {
     return {
@@ -192,10 +193,10 @@
     };
   }
 
-  function compareBooks(bookIds, profile, weights) {
+  function compareBooks(bookIds, profile, weights, books = BOOKS) {
     const nProfile = normalizeProfile(profile);
     return bookIds.map(id => {
-      const b = BOOKS.find(x => x.id === id);
+      const b = books.find(x => x.id === id);
       if (!b) return null;
       const s = scoreBook(b, nProfile, weights);
       return { book: b, ...s, why: generateWhyItMatched(b, s, nProfile) };

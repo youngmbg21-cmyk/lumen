@@ -427,10 +427,51 @@
     { id: "skip",    label: "Not for me",      short: "Skip" }
   ];
 
-  const ALL_WARNINGS = [...new Set(BOOKS.flatMap(b => b.content_warnings))].sort();
+  /* Previously the 15 historical titles were the app's default catalogue,
+     populating Home, Library, Compare, and the profile preview on first
+     run. That's now an explicit opt-in: the same list is exposed as
+     SEED_BOOKS and loadable from Settings. window.LumenData.BOOKS stays
+     as an empty array so any stray call site receives a safe default
+     instead of crashing. */
+  const SEED_BOOKS = BOOKS;
+
+  /* ALL_WARNINGS used to be derived from BOOKS at load time. With BOOKS
+     empty by default the profile exclusion UI needs a dependable list,
+     so we curate it here. Values match the union of warnings in
+     SEED_BOOKS; the list is hand-maintained so it stays stable
+     regardless of what's currently in the library. */
+  const ALL_WARNINGS = [
+    "abuse-of-power",
+    "bawdy-language",
+    "class-power-imbalance",
+    "consent-ambiguity",
+    "consent-violations",
+    "dated-attitudes",
+    "dated-gender-norms",
+    "exploitation",
+    "fragmentary-text",
+    "historical-study-only",
+    "incest-theme",
+    "infidelity-themes",
+    "period-typical-consent-ambiguity",
+    "period-typical-problematic-content",
+    "power-imbalance-themes",
+    "psychological-intensity",
+    "recommended-with-extreme-caution",
+    "self-negation",
+    "sex-work",
+    "transgressive-scenarios",
+    "translation-era-biases",
+    "underage-content-highly-disturbing"
+  ];
 
   window.LumenData = {
-    BOOKS, VOCAB, SCENARIOS,
+    /* Legacy export: BOOKS is now an empty catalogue. Every surface
+       reads from user state. Use SEED_BOOKS when you need the
+       historical starter list (e.g. the Settings loader). */
+    BOOKS: [],
+    SEED_BOOKS,
+    VOCAB, SCENARIOS,
     DEFAULT_WEIGHTS, DEFAULT_PROFILE,
     READING_STATES, ALL_WARNINGS
   };
