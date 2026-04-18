@@ -223,6 +223,81 @@
   };
 
   /* -------------------- view helpers -------------------- */
+  // Cover block shared by Daily Picks + detail modal. Google Books
+  // thumbnails upgraded to https; a two-letter initials block falls in
+  // if the URL 404s or the book has no thumbnail at all. The optional
+  // heat bar pinned to the bottom matches the existing library card.
+  function buildCoverBlock(book, { size = "md", showHeat = true } = {}) {
+    const cover = util.el("div", { class: `book-cover book-cover-${size}` });
+    if (book.thumbnail) {
+      const url = book.thumbnail.replace(/^http:/, "https:");
+      const img = util.el("img", {
+        src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+        onerror: function () {
+          this.remove();
+          if (!cover.querySelector(".cover-fallback")) {
+            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          }
+        }
+      });
+      cover.appendChild(img);
+    } else {
+      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+    }
+    if (showHeat && book.heat_level != null) {
+      cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
+    }
+    return cover;
+  }
+
+  // Daily Picks card — cover on the left, body in the middle, compact
+  // fit-score ring on the right. Whole card is an <a> so it's clickable
+  // AND keyboard-activatable (Enter/Space). Clicking or activating
+  // opens the richer detail modal.
+  function dailyPickCard(scored, onClick) {
+    const { book, fitScore, confidence, why } = scored;
+    const card = util.el("a", {
+      class: "daily-pick-card",
+      href: "#",
+      role: "button",
+      "aria-label": `Open details for ${book.title}`,
+      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); },
+      onkeydown: (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick && onClick(scored);
+        }
+      }
+    });
+
+    card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
+
+    const body = util.el("div", { class: "daily-pick-body" });
+    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || book.category || "") }));
+    body.appendChild(util.el("h4", { class: "daily-pick-title", text: book.title }));
+    body.appendChild(util.el("div", { class: "daily-pick-author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    body.appendChild(util.el("p", { class: "daily-pick-blurb", text: (book.description || "").slice(0, 180) + ((book.description || "").length > 180 ? "…" : "") }));
+    if (why && why.reasons && why.reasons.length) {
+      const tags = util.el("div", { class: "daily-pick-tags" });
+      why.reasons.slice(0, 2).forEach(r => tags.appendChild(ui.tag(r, "accent")));
+      body.appendChild(tags);
+    }
+    body.appendChild(util.el("div", { class: "daily-pick-expand-hint", text: "Click to read full summary →" }));
+    card.appendChild(body);
+
+    const aside = util.el("div", { class: "daily-pick-aside" });
+    const fitFill = Math.max(0, Math.min(1, fitScore / 100));
+    aside.appendChild(util.el("div", { class: "daily-pick-ring" }, [
+      kpiRing(fitFill, String(fitScore), kpiToneFromFraction(fitFill))
+    ]));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-label", text: "Fit" }));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-sub", text: kpiDescriptorFit(fitScore) }));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-conf", text: `${confidence}% conf.` }));
+    card.appendChild(aside);
+
+    return card;
+  }
+
   function bookCardMini(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
     const card = util.el("a", {
@@ -333,63 +408,174 @@
     return wrap;
   }
 
-  // Render the right-hand Profile snapshot card — editorial layout with
-  // uppercase label rows and italic Cormorant values like "3/5", "≥5/5".
-  // All values recompute on every slider / chip interaction.
-  function refreshProfilePreview() {
-    const host = document.getElementById("profile-snapshot");
-    if (!host) return;
-    host.innerHTML = "";
+  // Descriptors for the italic word under the numeric on each KPI card.
+  // Kept concise so the card reads like the attached fit-score reference.
+  function kpiDescriptorFive(value) {
+    if (value >= 5) return "Maxed";
+    if (value >= 4) return "High";
+    if (value >= 3) return "Moderate";
+    if (value >= 2) return "Low";
+    return "Minimal";
+  }
+  function kpiDescriptorConsent(value) {
+    if (value >= 5) return "On-page only";
+    if (value >= 4) return "Clear";
+    if (value >= 3) return "Moderate";
+    return "Period-tolerant";
+  }
+  function kpiDescriptorTaboo(value) {
+    if (value >= 5) return "Open";
+    if (value >= 4) return "Permissive";
+    if (value >= 3) return "Selective";
+    if (value >= 2) return "Cautious";
+    return "Safe-first";
+  }
+  function kpiDescriptorFit(value) {
+    if (value >= 75) return "Strong";
+    if (value >= 55) return "Moderate";
+    if (value >= 35) return "Loose";
+    return "Thin";
+  }
+
+  // Small radial ring used by each KPI card. Takes a 0..1 fill and a
+  // short inner text. Styled via .kpi-ring in CSS — stroke colour shifts
+  // with .low / .mid / .high tone classes. 54×54 matches the attached
+  // fit-score card proportions. The circles live inside a rotated group
+  // so the arc starts at 12 o'clock while the centre label stays upright.
+  function kpiRing(fill, innerText, tone) {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    const R = 22;
+    const CIRC = 2 * Math.PI * R;
+    const safeFill = Math.max(0, Math.min(1, Number(fill) || 0));
+    const offset = CIRC * (1 - safeFill);
+    svg.setAttribute("class", "kpi-ring-svg " + (tone || ""));
+    svg.setAttribute("viewBox", "0 0 54 54");
+    svg.setAttribute("width", "54"); svg.setAttribute("height", "54");
+    svg.setAttribute("aria-hidden", "true");
+
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("transform", "rotate(-90 27 27)");
+
+    const track = document.createElementNS(NS, "circle");
+    track.setAttribute("class", "track");
+    track.setAttribute("cx", "27"); track.setAttribute("cy", "27"); track.setAttribute("r", String(R));
+    g.appendChild(track);
+
+    const fillRing = document.createElementNS(NS, "circle");
+    fillRing.setAttribute("class", "fill");
+    fillRing.setAttribute("cx", "27"); fillRing.setAttribute("cy", "27"); fillRing.setAttribute("r", String(R));
+    fillRing.setAttribute("stroke-dasharray", CIRC.toFixed(3));
+    fillRing.setAttribute("stroke-dashoffset", offset.toFixed(3));
+    g.appendChild(fillRing);
+
+    svg.appendChild(g);
+
+    const t = document.createElementNS(NS, "text");
+    t.setAttribute("x", "27"); t.setAttribute("y", "27");
+    t.textContent = innerText;
+    svg.appendChild(t);
+    return svg;
+  }
+
+  function kpiToneFromFraction(fill) {
+    if (fill >= 0.7) return "high";
+    if (fill >= 0.4) return "mid";
+    return "low";
+  }
+
+  // One KPI card. Mirrors the attached fit-score reference: ring on the
+  // left, uppercase label + italic descriptor on the right.
+  function buildKpiCard({ label, valueHtml, fill, innerText, tone, descriptor, title }) {
+    const card = util.el("div", { class: "kpi-card", title: title || label });
+    const ring = util.el("div", { class: "kpi-ring" }, [kpiRing(fill, innerText, tone)]);
+    card.appendChild(ring);
+    const body = util.el("div", { class: "kpi-body" });
+    body.appendChild(util.el("div", { class: "kpi-label", text: label }));
+    if (valueHtml) {
+      body.appendChild(util.el("div", { class: "kpi-value", html: valueHtml }));
+    }
+    body.appendChild(util.el("div", { class: "kpi-sub", text: descriptor }));
+    card.appendChild(body);
+    return card;
+  }
+
+  // Compute the single Fit Score KPI — the mean fit across the current
+  // user library for the active profile. Falls back to a neutral 50 when
+  // there is nothing in the library yet so the card still has something
+  // to render.
+  function computeProfileFitScore(s) {
+    const pool = listAllBooks().filter(b => !(s.hidden || {})[b.id]);
+    if (!pool.length) return { value: 50, hasData: false };
+    const ranked = Engine.rankRecommendations(s.profile, s.weights, pool);
+    const scored = ranked.scored || [];
+    if (!scored.length) return { value: 50, hasData: false };
+    const mean = Math.round(scored.reduce((acc, x) => acc + x.fitScore, 0) / scored.length);
+    return { value: Math.max(0, Math.min(100, mean)), hasData: true };
+  }
+
+  // Build the full KPI strip (8 cards). Caller places it in the DOM.
+  function buildProfileKpiStrip() {
     const s = store.get();
     const p = s.profile;
     const tagKeys = ["tone", "pacing", "style", "dynamic", "trope", "kink", "orientation"];
     const tagsSelected = tagKeys.reduce((acc, k) => acc + ((p[k] || []).length), 0);
+    const fit = computeProfileFitScore(s);
 
-    host.appendChild(util.el("div", { class: "snapshot-head" }, [
-      util.el("h3", { html: "Profile <em>snapshot</em>" }),
-      util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
-    ]));
+    const strip = util.el("div", { class: "kpi-strip" });
 
-    const list = util.el("div", { class: "snapshot-list" });
-    const row = (label, valueHtml) => {
-      const r = util.el("div", { class: "snapshot-row" });
-      r.appendChild(util.el("span", { class: "snapshot-label", text: label }));
-      r.appendChild(util.el("span", { class: "snapshot-value", html: valueHtml }));
-      return r;
+    const fiveCard = (label, value, descriptorFn = kpiDescriptorFive, prefix = "") => {
+      const fill = Math.max(0, Math.min(1, value / 5));
+      return buildKpiCard({
+        label, fill,
+        innerText: String(value),
+        tone: kpiToneFromFraction(fill),
+        valueHtml: `${prefix}${value}<span class="kpi-of">/5</span>`,
+        descriptor: descriptorFn(value)
+      });
     };
-    list.appendChild(row("Heat",            `${p.heat}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Explicit",        `${p.explicit}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Emotion",         `${p.emotion}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Consent floor",   `<span class="snap-gte">≥</span>${p.consent}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Taboo tolerance", `${p.taboo}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Plot weight",     `${p.plot}<span class="snap-of">/5</span>`));
-    list.appendChild(row("Tags selected",   `${tagsSelected}`));
-    host.appendChild(list);
 
-    const actions = util.el("div", { class: "snapshot-actions" });
-    actions.appendChild(util.el("button", {
-      class: "hero-cta",
-      onclick: () => {
-        router.go("discover");
-        ui.toast("Recommendations refreshed from your profile");
-      }
-    }, "Run recommendations"));
-    actions.appendChild(util.el("button", {
-      class: "btn btn-small",
-      onclick: () => {
-        ui.modal({
-          title: "Reset profile?",
-          body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
-          primary: { label: "Reset", onClick: () => {
-            store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
-            renderView();
-            ui.toast("Profile reset");
-          }},
-          secondary: { label: "Cancel" }
-        });
-      }
-    }, "Reset profile"));
-    host.appendChild(actions);
+    strip.appendChild(fiveCard("Heat",     p.heat));
+    strip.appendChild(fiveCard("Explicit", p.explicit));
+    strip.appendChild(fiveCard("Emotion",  p.emotion));
+    strip.appendChild(fiveCard("Consent floor", p.consent, kpiDescriptorConsent, "≥"));
+    strip.appendChild(fiveCard("Taboo tolerance", p.taboo, kpiDescriptorTaboo));
+    strip.appendChild(fiveCard("Plot weight", p.plot));
+
+    // Tags selected — no ceiling, so the ring fills proportionally up to
+    // a soft cap of 20 (anything above reads as "extensive").
+    const tagFill = Math.max(0, Math.min(1, tagsSelected / 20));
+    strip.appendChild(buildKpiCard({
+      label: "Tags selected",
+      fill: tagFill,
+      innerText: String(tagsSelected),
+      tone: kpiToneFromFraction(tagFill),
+      valueHtml: `${tagsSelected}`,
+      descriptor: tagsSelected === 0 ? "None yet" : tagsSelected >= 10 ? "Extensive" : tagsSelected >= 4 ? "Shaped" : "Sparse"
+    }));
+
+    // Fit score — the premium card that mirrors the attached reference.
+    const fitFill = fit.value / 100;
+    strip.appendChild(buildKpiCard({
+      label: "Fit score",
+      fill: fitFill,
+      innerText: String(fit.value),
+      tone: kpiToneFromFraction(fitFill),
+      valueHtml: `${fit.value}<span class="kpi-of">/100</span>`,
+      descriptor: fit.hasData ? kpiDescriptorFit(fit.value) : "No library yet"
+    }));
+
+    return strip;
+  }
+
+  // Re-renders the live KPI strip in place. Called from slider/chip/
+  // segmented updates so values animate with every tweak. Name kept
+  // (refreshProfilePreview) so existing callsites continue to work.
+  function refreshProfilePreview() {
+    const host = document.getElementById("profile-kpi-strip");
+    if (!host) return;
+    host.innerHTML = "";
+    host.appendChild(buildProfileKpiStrip());
   }
 
   /* -------------------- library -------------------- */
@@ -649,34 +835,58 @@
       : null;
     const userTags = s.tags[bookId] || [];
 
-    const body = util.el("div", { class: "stack" });
-    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
-    body.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "22px", marginTop: "4px" }, text: book.title }));
-    body.appendChild(util.el("div", { class: "t-small t-subtle", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
+    const body = util.el("div", { class: "stack book-detail-body" });
 
-    // Score block
+    // Header — large cover on the left, meta + score rings on the right.
+    // The cover uses the same buildCoverBlock helper as Daily Picks so
+    // both surfaces stay visually consistent.
+    const header = util.el("div", { class: "book-detail-head" });
+    header.appendChild(buildCoverBlock(book, { size: "lg", showHeat: true }));
+
+    const meta = util.el("div", { class: "book-detail-meta" });
+    meta.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+    meta.appendChild(util.el("h3", { class: "book-detail-title", text: book.title }));
+    meta.appendChild(util.el("div", { class: "book-detail-author", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
+
     if (scored) {
-      const scoreBlock = util.el("div", { class: "card card-quiet", style: { marginTop: "var(--s-3)" } }, [
-        util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-eyebrow", text: "Fit for you" }),
-            util.el("div", { class: "t-mono", style: { fontSize: "28px", color: "var(--accent)" }, text: `${scored.fitScore}` })
-          ]),
-          util.el("div", { style: { textAlign: "right" } }, [
-            util.el("div", { class: "t-tiny t-subtle", text: "Confidence" }),
-            util.el("div", { class: "t-mono", text: `${scored.confidence}%` })
-          ])
-        ])
-      ]);
-      if (scored.why.reasons.length) {
-        const reasons = util.el("ul", { style: { marginTop: "var(--s-3)", paddingLeft: "var(--s-4)" } });
-        scored.why.reasons.forEach(r => reasons.appendChild(util.el("li", { class: "t-small t-muted", text: r })));
-        scoreBlock.appendChild(reasons);
-      }
-      body.appendChild(scoreBlock);
+      const ringsRow = util.el("div", { class: "book-detail-rings" });
+      const fitFill = Math.max(0, Math.min(1, scored.fitScore / 100));
+      const confFill = Math.max(0, Math.min(1, scored.confidence / 100));
+      const fitCell = util.el("div", { class: "book-detail-ring-cell" });
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(fitFill, String(scored.fitScore), kpiToneFromFraction(fitFill))]));
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Fit score" }));
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: kpiDescriptorFit(scored.fitScore) }));
+      ringsRow.appendChild(fitCell);
+      const confCell = util.el("div", { class: "book-detail-ring-cell" });
+      confCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
+      confCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Confidence" }));
+      confCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
+      ringsRow.appendChild(confCell);
+      meta.appendChild(ringsRow);
     }
+    header.appendChild(meta);
+    body.appendChild(header);
 
-    body.appendChild(util.el("p", { class: "t-muted", style: { marginTop: "var(--s-3)" }, text: book.description }));
+    // Full, un-truncated description.
+    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Full summary" }));
+    body.appendChild(util.el("p", {
+      class: "t-muted book-detail-desc",
+      style: { whiteSpace: "pre-wrap", lineHeight: "1.65" },
+      text: book.description || "No description available for this title."
+    }));
+
+    // Reasons / partials / penalties — full breakdown, not just the top
+    // two. Daily Picks collapsed cards showed 2 reasons; the expanded
+    // view shows everything the engine produced so the user can read
+    // the whole "why it fits" story without truncation.
+    if (scored && (scored.why.reasons.length || (scored.why.partials || []).length || (scored.why.penalties || []).length)) {
+      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Why this fits your profile" }));
+      const reasonsBox = util.el("ul", { class: "book-detail-reasons" });
+      scored.why.reasons.forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-strong", text: r })));
+      (scored.why.partials || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-partial", text: r })));
+      (scored.why.penalties || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-penalty", text: r })));
+      body.appendChild(reasonsBox);
+    }
 
     // Reading state
     body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Reading state" }));
@@ -705,8 +915,8 @@
       body.appendChild(warns);
     }
 
-    // Metadata pills
-    const meta = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
+    // Metadata pills — the engine-relevant numeric scores.
+    const metaPills = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
     [
       ["Heat", book.heat_level],
       ["Explicit", book.explicitness],
@@ -714,16 +924,25 @@
       ["Consent", book.consent_clarity],
       ["Taboo", book.taboo_level],
       ["Plot", book.plot_weight]
-    ].forEach(([l, v]) => meta.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
-    body.appendChild(meta);
+    ].forEach(([l, v]) => metaPills.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
+    body.appendChild(metaPills);
 
-    // Extra actions row
-    body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-4)" } }, [
-      util.el("button", { class: "btn btn-sm", onclick: () => {
-        pinBook(bookId);
-        openBookDetail(bookId);
-      } }, "Pin to Vault")
-    ]));
+    // Extra actions row. Pin goes to Vault; a "View source" link is
+    // surfaced whenever the book has a source URL (Project Gutenberg,
+    // Google Books, Internet Archive, etc.) so the expanded view also
+    // points at the original text.
+    const actions = util.el("div", { class: "row", style: { marginTop: "var(--s-4)", flexWrap: "wrap", gap: "var(--s-2)" } });
+    actions.appendChild(util.el("button", { class: "btn btn-sm", onclick: () => {
+      pinBook(bookId);
+      openBookDetail(bookId);
+    } }, "Pin to Vault"));
+    if (book.source_url) {
+      actions.appendChild(util.el("a", {
+        class: "btn btn-sm btn-ghost",
+        href: book.source_url, target: "_blank", rel: "noopener noreferrer"
+      }, "View source"));
+    }
+    body.appendChild(actions);
 
     ui.modal({
       title: "",
@@ -915,9 +1134,18 @@
 
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Discovery" }),
-        util.el("h1", { html: "Search the web. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Pull real titles from Google Books, have Claude read each blurb, and drop what resonates straight into your library." })
+        util.el("div", { class: "t-eyebrow", text: "Discovery · erotica novels only" }),
+        util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
+        util.el("p", { class: "lede", text: "Discovery returns erotica novels only. Romance, literary fiction, psychology, self-help, workplace and leadership books, relationship advice, sociology, memoirs, essays, academic titles, manuals and guides are all actively excluded." })
+      ])
+    ]));
+
+    // Erotica-only notice — always visible above the search so the
+    // restriction is unmistakable, in both tailored and broad modes.
+    wrap.appendChild(util.el("div", { class: "card card-quiet", style: { padding: "var(--s-3)", borderLeft: "3px solid var(--accent)" } }, [
+      util.el("div", { class: "t-small" }, [
+        util.el("strong", { text: "Erotica novels only — hard filter. " }),
+        util.el("span", { class: "t-muted", text: "Three independent gates reject non-erotica: (1) the Google Books query ANDs subject:Erotica + subject:Fiction and negatively excludes Psychology, Social Science, Self-Help, Business & Economics, Family & Relationships, Body Mind & Spirit, Religion, Health, Philosophy, Memoir, Biography, History, Literary Criticism, Essays, Poetry and Juvenile / Young Adult subjects; (2) a local metadata gate requires a Google Books category containing the literal word 'erotica', blocks adjacent-genre categories, and rejects title / description patterns like 'workbook', 'handbook', 'psychology of', 'leadership', 'workplace', 'case study', 'how to'; (3) Claude's classifier must return isErotica=true with ≥75 confidence, format in {erotica-novel, erotic-romance-novel}, and no non-fiction signal. When in doubt, a result is rejected." })
       ])
     ]));
 
@@ -925,7 +1153,7 @@
     const hero = util.el("div", { class: "disco-hero" });
     const searchInput = util.el("input", {
       class: "disco-hero-input",
-      placeholder: "Search titles, authors, or topics…",
+      placeholder: "Search erotica titles, authors, or themes…",
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
@@ -971,7 +1199,7 @@
       hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
       hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
-      hintLead.textContent = "Up to six books from Google Books · Claude analyzes each for heat, tropes, and one calm insight.";
+      hintLead.textContent = "Up to six erotica novels from Google Books · Claude analyzes each for heat, tropes, and one calm insight, and rejects anything that isn't novel-fiction erotica.";
       hint.appendChild(hintLead);
     }
     hint.appendChild(modeSegmented);
@@ -1039,7 +1267,7 @@
     else {
       grid.appendChild(util.el("div", { class: "discovery-empty" }, [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search the sidebar and Claude will analyze each blurb as it arrives. Set your API key in Settings first." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Erotica-only. Search a title, author, or theme and Claude will classify every result, rejecting anything that isn't novel-fiction erotica. Set your API key in Settings first." })
       ]));
     }
 
@@ -1053,7 +1281,7 @@
         return;
       }
       discoveryState.raw.forEach(book => grid.appendChild(renderDiscoCard(book)));
-      resultsLabel.textContent = `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
+      resultsLabel.textContent = `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
     }
 
     async function runSearch() {
@@ -1104,10 +1332,10 @@
       }
 
       if (!items.length) {
-        resultsLabel.textContent = `No results for "${q}"`;
+        resultsLabel.textContent = `No erotica results for "${q}"`;
         grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing turned up" }),
-          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Try a different keyword, an author surname, or a more specific title." })
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "No erotica matches for that query" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Discovery is restricted to novel-fiction erotica. Non-erotica titles that would otherwise match have been filtered out. Try a more specific erotica-leaning keyword, an author known for the genre, or an erotica subgenre." })
         ]));
         return;
       }
@@ -1118,11 +1346,31 @@
 
       // Analyse sequentially so the status badge narrates progress.
       // In Tailored mode we re-sort the whole list every time a new
-      // analysis completes so higher-fit items bubble up live.
+      // analysis completes so higher-fit items bubble up live. Claude
+      // doubles as an erotica-only classifier — any title it flags as
+      // non-erotica is removed from the feed so the strict restriction
+      // applies even to edge cases the keyword filter misses.
+      let rejected = 0;
       for (const book of items) {
         try {
           const result = await Disco.analyzeWithClaude(book);
-          discoveryState.enrichments[book.id] = result;
+          if (result && result.isErotica === false) {
+            const idx = discoveryState.raw.findIndex(b => b.id === book.id);
+            if (idx !== -1) discoveryState.raw.splice(idx, 1);
+            delete discoveryState.enrichments[book.id];
+            rejected += 1;
+            // Log the full classifier trace so it's easy to debug why
+            // a specific title was rejected in the console.
+            console.debug("[Lumen Discovery] Classifier rejected non-erotica:", {
+              title: book.title,
+              rawIsErotica: result.classifierRawIsErotica,
+              confidence: result.classifierConfidence,
+              format: result.classifierFormat,
+              nonfictionSignal: result.classifierNonfictionSignal
+            });
+          } else {
+            discoveryState.enrichments[book.id] = result;
+          }
         } catch (err) {
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
         }
@@ -1136,8 +1384,16 @@
           paintGrid();
         } else {
           const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-          if (node) node.replaceWith(renderDiscoCard(book));
+          if (node && discoveryState.raw.some(b => b.id === book.id)) {
+            node.replaceWith(renderDiscoCard(book));
+          } else if (node) {
+            node.remove();
+          }
         }
+      }
+      if (rejected) {
+        const n = discoveryState.raw.length;
+        resultsLabel.textContent = `${n} erotica result${n === 1 ? "" : "s"} for "${q}" · ${rejected} hidden as non-erotica`;
       }
     }
 
@@ -1180,7 +1436,7 @@
           const countEl = document.getElementById("disco-count");
           if (countEl) {
             countEl.textContent = discoveryState.raw.length
-              ? `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
+              ? `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
               : `All results dismissed — try a new search`;
           }
           ui.toast(`Dismissed ${book.title}`, {
@@ -1361,6 +1617,20 @@
     const s = store.get();
     const existing = (s.discovered || []).find(d => d.id === book.id);
     if (existing) {
+      // If the saved entry was previously dismissed, the book is still in
+      // state.discovered but hidden[id] is true — so Library silently drops
+      // it. Clear the hidden flag so re-adding actually surfaces it.
+      const wasHidden = !!(s.hidden && s.hidden[book.id]);
+      if (wasHidden) {
+        store.update(st => { delete st.hidden[book.id]; st.bookStates[book.id] = st.bookStates[book.id] || "want"; });
+        renderView();
+        ui.toast(`Restored ${book.title} to your library`, {
+          action: "Open library",
+          onAction: () => router.go("library"),
+          duration: 4200
+        });
+        return;
+      }
       ui.toast(`${book.title} is already in your library`);
       return;
     }
@@ -1381,7 +1651,15 @@
         addedAt: Date.now()
       });
       st.bookStates[book.id] = "want";
+      // A previous dismiss of the same id (via Library's × or starter-library
+      // unload) leaves hidden[id]=true, which would make the freshly-saved
+      // book invisible in Library. Clear it so the save is actually visible.
+      if (st.hidden) delete st.hidden[book.id];
     });
+    // Force a re-render so if the user is already on Discovery the card's
+    // button flips to "Open in Library", and if they navigate to Library
+    // via the toast action the grid shows the new entry immediately.
+    renderView();
     ui.toast(`Added ${book.title} to your library as "want to read"`, {
       action: "Open library",
       onAction: () => router.go("library"),
@@ -3338,8 +3616,8 @@
           actions: [{ label: "Edit profile", variant: "btn-primary", onClick: () => router.go("profile") }]
         }));
       } else {
-        const grid = util.el("div", { class: "row-wrap", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--s-4)" } });
-        picks.forEach(p => grid.appendChild(bookCardMini(p, (sc) => openBookDetail(sc.book.id))));
+        const grid = util.el("div", { class: "daily-picks-grid" });
+        picks.forEach(p => grid.appendChild(dailyPickCard(p, (sc) => openBookDetail(sc.book.id))));
         picksCard.appendChild(grid);
       }
       wrap.appendChild(picksCard);
@@ -3403,7 +3681,7 @@
     },
 
     profile() {
-      const wrap = util.el("div", { class: "page profile-page" });
+      const wrap = util.el("div", { class: "page profile-page stack-lg" });
 
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
@@ -3415,7 +3693,70 @@
         ])
       ]));
 
-      const grid = util.el("div", { class: "profile-shell" });
+      // --- Top band: KPI strip → Content controls → actions row -----------
+      // KPIs carry the visual priority; the content controls bar is kept
+      // slim and horizontal so it sits comfortably underneath without
+      // crowding the page.
+      const topBand = util.el("div", { class: "profile-top stack" });
+
+      const kpiCard = util.el("div", { class: "card profile-kpi-card" });
+      kpiCard.appendChild(util.el("div", { class: "profile-kpi-head" }, [
+        util.el("div", {}, [
+          util.el("h3", { html: "Profile <em>snapshot</em>" }),
+          util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
+        ])
+      ]));
+      kpiCard.appendChild(util.el("div", { id: "profile-kpi-strip" }, [buildProfileKpiStrip()]));
+      topBand.appendChild(kpiCard);
+
+      // Content Controls — promoted out of the sidebar and placed as a
+      // slim full-width bar directly under the KPI strip.
+      const controlsBar = util.el("div", { class: "card profile-controls-bar" });
+      const controlsHead = util.el("div", { class: "profile-controls-head" }, [
+        util.el("h3", { html: "Content <em>controls</em>" }),
+        util.el("span", { class: "t-small t-subtle", text: "Warning strictness — tone of the filter" })
+      ]);
+      const controlsBody = util.el("div", { class: "profile-controls-body" });
+      controlsBody.appendChild(segmented("warnStrict", [
+        { label: "Lenient",  value: "permissive" },
+        { label: "Moderate", value: "moderate" },
+        { label: "Strict",   value: "strict" }
+      ]));
+      controlsBody.appendChild(util.el("p", { class: "field-help", text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
+      controlsBar.appendChild(controlsHead);
+      controlsBar.appendChild(controlsBody);
+      topBand.appendChild(controlsBar);
+
+      // Quiet actions row — completes the top band. The old sidebar's
+      // "Run recommendations" and "Reset profile" buttons live here so
+      // nothing is lost from the previous layout.
+      const actionsRow = util.el("div", { class: "profile-top-actions" });
+      actionsRow.appendChild(util.el("button", {
+        class: "btn btn-primary",
+        onclick: () => {
+          router.go("discover");
+          ui.toast("Recommendations refreshed from your profile");
+        }
+      }, "Run recommendations →"));
+      actionsRow.appendChild(util.el("button", {
+        class: "btn",
+        onclick: () => {
+          ui.modal({
+            title: "Reset profile?",
+            body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
+            primary: { label: "Reset", onClick: () => {
+              store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
+              renderView();
+              ui.toast("Profile reset");
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }
+      }, "Reset profile"));
+      topBand.appendChild(actionsRow);
+
+      wrap.appendChild(topBand);
+
       const col = util.el("div", { class: "stack-lg" });
 
       // --- Sliders (two-column pairing matching the mockup) ---------------
@@ -3492,27 +3833,7 @@
       });
       col.appendChild(scenariosCard);
 
-      grid.appendChild(col);
-
-      // --- Right sidebar: Profile snapshot + Content controls -------------
-      const side = util.el("div", { class: "profile-side" });
-
-      const snapshotCard = util.el("div", { class: "card", id: "profile-snapshot" });
-      side.appendChild(snapshotCard);
-
-      const controlsCard = util.el("div", { class: "card stack" });
-      controlsCard.appendChild(util.el("h3", { html: "Content <em>controls</em>" }));
-      controlsCard.appendChild(buildFieldLabel("Warning strictness", "tone of the filter"));
-      controlsCard.appendChild(segmented("warnStrict", [
-        { label: "Lenient",  value: "permissive" },
-        { label: "Moderate", value: "moderate" },
-        { label: "Strict",   value: "strict" }
-      ]));
-      controlsCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
-      side.appendChild(controlsCard);
-
-      grid.appendChild(side);
-      wrap.appendChild(grid);
+      wrap.appendChild(col);
 
       setTimeout(refreshProfilePreview, 0);
       return wrap;
