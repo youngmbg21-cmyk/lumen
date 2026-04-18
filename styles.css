@@ -2064,6 +2064,17 @@ body[data-privacy-blur="on"] .app-main::after {
   flex-wrap: wrap;
 }
 .disco-hero-hint a { color: var(--accent); text-decoration: underline; }
+.disco-hero-hint .segmented { margin-left: auto; }
+.disco-hero-hint .disco-hero-mode {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--accent-deep);
+  letter-spacing: 0.01em;
+}
+@media (max-width: 720px) {
+  .disco-hero-hint .segmented { margin-left: 0; margin-top: var(--s-2); }
+}
 
 .api-status {
   font-size: 10px;

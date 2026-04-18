@@ -820,9 +820,39 @@
   /* -------------------- discovery (web search + Claude) -------------------- */
   const discoveryState = {
     lastQuery: "",
-    raw: [],        // Google Books results in insertion order
-    enrichments: {} // id -> { heat, tropes, insight } | { error: true, message }
+    raw: [],           // Google Books results in insertion order
+    enrichments: {},   // id -> { heat, tropes, insight } | { error: true, message }
+    mode: "tailored",  // "tailored" (re-sorts by profile fit) | "broad"
+    originalOrder: []  // snapshot of ids in Google Books order for restoring Broad mode
   };
+
+  // Lightweight fit score for Discovery's Tailored mode. Combines:
+  //   - heat proximity to user (absolute delta, 0 diff = 100)
+  //   - trope overlap with user profile's trope + kink sets
+  //   - hard-exclusion penalty if any Claude trope matches a user exclude
+  // Returns 0-100. Missing/error enrichments collapse to 50 (neutral).
+  function tailoredScore(enrich, profile) {
+    if (!enrich || enrich.error) return 50;
+    const userHeat = profile.heat || 3;
+    const heatDiff = Math.abs((enrich.heat || 3) - userHeat);
+    const heatScore = Math.max(0, 100 - heatDiff * 18);
+
+    const normalise = (s) => String(s || "").toLowerCase().replace(/\s+/g, "-");
+    const userWanted = new Set(
+      (profile.trope || []).concat(profile.kink || []).map(normalise)
+    );
+    const userExcluded = new Set((profile.exclude || []).map(normalise));
+    const claudeTropes = (enrich.tropes || []).map(normalise);
+
+    const overlap = claudeTropes.filter(t => userWanted.has(t)).length;
+    const tropeScore = userWanted.size
+      ? Math.min(100, Math.round((overlap / Math.max(userWanted.size, 2)) * 120))
+      : 60;
+
+    const exclusionHit = claudeTropes.some(t => userExcluded.has(t));
+    const base = Math.round(heatScore * 0.6 + tropeScore * 0.4);
+    return Math.max(0, exclusionHit ? base - 50 : base);
+  }
 
   function steamClass(heat) {
     if (heat >= 4) return "steam-high";
@@ -859,14 +889,44 @@
       statusBadge
     ]));
 
+    // Tailored / Broad mode toggle (segmented). Tailored re-orders
+    // results by profile fit after Claude finishes analyzing each;
+    // Broad keeps Google Books' order.
+    const modeSegmented = util.el("div", { class: "segmented", role: "group", "aria-label": "Search mode" });
+    [
+      { id: "tailored", label: "Tailored to me" },
+      { id: "broad",    label: "Broad browse" }
+    ].forEach(opt => {
+      const btn = util.el("button", {
+        type: "button",
+        "aria-pressed": discoveryState.mode === opt.id ? "true" : "false",
+        "data-v": opt.id,
+        onclick: () => {
+          if (discoveryState.mode === opt.id) return;
+          discoveryState.mode = opt.id;
+          modeSegmented.querySelectorAll("button").forEach(b =>
+            b.setAttribute("aria-pressed", b.dataset.v === opt.id ? "true" : "false")
+          );
+          reorderResultsForMode();
+        }
+      }, opt.label);
+      modeSegmented.appendChild(btn);
+    });
+
     const hint = util.el("div", { class: "disco-hero-hint" });
+    const modeHint = util.el("span", { class: "disco-hero-mode", text: "" });
+    const hintLead = util.el("span");
     if (!Disco.getApiKey()) {
-      hint.appendChild(util.el("span", { text: "Heads up —" }));
+      hintLead.textContent = "Heads up — ";
+      hint.appendChild(hintLead);
       hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
-      hint.appendChild(util.el("span", { text: "to enable AI analysis." }));
+      hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
-      hint.appendChild(util.el("span", { text: "Returns up to six books from Google Books · Claude analyzes each for heat, tropes, and one calm insight." }));
+      hintLead.textContent = "Up to six books from Google Books · Claude analyzes each for heat, tropes, and one calm insight.";
+      hint.appendChild(hintLead);
     }
+    hint.appendChild(modeSegmented);
+    hint.appendChild(modeHint);
     hero.appendChild(hint);
     wrap.appendChild(hero);
 
@@ -879,10 +939,38 @@
         discoveryState.raw = [];
         discoveryState.enrichments = {};
         discoveryState.lastQuery = "";
+        discoveryState.originalOrder = [];
         renderView();
       }}, "Clear results"));
     }
     wrap.appendChild(resultsHead);
+
+    function updateModeHint() {
+      const label = discoveryState.mode === "tailored"
+        ? "Re-sorted by profile fit"
+        : "In Google Books order";
+      modeHint.textContent = ` · ${label}`;
+    }
+    updateModeHint();
+
+    function reorderResultsForMode() {
+      updateModeHint();
+      if (!discoveryState.raw.length) return;
+      const fresh = store.get();
+      if (discoveryState.mode === "broad") {
+        // Restore the original Google Books order.
+        const orderIndex = new Map(discoveryState.originalOrder.map((id, i) => [id, i]));
+        discoveryState.raw.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
+      } else {
+        // Tailored: sort by computed fit against the user profile.
+        discoveryState.raw.sort((a, b) => {
+          const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
+          const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
+          return sb - sa;
+        });
+      }
+      paintGrid();
+    }
 
     const grid = util.el("div", { class: "discovery-grid", id: "disco-grid" });
     wrap.appendChild(grid);
@@ -976,9 +1064,12 @@
       }
 
       discoveryState.raw = items;
+      discoveryState.originalOrder = items.map(b => b.id);
       paintGrid();
 
-      // Analyse sequentially so the status badge narrates progress
+      // Analyse sequentially so the status badge narrates progress.
+      // In Tailored mode we re-sort the whole list every time a new
+      // analysis completes so higher-fit items bubble up live.
       for (const book of items) {
         try {
           const result = await Disco.analyzeWithClaude(book);
@@ -986,8 +1077,18 @@
         } catch (err) {
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
         }
-        const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-        if (node) node.replaceWith(renderDiscoCard(book));
+        if (discoveryState.mode === "tailored") {
+          const fresh = store.get();
+          discoveryState.raw.sort((a, b) => {
+            const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
+            const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
+            return sb - sa;
+          });
+          paintGrid();
+        } else {
+          const node = document.querySelector(`[data-disco-id="${book.id}"]`);
+          if (node) node.replaceWith(renderDiscoCard(book));
+        }
       }
     }
 
@@ -1052,6 +1153,21 @@
 
       // Body
       const body = util.el("div", { class: "disco-card-body" });
+
+      // In Tailored mode, mark low-fit results so the user can see
+      // why a card is down-weighted. In Broad mode, no tagging.
+      if (discoveryState.mode === "tailored" && enrich && !enrich.error) {
+        const fresh = store.get();
+        const fit = tailoredScore(enrich, fresh.profile);
+        if (fit < 45) {
+          body.appendChild(util.el("div", { class: "tag tag-warn", style: { alignSelf: "flex-start", marginBottom: "6px" } },
+            "Lower fit for your profile"));
+        } else if (fit >= 75) {
+          body.appendChild(util.el("div", { class: "tag tag-good", style: { alignSelf: "flex-start", marginBottom: "6px" } },
+            "Strong fit"));
+        }
+      }
+
       body.appendChild(util.el("h4", { text: book.title }));
       body.appendChild(util.el("div", { class: "author", text: book.author + (book.year ? ` · ${book.year}` : "") }));
       body.appendChild(util.el("p", { class: "blurb", text: book.description }));
