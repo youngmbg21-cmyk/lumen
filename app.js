@@ -549,7 +549,7 @@
   }
 
   function bookCardFull(book, scored) {
-    const card = util.el("div", { class: "book-card has-dismiss",
+    const card = util.el("div", { class: "book-card has-dismiss has-cover",
       onclick: () => openBookDetail(book.id)
     });
     // Dismiss control — top-right. Confirmation is handled inline via undo toast.
@@ -568,8 +568,29 @@
         renderView();
       }
     }, "×"));
-    // Steam Engine — heat-level indicator bar
-    card.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
+
+    // Cover frame — image if the entry carries a Google Books thumbnail,
+    // a two-letter initials block otherwise. Steam Engine bar is
+    // anchored along the bottom of the cover.
+    const cover = util.el("div", { class: "lib-card-cover" });
+    if (book.thumbnail) {
+      const url = book.thumbnail.replace(/^http:/, "https:");
+      const img = util.el("img", {
+        src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+        onerror: function () {
+          this.remove();
+          if (!cover.querySelector(".cover-fallback")) {
+            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          }
+        }
+      });
+      cover.appendChild(img);
+    } else {
+      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+    }
+    cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
+    card.appendChild(cover);
+
     const head = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
       util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }),
       scored ? util.el("div", { class: "t-mono", style: { color: "var(--accent)", fontSize: "18px" }, text: `${scored.fitScore}` }) : null
@@ -1095,7 +1116,25 @@
     function renderDiscoCard(book) {
       const enrich = discoveryState.enrichments[book.id];
       const heat = enrich && !enrich.error ? enrich.heat : null;
-      const card = util.el("div", { class: "disco-card has-dismiss", "data-disco-id": book.id });
+      const card = util.el("div", {
+        class: "disco-card has-dismiss is-clickable",
+        "data-disco-id": book.id,
+        role: "button",
+        tabindex: "0",
+        "aria-label": `Open full detail for ${book.title}`,
+        onclick: (e) => {
+          // Ignore clicks on interactive children (buttons, links).
+          if (e.target.closest("button, a")) return;
+          openDiscoveryDetail(book);
+        },
+        onkeydown: (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            if (e.target.closest("button, a")) return;
+            e.preventDefault();
+            openDiscoveryDetail(book);
+          }
+        }
+      });
 
       // Dismiss — drops this card from the current results feed
       card.appendChild(util.el("button", {
@@ -1212,6 +1251,82 @@
     }
 
     return wrap;
+  }
+
+  function openDiscoveryDetail(book) {
+    const enrich = discoveryState.enrichments[book.id];
+    const inLibrary = (store.get().discovered || []).some(d => d.id === book.id);
+
+    const body = util.el("div", { class: "stack" });
+
+    // Cover + meta header
+    const header = util.el("div", { class: "disco-detail-head" });
+    const cover = util.el("div", { class: "disco-detail-cover" });
+    if (book.thumbnail) {
+      const url = book.thumbnail.replace(/^http:/, "https:");
+      const img = util.el("img", {
+        src: url, alt: `Cover of ${book.title}`,
+        onerror: function () { this.remove(); cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() })); }
+      });
+      cover.appendChild(img);
+    } else {
+      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+    }
+    if (enrich && !enrich.error && enrich.heat) {
+      cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(enrich.heat) }));
+    }
+    header.appendChild(cover);
+
+    const meta = util.el("div", { class: "disco-detail-meta" });
+    meta.appendChild(util.el("div", { class: "t-eyebrow", text: (book.source || "Google Books") + (book.year ? " · " + book.year : "") }));
+    meta.appendChild(util.el("h3", { class: "t-serif", style: { fontSize: "24px", marginTop: "4px" }, text: book.title }));
+    meta.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "2px" }, text: book.author || "Unknown author" }));
+
+    if (enrich && !enrich.error) {
+      const metaRow = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)", gap: "6px" } });
+      metaRow.appendChild(util.el("span", { class: "tag tag-accent" }, `Heat ${enrich.heat}/5`));
+      (enrich.tropes || []).forEach(t => metaRow.appendChild(util.el("span", { class: "tag" }, t)));
+      meta.appendChild(metaRow);
+    } else if (!enrich) {
+      meta.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "var(--s-3)" }, text: "Claude is still reading this title…" }));
+    }
+
+    header.appendChild(meta);
+    body.appendChild(header);
+
+    // Full description — no line clamping
+    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Description" }));
+    body.appendChild(util.el("p", {
+      class: "t-small t-muted",
+      style: { whiteSpace: "pre-wrap", lineHeight: "1.6" },
+      text: book.description || "No description available for this title."
+    }));
+
+    if (enrich && !enrich.error) {
+      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "AI Insight · advisory" }));
+      body.appendChild(util.el("div", { class: "advisory" }, enrich.insight || "No insight returned."));
+    } else if (enrich && enrich.error) {
+      body.appendChild(util.el("div", { class: "advisory", style: { marginTop: "var(--s-4)" } }, [
+        util.el("strong", { text: "Analysis failed · " }),
+        "Claude couldn't be reached for this title. The description and source link above are still valid."
+      ]));
+    }
+
+    if (book.sourceUrl) {
+      body.appendChild(util.el("div", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" } }, [
+        "Source: ",
+        util.el("a", { href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer" }, book.sourceUrl)
+      ]));
+    }
+
+    ui.modal({
+      title: "",
+      body,
+      primary: inLibrary
+        ? { label: "Open in Library", onClick: () => router.go("library") }
+        : { label: "Add to library", onClick: () => addDiscoveryToLibrary(book, enrich) },
+      secondary: { label: "Close" }
+    });
   }
 
   function addDiscoveryToLibrary(book, enrich) {
