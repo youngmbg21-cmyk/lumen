@@ -1103,185 +1103,41 @@ body {
 }
 
 /* ============================================================
-   Profile page — full-width top band (KPI strip + content controls)
-   with sliders/tastes/exclusions/scenarios stacked below
+   Profile page — compact inline strictness pill in the page-head
+   (no KPI strip, no full-width content-controls card). Sliders,
+   tastes, exclusions, and scenarios stack full-width below.
    ============================================================ */
-.profile-page .profile-top {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-}
-
-/* KPI card — the premium "snapshot" panel that hosts the strip */
-.profile-kpi-card {
-  padding: var(--s-4) var(--s-5);
-}
-.profile-kpi-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-4);
-  margin-bottom: var(--s-3);
-}
-.profile-kpi-head h3 {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 22px;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-.profile-kpi-head h3 em {
-  font-style: italic;
-  color: var(--accent-deep);
-}
-
-/* The KPI strip itself — a responsive grid of compact cards. The
-   value is shown ONCE (inside the ring). The card body holds only
-   the uppercase label and a short italic descriptor, so each card
-   is a short horizontal band, not a tall box. */
-.kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--s-2);
-}
-@media (max-width: 1200px) { .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 820px)  { .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 520px)  { .kpi-strip { grid-template-columns: 1fr; } }
-
-.kpi-card {
-  display: flex;
-  flex-direction: row;
+.profile-head-actions {
   align-items: center;
   gap: var(--s-3);
-  padding: 10px var(--s-3);
-  border-radius: var(--r-3);
+  flex-wrap: wrap;
+}
+.profile-strict-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px 6px 4px var(--s-3);
+  border-radius: 999px;
   background: var(--bg-sunken, var(--primary-soft));
   border: 1px solid var(--border);
-  transition: border-color 160ms ease, box-shadow 160ms ease;
 }
-.kpi-card:hover {
-  border-color: var(--border-bold);
-  box-shadow: 0 4px 12px -10px rgba(60, 38, 22, 0.2);
-}
-
-.kpi-ring {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.kpi-ring-svg {
-  width: 44px;
-  height: 44px;
-}
-.kpi-ring-svg .track {
-  fill: none;
-  stroke: var(--border);
-  stroke-width: 3.5;
-}
-.kpi-ring-svg .fill {
-  fill: none;
-  stroke: var(--accent);
-  stroke-width: 3.5;
-  stroke-linecap: round;
-  transition: stroke-dashoffset 280ms ease, stroke 160ms ease;
-}
-.kpi-ring-svg.low  .fill { stroke: var(--accent-soft, var(--accent)); opacity: 0.75; }
-.kpi-ring-svg.mid  .fill { stroke: var(--accent); }
-.kpi-ring-svg.high .fill { stroke: var(--accent-deep); }
-.kpi-ring-svg text {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 15px;
-  fill: var(--accent-deep);
-  text-anchor: middle;
-  dominant-baseline: central;
-}
-
-.kpi-body {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1.15;
-}
-.kpi-label {
+.profile-strict-label {
   font-family: var(--font-sans);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-mute);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.kpi-sub {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 400;
-  font-size: 13px;
-  color: var(--accent-deep);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.profile-strict-inline .segmented {
+  padding: 0;
+  background: transparent;
+  border: none;
 }
-
-/* Content controls bar — slim, horizontal, full-width so it complements
-   the KPI strip without stealing focus. */
-.profile-controls-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
-  gap: var(--s-4);
-  align-items: center;
-  padding: var(--s-4) var(--s-5);
-}
-@media (max-width: 820px) {
-  .profile-controls-bar { grid-template-columns: 1fr; }
-}
-.profile-controls-head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.profile-controls-head h3 {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 20px;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-  color: var(--text);
-}
-.profile-controls-head h3 em {
-  font-style: italic;
-  color: var(--accent-deep);
-}
-.profile-controls-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-}
-.profile-controls-body .field-help {
-  font-size: 12px;
-  color: var(--text-mute);
-  line-height: 1.5;
-  margin: 0;
-}
-
-/* Top-band action row — Run recommendations / Reset profile.
-   Kept visually quiet so it doesn't compete with the KPI strip. */
-.profile-top-actions {
-  display: flex;
-  gap: var(--s-2);
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-@media (max-width: 520px) {
-  .profile-top-actions { justify-content: stretch; }
-  .profile-top-actions .btn { flex: 1; justify-content: center; }
+.profile-strict-inline .segmented button {
+  font-size: 11px;
+  padding: 4px 10px;
+  letter-spacing: 0.08em;
 }
 
 /* Two-column slider layout inside the sliders card */
