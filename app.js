@@ -871,15 +871,27 @@
         items = await Disco.searchBooks(q);
       } catch (err) {
         const message = (err && err.message) || "Search failed";
+        const isQuota = err && err.code === "quota";
         console.error("[Lumen Discovery] Search failed:", err);
         resultsLabel.textContent = `Search failed for "${q}"`;
         grid.innerHTML = "";
-        grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Couldn't reach Google Books" }),
-          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" }, text: message }),
-          util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" }, text: "Most often this is a network hiccup or a browser extension blocking googleapis.com. The full error is in your console." }),
-          util.el("button", { class: "btn btn-primary btn-sm", style: { marginTop: "var(--s-3)" }, onclick: () => runSearch() }, "Try again")
-        ]));
+        const emptyNode = util.el("div", { class: "discovery-empty" }, [
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
+            text: isQuota ? "Google Books is rate-limiting this network" : "Couldn't reach Google Books" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" }, text: message })
+        ]);
+        if (isQuota) {
+          emptyNode.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" },
+            text: "Anonymous Google Books usage caps at roughly 1,000 searches per day, shared across everyone on the same IP. Paste a free Google Books API key in Settings and you'll get your own quota (~100,000/day)." }));
+          emptyNode.appendChild(util.el("div", { class: "row", style: { justifyContent: "center", gap: "var(--s-2)", marginTop: "var(--s-3)" } }, [
+            util.el("button", { class: "btn btn-primary btn-sm", onclick: () => router.go("settings") }, "Open Settings"),
+            util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => runSearch() }, "Try again")
+          ]));
+        } else {
+          emptyNode.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" }, text: "Most often this is a network hiccup or a browser extension blocking googleapis.com. The full error is in your console." }));
+          emptyNode.appendChild(util.el("button", { class: "btn btn-primary btn-sm", style: { marginTop: "var(--s-3)" }, onclick: () => runSearch() }, "Try again"));
+        }
+        grid.appendChild(emptyNode);
         return;
       }
 
@@ -1130,6 +1142,61 @@
       ])
     ]));
     wrap.appendChild(keyCard);
+
+    // --- Google Books API key (optional) ---------------------------------
+    const gbCard = util.el("div", { class: "card settings-card stack" });
+    gbCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Google Books API key (optional)" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Anonymous requests share a ~1,000/day quota across everyone on your network. A free personal key lifts that to ~100,000/day." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (Disco.getGoogleKey() ? "settings-badge-ok" : "settings-badge-missing"),
+        text: Disco.getGoogleKey() ? "Key saved" : "Anonymous"
+      })
+    ]));
+
+    const gbInput = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "AIza…",
+      value: Disco.getGoogleKey(),
+      autocomplete: "off",
+      spellcheck: "false"
+    });
+    gbCard.appendChild(gbInput);
+
+    const gbReveal = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)" } });
+    const gbRevealInput = util.el("input", { type: "checkbox", onchange: (e) => {
+      gbInput.setAttribute("type", e.target.checked ? "text" : "password");
+    }});
+    gbReveal.appendChild(gbRevealInput);
+    gbReveal.appendChild(util.el("span", { class: "toggle-track" }));
+    gbReveal.appendChild(util.el("span", { class: "toggle-label", text: "Show key" }));
+    gbCard.appendChild(gbReveal);
+
+    const gbActions = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
+    gbActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      const val = gbInput.value.trim();
+      Disco.setGoogleKey(val);
+      ui.toast(val ? "Google Books key saved" : "Google Books key cleared");
+      renderView();
+    }}, Disco.getGoogleKey() ? "Update" : "Save"));
+    gbActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", disabled: !Disco.getGoogleKey() || null, onclick: () => {
+      Disco.clearGoogleKey();
+      gbInput.value = "";
+      ui.toast("Google Books key cleared");
+      renderView();
+    }}, "Clear"));
+    gbCard.appendChild(gbActions);
+
+    gbCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+      util.el("div", {}, [
+        util.el("strong", { text: "How to get a key · " }),
+        "Google Cloud console → APIs & Services → Enable \"Books API\" → Credentials → Create API key. The Books API is free. Restrict the key to HTTP referrers if you want belt-and-braces safety."
+      ])
+    ]));
+    wrap.appendChild(gbCard);
 
     // --- Hidden books -----------------------------------------------------
     const hiddenIds = Object.keys(store.get().hidden || {});

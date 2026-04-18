@@ -13,6 +13,7 @@
   "use strict";
 
   const KEY_STORAGE = "lumen:claude-key";
+  const GBOOKS_KEY_STORAGE = "lumen:gbooks-key";
 
   const state = {
     status: "idle",   // idle | reading | online | error
@@ -57,13 +58,27 @@
     setStatus("idle", "API key cleared");
   }
 
-  // 1) Google Books search. No API key required for basic search.
+  function setGoogleKey(key) {
+    if (key && key.trim()) localStorage.setItem(GBOOKS_KEY_STORAGE, key.trim());
+    else localStorage.removeItem(GBOOKS_KEY_STORAGE);
+  }
+  function getGoogleKey() {
+    return localStorage.getItem(GBOOKS_KEY_STORAGE) || "";
+  }
+  function clearGoogleKey() {
+    localStorage.removeItem(GBOOKS_KEY_STORAGE);
+  }
+
+  // 1) Google Books search. Unauthenticated requests share a low daily quota;
+  // pass a Google Books API key from Settings to raise the cap dramatically.
   // Throws an Error with a human-readable message the UI can render.
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
+    const gkey = getGoogleKey();
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(query.trim())
-      + "&maxResults=" + maxResults;
+      + "&maxResults=" + maxResults
+      + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
 
     let res;
     try {
@@ -77,6 +92,15 @@
       let detail = "";
       try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
       console.error("[Lumen Discovery] Google Books returned", res.status, detail);
+
+      if (res.status === 429 || res.status === 403) {
+        const err = new Error(gkey
+          ? "Google Books rejected this key's quota (HTTP " + res.status + "). Check the key's daily limit in the Google Cloud console."
+          : "Google Books daily quota exhausted on this network (HTTP " + res.status + "). Add a Google Books API key in Settings to raise the cap."
+        );
+        err.code = "quota";
+        throw err;
+      }
       throw new Error(`Google Books returned HTTP ${res.status}.` + (detail ? ` ${detail}` : ""));
     }
 
@@ -196,6 +220,9 @@
     setApiKey,
     getApiKey,
     clearApiKey,
+    setGoogleKey,
+    getGoogleKey,
+    clearGoogleKey,
     searchBooks,
     analyzeWithClaude,
     onStatus,
