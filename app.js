@@ -3686,79 +3686,28 @@
     profile() {
       const wrap = util.el("div", { class: "page profile-page stack-lg" });
 
+      // Compact inline strictness control — small segmented pill that
+      // sits in the page-head alongside Re-run onboarding. Replaces the
+      // full-width Content Controls bar that previously spanned the
+      // page.
+      const strictControl = util.el("div", { class: "profile-strict-inline" });
+      strictControl.appendChild(util.el("span", { class: "profile-strict-label", text: "Strictness" }));
+      strictControl.appendChild(segmented("warnStrict", [
+        { label: "Lenient",  value: "permissive" },
+        { label: "Moderate", value: "moderate" },
+        { label: "Strict",   value: "strict" }
+      ]));
+
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
           util.el("h1", { html: "Tell us how <em>you</em> read." }),
           util.el("p", { class: "lede", text: "Every field feeds the weighted fit score. Leave any at default if you have no preference — the engine will treat it neutrally. Changes apply instantly across the dashboard." })
         ]),
-        util.el("div", { class: "row" }, [
+        util.el("div", { class: "row profile-head-actions" }, [
+          strictControl,
           util.el("button", { class: "btn btn-small", onclick: () => launchOnboarding(true) }, "Re-run onboarding")
         ])
       ]));
-
-      // --- Top band: KPI strip → Content controls → actions row -----------
-      // KPIs carry the visual priority; the content controls bar is kept
-      // slim and horizontal so it sits comfortably underneath without
-      // crowding the page.
-      const topBand = util.el("div", { class: "profile-top stack" });
-
-      const kpiCard = util.el("div", { class: "card profile-kpi-card" });
-      kpiCard.appendChild(util.el("div", { class: "profile-kpi-head" }, [
-        util.el("div", {}, [
-          util.el("h3", { html: "Profile <em>snapshot</em>" }),
-          util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
-        ])
-      ]));
-      kpiCard.appendChild(util.el("div", { id: "profile-kpi-strip" }, [buildProfileKpiStrip()]));
-      topBand.appendChild(kpiCard);
-
-      // Content Controls — promoted out of the sidebar and placed as a
-      // slim full-width bar directly under the KPI strip.
-      const controlsBar = util.el("div", { class: "card profile-controls-bar" });
-      const controlsHead = util.el("div", { class: "profile-controls-head" }, [
-        util.el("h3", { html: "Content <em>controls</em>" }),
-        util.el("span", { class: "t-small t-subtle", text: "Warning strictness — tone of the filter" })
-      ]);
-      const controlsBody = util.el("div", { class: "profile-controls-body" });
-      controlsBody.appendChild(segmented("warnStrict", [
-        { label: "Lenient",  value: "permissive" },
-        { label: "Moderate", value: "moderate" },
-        { label: "Strict",   value: "strict" }
-      ]));
-      controlsBody.appendChild(util.el("p", { class: "field-help", text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
-      controlsBar.appendChild(controlsHead);
-      controlsBar.appendChild(controlsBody);
-      topBand.appendChild(controlsBar);
-
-      // Quiet actions row — completes the top band. The old sidebar's
-      // "Run recommendations" and "Reset profile" buttons live here so
-      // nothing is lost from the previous layout.
-      const actionsRow = util.el("div", { class: "profile-top-actions" });
-      actionsRow.appendChild(util.el("button", {
-        class: "btn btn-primary",
-        onclick: () => {
-          router.go("discover");
-          ui.toast("Recommendations refreshed from your profile");
-        }
-      }, "Run recommendations →"));
-      actionsRow.appendChild(util.el("button", {
-        class: "btn",
-        onclick: () => {
-          ui.modal({
-            title: "Reset profile?",
-            body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
-            primary: { label: "Reset", onClick: () => {
-              store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
-              renderView();
-              ui.toast("Profile reset");
-            }},
-            secondary: { label: "Cancel" }
-          });
-        }
-      }, "Reset profile"));
-      topBand.appendChild(actionsRow);
-
-      wrap.appendChild(topBand);
 
       const col = util.el("div", { class: "stack-lg" });
 
