@@ -20,6 +20,7 @@
   let panel, body, composeTA, ctxBar, fab;
   let opened = false;
   let wide = false;
+  let lastFocus = null;
 
   function mount() {
     if (panel) return;
@@ -63,6 +64,9 @@
 
     body = document.createElement("div");
     body.className = "sara-body";
+    body.setAttribute("role", "log");
+    body.setAttribute("aria-live", "polite");
+    body.setAttribute("aria-label", "Conversation with Sara");
     panel.appendChild(body);
 
     const sugg = document.createElement("div");
@@ -221,6 +225,7 @@
     renderMessages();
     renderContext();
     renderSuggestions();
+    if (!opened) lastFocus = document.activeElement;
     panel.classList.add("open");
     opened = true;
     store() && store().update(s => { s.ui = s.ui || {}; s.ui.saraOpen = true; });
@@ -232,6 +237,9 @@
     panel.classList.remove("open");
     opened = false;
     store() && store().update(s => { s.ui = s.ui || {}; s.ui.saraOpen = false; });
+    if (lastFocus && typeof lastFocus.focus === "function") {
+      try { lastFocus.focus(); } catch (e) { /* ignore */ }
+    }
   }
 
   function toggle() { opened ? close() : open(); }

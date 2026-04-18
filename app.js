@@ -730,7 +730,8 @@
         shortcutRow("Go to Vault",          "G then V"),
         shortcutRow("Go to Profile",        "G then P"),
         shortcutRow("Toggle theme",         "T"),
-        shortcutRow("Toggle discreet",      "D")
+        shortcutRow("Toggle discreet",      "D"),
+        shortcutRow("Toggle Sara",          "S")
       ])
     ]);
     wrap.appendChild(keys);
@@ -1620,28 +1621,38 @@
     const list = util.el("div", { class: "stack-sm", style: { maxHeight: "320px", overflowY: "auto", marginTop: "var(--s-2)" } });
     body.appendChild(list);
 
+    const handle = ui.modal({ title: `Add title to slot ${slotIdx + 1}`, body, secondary: { label: "Cancel" } });
+
     function paint() {
       const q = (search.value || "").toLowerCase();
       list.innerHTML = "";
-      BOOKS
+      const candidates = BOOKS
         .filter(b => !used.includes(b.id))
-        .filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))
-        .forEach(b => {
-          const row = util.el("button", { class: "btn btn-ghost", style: { justifyContent: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px" },
-            onclick: () => { cmpState.slots[slotIdx] = b.id; document.getElementById("modal-host")?.classList.remove("open"); setTimeout(() => renderView(), 100); }
-          }, [
-            util.el("div", {}, [
-              util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: b.title }),
-              util.el("div", { class: "t-tiny t-subtle", text: `${b.author} · ${util.fmtYear(b.year)}` })
-            ])
-          ]);
-          list.appendChild(row);
-        });
+        .filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+
+      if (!candidates.length) {
+        list.appendChild(util.el("p", { class: "t-small t-subtle", style: { padding: "var(--s-3)" }, text: "No titles match. Try a different search, or remove an existing slot to free one up." }));
+        return;
+      }
+      candidates.forEach(b => {
+        const row = util.el("button", { class: "btn btn-ghost", style: { justifyContent: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px" },
+          onclick: () => {
+            cmpState.slots[slotIdx] = b.id;
+            cmpState.lastDeepAnalysis = null;  // invalidate stale analysis
+            handle.close();
+            renderView();
+          }
+        }, [
+          util.el("div", {}, [
+            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: b.title }),
+            util.el("div", { class: "t-tiny t-subtle", text: `${b.author} · ${util.fmtYear(b.year)}` })
+          ])
+        ]);
+        list.appendChild(row);
+      });
     }
     search.addEventListener("input", paint);
     setTimeout(paint, 0);
-
-    ui.modal({ title: `Add title to slot ${slotIdx + 1}`, body, secondary: { label: "Cancel" } });
   }
 
   function categoryBars(scored, side) {
@@ -1879,7 +1890,7 @@
         filled.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
         filled.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
           util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => openSlotPicker(idx) }, "Replace"),
-          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; renderView(); } }, "Remove")
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; renderView(); } }, "Remove")
         ]));
         slots.appendChild(filled);
       } else {
@@ -2016,11 +2027,21 @@
     function runDeepAnalysis() {
       const filled = cmpState.slots.filter(Boolean);
       if (filled.length < 2) return;
-      const scoredList = Engine.compareBooks(filled, s.profile, s.weights);
+      const fresh = store.get();
+      const scoredList = Engine.compareBooks(filled, fresh.profile, fresh.weights);
       if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
-        cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, s.profile);
-        ui.toast("Deep analysis ready");
+        cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, fresh.profile);
+        ui.toast("Deep analysis ready · scroll down to read it", {
+          action: "Open in Sara",
+          onAction: () => openInSara(cmpState.lastDeepAnalysis),
+          duration: 5000
+        });
         renderView();
+        // Scroll the new section into view shortly after re-render
+        setTimeout(() => {
+          const root = document.getElementById("view-root");
+          root && root.scrollTo({ top: root.scrollHeight, behavior: "smooth" });
+        }, 220);
       } else {
         ui.toast("Deep analysis module not yet loaded");
       }
@@ -2699,6 +2720,13 @@
       { label: "Open Sara",          hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
       { label: "Close Sara",         hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
     ];
+
+    if (cmpState.slots && cmpState.slots.filter(Boolean).length >= 2) {
+      commands.push({ label: "Compare: run deep analysis", hint: "", run: () => { router.go("compare"); setTimeout(() => renderCompare._runDeep && renderCompare._runDeep(), 80); } });
+    }
+    if (cmpState.slots && cmpState.slots.some(Boolean)) {
+      commands.push({ label: "Compare: clear all slots", hint: "", run: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } });
+    }
 
     let host = document.getElementById("palette-host");
     if (!host) {
