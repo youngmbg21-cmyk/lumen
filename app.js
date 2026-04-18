@@ -223,6 +223,81 @@
   };
 
   /* -------------------- view helpers -------------------- */
+  // Cover block shared by Daily Picks + detail modal. Google Books
+  // thumbnails upgraded to https; a two-letter initials block falls in
+  // if the URL 404s or the book has no thumbnail at all. The optional
+  // heat bar pinned to the bottom matches the existing library card.
+  function buildCoverBlock(book, { size = "md", showHeat = true } = {}) {
+    const cover = util.el("div", { class: `book-cover book-cover-${size}` });
+    if (book.thumbnail) {
+      const url = book.thumbnail.replace(/^http:/, "https:");
+      const img = util.el("img", {
+        src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+        onerror: function () {
+          this.remove();
+          if (!cover.querySelector(".cover-fallback")) {
+            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          }
+        }
+      });
+      cover.appendChild(img);
+    } else {
+      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+    }
+    if (showHeat && book.heat_level != null) {
+      cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
+    }
+    return cover;
+  }
+
+  // Daily Picks card — cover on the left, body in the middle, compact
+  // fit-score ring on the right. Whole card is an <a> so it's clickable
+  // AND keyboard-activatable (Enter/Space). Clicking or activating
+  // opens the richer detail modal.
+  function dailyPickCard(scored, onClick) {
+    const { book, fitScore, confidence, why } = scored;
+    const card = util.el("a", {
+      class: "daily-pick-card",
+      href: "#",
+      role: "button",
+      "aria-label": `Open details for ${book.title}`,
+      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); },
+      onkeydown: (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick && onClick(scored);
+        }
+      }
+    });
+
+    card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
+
+    const body = util.el("div", { class: "daily-pick-body" });
+    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || book.category || "") }));
+    body.appendChild(util.el("h4", { class: "daily-pick-title", text: book.title }));
+    body.appendChild(util.el("div", { class: "daily-pick-author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    body.appendChild(util.el("p", { class: "daily-pick-blurb", text: (book.description || "").slice(0, 180) + ((book.description || "").length > 180 ? "…" : "") }));
+    if (why && why.reasons && why.reasons.length) {
+      const tags = util.el("div", { class: "daily-pick-tags" });
+      why.reasons.slice(0, 2).forEach(r => tags.appendChild(ui.tag(r, "accent")));
+      body.appendChild(tags);
+    }
+    body.appendChild(util.el("div", { class: "daily-pick-expand-hint", text: "Click to read full summary →" }));
+    card.appendChild(body);
+
+    const aside = util.el("div", { class: "daily-pick-aside" });
+    const fitFill = Math.max(0, Math.min(1, fitScore / 100));
+    aside.appendChild(util.el("div", { class: "daily-pick-ring" }, [
+      kpiRing(fitFill, String(fitScore), kpiToneFromFraction(fitFill))
+    ]));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-label", text: "Fit" }));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-sub", text: kpiDescriptorFit(fitScore) }));
+    aside.appendChild(util.el("div", { class: "daily-pick-aside-conf", text: `${confidence}% conf.` }));
+    card.appendChild(aside);
+
+    return card;
+  }
+
   function bookCardMini(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
     const card = util.el("a", {
@@ -760,34 +835,58 @@
       : null;
     const userTags = s.tags[bookId] || [];
 
-    const body = util.el("div", { class: "stack" });
-    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
-    body.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "22px", marginTop: "4px" }, text: book.title }));
-    body.appendChild(util.el("div", { class: "t-small t-subtle", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
+    const body = util.el("div", { class: "stack book-detail-body" });
 
-    // Score block
+    // Header — large cover on the left, meta + score rings on the right.
+    // The cover uses the same buildCoverBlock helper as Daily Picks so
+    // both surfaces stay visually consistent.
+    const header = util.el("div", { class: "book-detail-head" });
+    header.appendChild(buildCoverBlock(book, { size: "lg", showHeat: true }));
+
+    const meta = util.el("div", { class: "book-detail-meta" });
+    meta.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+    meta.appendChild(util.el("h3", { class: "book-detail-title", text: book.title }));
+    meta.appendChild(util.el("div", { class: "book-detail-author", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
+
     if (scored) {
-      const scoreBlock = util.el("div", { class: "card card-quiet", style: { marginTop: "var(--s-3)" } }, [
-        util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-eyebrow", text: "Fit for you" }),
-            util.el("div", { class: "t-mono", style: { fontSize: "28px", color: "var(--accent)" }, text: `${scored.fitScore}` })
-          ]),
-          util.el("div", { style: { textAlign: "right" } }, [
-            util.el("div", { class: "t-tiny t-subtle", text: "Confidence" }),
-            util.el("div", { class: "t-mono", text: `${scored.confidence}%` })
-          ])
-        ])
-      ]);
-      if (scored.why.reasons.length) {
-        const reasons = util.el("ul", { style: { marginTop: "var(--s-3)", paddingLeft: "var(--s-4)" } });
-        scored.why.reasons.forEach(r => reasons.appendChild(util.el("li", { class: "t-small t-muted", text: r })));
-        scoreBlock.appendChild(reasons);
-      }
-      body.appendChild(scoreBlock);
+      const ringsRow = util.el("div", { class: "book-detail-rings" });
+      const fitFill = Math.max(0, Math.min(1, scored.fitScore / 100));
+      const confFill = Math.max(0, Math.min(1, scored.confidence / 100));
+      const fitCell = util.el("div", { class: "book-detail-ring-cell" });
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(fitFill, String(scored.fitScore), kpiToneFromFraction(fitFill))]));
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Fit score" }));
+      fitCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: kpiDescriptorFit(scored.fitScore) }));
+      ringsRow.appendChild(fitCell);
+      const confCell = util.el("div", { class: "book-detail-ring-cell" });
+      confCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
+      confCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Confidence" }));
+      confCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
+      ringsRow.appendChild(confCell);
+      meta.appendChild(ringsRow);
     }
+    header.appendChild(meta);
+    body.appendChild(header);
 
-    body.appendChild(util.el("p", { class: "t-muted", style: { marginTop: "var(--s-3)" }, text: book.description }));
+    // Full, un-truncated description.
+    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Full summary" }));
+    body.appendChild(util.el("p", {
+      class: "t-muted book-detail-desc",
+      style: { whiteSpace: "pre-wrap", lineHeight: "1.65" },
+      text: book.description || "No description available for this title."
+    }));
+
+    // Reasons / partials / penalties — full breakdown, not just the top
+    // two. Daily Picks collapsed cards showed 2 reasons; the expanded
+    // view shows everything the engine produced so the user can read
+    // the whole "why it fits" story without truncation.
+    if (scored && (scored.why.reasons.length || (scored.why.partials || []).length || (scored.why.penalties || []).length)) {
+      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Why this fits your profile" }));
+      const reasonsBox = util.el("ul", { class: "book-detail-reasons" });
+      scored.why.reasons.forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-strong", text: r })));
+      (scored.why.partials || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-partial", text: r })));
+      (scored.why.penalties || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-penalty", text: r })));
+      body.appendChild(reasonsBox);
+    }
 
     // Reading state
     body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Reading state" }));
@@ -816,8 +915,8 @@
       body.appendChild(warns);
     }
 
-    // Metadata pills
-    const meta = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
+    // Metadata pills — the engine-relevant numeric scores.
+    const metaPills = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
     [
       ["Heat", book.heat_level],
       ["Explicit", book.explicitness],
@@ -825,8 +924,8 @@
       ["Consent", book.consent_clarity],
       ["Taboo", book.taboo_level],
       ["Plot", book.plot_weight]
-    ].forEach(([l, v]) => meta.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
-    body.appendChild(meta);
+    ].forEach(([l, v]) => metaPills.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
+    body.appendChild(metaPills);
 
     // Extra actions row
     body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-4)" } }, [
@@ -3500,8 +3599,8 @@
           actions: [{ label: "Edit profile", variant: "btn-primary", onClick: () => router.go("profile") }]
         }));
       } else {
-        const grid = util.el("div", { class: "row-wrap", style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "var(--s-4)" } });
-        picks.forEach(p => grid.appendChild(bookCardMini(p, (sc) => openBookDetail(sc.book.id))));
+        const grid = util.el("div", { class: "daily-picks-grid" });
+        picks.forEach(p => grid.appendChild(dailyPickCard(p, (sc) => openBookDetail(sc.book.id))));
         picksCard.appendChild(grid);
       }
       wrap.appendChild(picksCard);
