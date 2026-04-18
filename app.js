@@ -915,9 +915,18 @@
 
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Discovery" }),
-        util.el("h1", { html: "Search the web. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Pull real titles from Google Books, have Claude read each blurb, and drop what resonates straight into your library." })
+        util.el("div", { class: "t-eyebrow", text: "Discovery · erotica-only" }),
+        util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
+        util.el("p", { class: "lede", text: "Discovery is intentionally restricted to novel-fiction erotica titles only. Queries are bound to the Erotica subject on Google Books, and Claude double-checks every result — general fiction, romance, literary fiction with sex scenes, and non-fiction are excluded." })
+      ])
+    ]));
+
+    // Erotica-only notice — sits directly above the search so the
+    // restriction is always visible, in both tailored and broad modes.
+    wrap.appendChild(util.el("div", { class: "card card-quiet", style: { padding: "var(--s-3)", borderLeft: "3px solid var(--accent)" } }, [
+      util.el("div", { class: "t-small" }, [
+        util.el("strong", { text: "Erotica-only results. " }),
+        util.el("span", { class: "t-muted", text: "Borderline titles — general fiction with sensual passages, mainstream romance, literary novels with sex scenes, non-fiction, memoirs, manuals — are filtered out by query, by keyword rules, and by Claude's classifier before being shown." })
       ])
     ]));
 
@@ -925,7 +934,7 @@
     const hero = util.el("div", { class: "disco-hero" });
     const searchInput = util.el("input", {
       class: "disco-hero-input",
-      placeholder: "Search titles, authors, or topics…",
+      placeholder: "Search erotica titles, authors, or themes…",
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
@@ -971,7 +980,7 @@
       hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
       hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
-      hintLead.textContent = "Up to six books from Google Books · Claude analyzes each for heat, tropes, and one calm insight.";
+      hintLead.textContent = "Up to six erotica novels from Google Books · Claude analyzes each for heat, tropes, and one calm insight, and rejects anything that isn't novel-fiction erotica.";
       hint.appendChild(hintLead);
     }
     hint.appendChild(modeSegmented);
@@ -1039,7 +1048,7 @@
     else {
       grid.appendChild(util.el("div", { class: "discovery-empty" }, [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search the sidebar and Claude will analyze each blurb as it arrives. Set your API key in Settings first." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Erotica-only. Search a title, author, or theme and Claude will classify every result, rejecting anything that isn't novel-fiction erotica. Set your API key in Settings first." })
       ]));
     }
 
@@ -1053,7 +1062,7 @@
         return;
       }
       discoveryState.raw.forEach(book => grid.appendChild(renderDiscoCard(book)));
-      resultsLabel.textContent = `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
+      resultsLabel.textContent = `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
     }
 
     async function runSearch() {
@@ -1104,10 +1113,10 @@
       }
 
       if (!items.length) {
-        resultsLabel.textContent = `No results for "${q}"`;
+        resultsLabel.textContent = `No erotica results for "${q}"`;
         grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing turned up" }),
-          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Try a different keyword, an author surname, or a more specific title." })
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "No erotica matches for that query" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Discovery is restricted to novel-fiction erotica. Non-erotica titles that would otherwise match have been filtered out. Try a more specific erotica-leaning keyword, an author known for the genre, or an erotica subgenre." })
         ]));
         return;
       }
@@ -1118,11 +1127,23 @@
 
       // Analyse sequentially so the status badge narrates progress.
       // In Tailored mode we re-sort the whole list every time a new
-      // analysis completes so higher-fit items bubble up live.
+      // analysis completes so higher-fit items bubble up live. Claude
+      // doubles as an erotica-only classifier — any title it flags as
+      // non-erotica is removed from the feed so the strict restriction
+      // applies even to edge cases the keyword filter misses.
+      let rejected = 0;
       for (const book of items) {
         try {
           const result = await Disco.analyzeWithClaude(book);
-          discoveryState.enrichments[book.id] = result;
+          if (result && result.isErotica === false) {
+            const idx = discoveryState.raw.findIndex(b => b.id === book.id);
+            if (idx !== -1) discoveryState.raw.splice(idx, 1);
+            delete discoveryState.enrichments[book.id];
+            rejected += 1;
+            console.debug("[Lumen Discovery] Claude rejected non-erotica title:", book.title);
+          } else {
+            discoveryState.enrichments[book.id] = result;
+          }
         } catch (err) {
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
         }
@@ -1136,8 +1157,16 @@
           paintGrid();
         } else {
           const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-          if (node) node.replaceWith(renderDiscoCard(book));
+          if (node && discoveryState.raw.some(b => b.id === book.id)) {
+            node.replaceWith(renderDiscoCard(book));
+          } else if (node) {
+            node.remove();
+          }
         }
+      }
+      if (rejected) {
+        const n = discoveryState.raw.length;
+        resultsLabel.textContent = `${n} erotica result${n === 1 ? "" : "s"} for "${q}" · ${rejected} hidden as non-erotica`;
       }
     }
 
@@ -1180,7 +1209,7 @@
           const countEl = document.getElementById("disco-count");
           if (countEl) {
             countEl.textContent = discoveryState.raw.length
-              ? `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
+              ? `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
               : `All results dismissed — try a new search`;
           }
           ui.toast(`Dismissed ${book.title}`, {
@@ -1361,6 +1390,20 @@
     const s = store.get();
     const existing = (s.discovered || []).find(d => d.id === book.id);
     if (existing) {
+      // If the saved entry was previously dismissed, the book is still in
+      // state.discovered but hidden[id] is true — so Library silently drops
+      // it. Clear the hidden flag so re-adding actually surfaces it.
+      const wasHidden = !!(s.hidden && s.hidden[book.id]);
+      if (wasHidden) {
+        store.update(st => { delete st.hidden[book.id]; st.bookStates[book.id] = st.bookStates[book.id] || "want"; });
+        renderView();
+        ui.toast(`Restored ${book.title} to your library`, {
+          action: "Open library",
+          onAction: () => router.go("library"),
+          duration: 4200
+        });
+        return;
+      }
       ui.toast(`${book.title} is already in your library`);
       return;
     }
@@ -1381,7 +1424,15 @@
         addedAt: Date.now()
       });
       st.bookStates[book.id] = "want";
+      // A previous dismiss of the same id (via Library's × or starter-library
+      // unload) leaves hidden[id]=true, which would make the freshly-saved
+      // book invisible in Library. Clear it so the save is actually visible.
+      if (st.hidden) delete st.hidden[book.id];
     });
+    // Force a re-render so if the user is already on Discovery the card's
+    // button flips to "Open in Library", and if they navigate to Library
+    // via the toast action the grid shows the new entry immediately.
+    renderView();
     ui.toast(`Added ${book.title} to your library as "want to read"`, {
       action: "Open library",
       onAction: () => router.go("library"),
