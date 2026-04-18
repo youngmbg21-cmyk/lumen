@@ -771,53 +771,50 @@
       ])
     ]));
 
-    const shell = util.el("div", { class: "discovery-shell" });
-
-    // Sidebar: search + live status. Claude API key now lives in Settings.
-    const side = util.el("div", { class: "stack" });
-
-    const searchCard = util.el("div", { class: "card stack" });
-    searchCard.appendChild(util.el("h3", { text: "Search Google Books" }));
+    // Hero search — full-width, no sidebar
+    const hero = util.el("div", { class: "disco-hero" });
     const searchInput = util.el("input", {
-      class: "input",
-      placeholder: "Title, author, or topic…",
+      class: "disco-hero-input",
+      placeholder: "Search titles, authors, or topics…",
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
-    searchCard.appendChild(searchInput);
-    searchCard.appendChild(util.el("button", { class: "btn btn-primary btn-block", onclick: () => runSearch() }, "Search & analyze"));
-
+    const searchBtn = util.el("button", { class: "btn btn-primary btn-lg", onclick: () => runSearch() }, "Search & analyze");
     const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
-    searchCard.appendChild(statusBadge);
 
+    hero.appendChild(util.el("div", { class: "disco-hero-row" }, [
+      searchInput,
+      searchBtn,
+      statusBadge
+    ]));
+
+    const hint = util.el("div", { class: "disco-hero-hint" });
     if (!Disco.getApiKey()) {
-      searchCard.appendChild(util.el("div", { class: "disclosure-note" }, [
-        util.el("div", {}, [
-          util.el("strong", { text: "No API key yet · " }),
-          "Add your Claude key in ",
-          util.el("a", { href: "#/settings", style: { color: "var(--accent)", textDecoration: "underline" } }, "Settings"),
-          " to enable AI analysis on results."
-        ])
-      ]));
+      hint.appendChild(util.el("span", { text: "Heads up —" }));
+      hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
+      hint.appendChild(util.el("span", { text: "to enable AI analysis." }));
     } else {
-      searchCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Each result is analyzed independently — you can see Claude move down the list." }));
+      hint.appendChild(util.el("span", { text: "Returns up to six books from Google Books · Claude analyzes each for heat, tropes, and one calm insight." }));
     }
-    side.appendChild(searchCard);
+    hero.appendChild(hint);
+    wrap.appendChild(hero);
 
-    shell.appendChild(side);
-
-    // Main grid
-    const gridWrap = util.el("div");
-    const resultsHead = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--s-3)" } });
+    // Results grid — full width
+    const resultsHead = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } });
     const resultsLabel = util.el("div", { class: "t-small t-subtle", id: "disco-count", text: "No search yet" });
     resultsHead.appendChild(resultsLabel);
-    gridWrap.appendChild(resultsHead);
+    if (discoveryState.raw.length) {
+      resultsHead.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
+        discoveryState.raw = [];
+        discoveryState.enrichments = {};
+        discoveryState.lastQuery = "";
+        renderView();
+      }}, "Clear results"));
+    }
+    wrap.appendChild(resultsHead);
 
     const grid = util.el("div", { class: "discovery-grid", id: "disco-grid" });
-    gridWrap.appendChild(grid);
-
-    shell.appendChild(gridWrap);
-    wrap.appendChild(shell);
+    wrap.appendChild(grid);
 
     // Status updates
     const unsub = Disco.onStatus((s) => {
@@ -906,7 +903,7 @@
     function renderDiscoCard(book) {
       const enrich = discoveryState.enrichments[book.id];
       const heat = enrich && !enrich.error ? enrich.heat : null;
-      const card = util.el("div", { class: "book-card has-dismiss", "data-disco-id": book.id });
+      const card = util.el("div", { class: "disco-card has-dismiss", "data-disco-id": book.id });
 
       // Dismiss — drops this card from the current results feed
       card.appendChild(util.el("button", {
@@ -938,34 +935,53 @@
         }
       }, "×"));
 
-      // Steam Engine bar (reveals once analyzed)
-      const steam = util.el("div", {
+      // Cover frame — image if available, initials fallback otherwise
+      const cover = util.el("div", { class: "disco-card-cover" });
+      if (book.thumbnail) {
+        const url = book.thumbnail.replace(/^http:/, "https:");
+        const img = util.el("img", {
+          src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+          onerror: function () {
+            this.remove();
+            if (!cover.querySelector(".cover-fallback")) {
+              cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+            }
+          }
+        });
+        cover.appendChild(img);
+      } else {
+        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      }
+      // Steam Engine bar at the bottom of the cover (reveals once analyzed)
+      cover.appendChild(util.el("div", {
         class: "steam-indicator" + (heat ? " " + steamClass(heat) : ""),
         style: heat ? null : { background: "var(--bg-sunken)", opacity: "0.6" }
-      });
-      card.appendChild(steam);
+      }));
+      card.appendChild(cover);
 
-      card.appendChild(util.el("h4", { text: book.title }));
-      card.appendChild(util.el("div", { class: "author", text: book.author + (book.year ? ` · ${book.year}` : "") }));
-      card.appendChild(util.el("p", { class: "blurb", text: book.description }));
+      // Body
+      const body = util.el("div", { class: "disco-card-body" });
+      body.appendChild(util.el("h4", { text: book.title }));
+      body.appendChild(util.el("div", { class: "author", text: book.author + (book.year ? ` · ${book.year}` : "") }));
+      body.appendChild(util.el("p", { class: "blurb", text: book.description }));
 
       if (enrich && !enrich.error) {
         if (enrich.tropes && enrich.tropes.length) {
           const tr = util.el("div", { class: "tropes" });
           enrich.tropes.forEach(t => tr.appendChild(util.el("span", { class: "tag" }, t)));
-          card.appendChild(tr);
+          body.appendChild(tr);
         }
-        card.appendChild(util.el("div", { class: "insight" }, [
+        body.appendChild(util.el("div", { class: "insight" }, [
           util.el("strong", { text: `AI Insight · heat ${enrich.heat}/5` }),
           util.el("div", { text: enrich.insight || "No insight returned." })
         ]));
       } else if (enrich && enrich.error) {
-        card.appendChild(util.el("div", { class: "insight", style: { background: "var(--primary-soft)", borderLeftColor: "var(--accent)" } }, [
+        body.appendChild(util.el("div", { class: "insight", style: { background: "var(--primary-soft)", borderLeftColor: "var(--accent)" } }, [
           util.el("strong", { text: "Analysis failed" }),
           util.el("div", { text: "Claude couldn't be reached for this title. The rest of the result stands." })
         ]));
       } else {
-        card.appendChild(util.el("div", { class: "insight", style: { opacity: 0.7 } }, [
+        body.appendChild(util.el("div", { class: "insight", style: { opacity: 0.7 } }, [
           util.el("strong", { text: "Claude is reading…" }),
           util.el("div", { text: "Analysis will appear here in a moment." })
         ]));
@@ -982,7 +998,8 @@
           href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer"
         }, "View source"));
       }
-      card.appendChild(actions);
+      body.appendChild(actions);
+      card.appendChild(body);
 
       return card;
     }
@@ -1005,6 +1022,7 @@
         author: book.author,
         year: book.year,
         description: book.description,
+        thumbnail: book.thumbnail || null,
         source: "Google Books",
         sourceUrl: book.sourceUrl || null,
         heat: enrich && !enrich.error ? enrich.heat : null,
@@ -2515,15 +2533,6 @@
       });
       radarCard.appendChild(legend);
       body.appendChild(radarCard);
-
-      // Category breakdown (multi-series)
-      const catsCard = util.el("div", { class: "card" });
-      catsCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Category breakdown" }),
-        util.el("span", { class: "card-sub t-subtle", text: "Fit per dimension, 0–100" })
-      ]));
-      catsCard.appendChild(categoryBarsMulti(scoredList));
-      body.appendChild(catsCard);
 
       // Quick analysis
       const ai = quickAnalysis(scoredList, s.profile);

@@ -1701,31 +1701,68 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* ============================================================
-   Discovery view — API status, search, grid
+   Discovery view — hero search + horizontal cover cards
    ============================================================ */
-.discovery-shell {
-  display: grid;
-  grid-template-columns: 320px 1fr;
-  gap: var(--s-5);
-  align-items: start;
-}
-@media (max-width: 960px) { .discovery-shell { grid-template-columns: 1fr; } }
-
-.api-status {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  padding: 8px 12px;
-  border-radius: var(--r-2);
-  text-align: center;
+.disco-hero {
+  background: var(--bg-raised);
   border: 1px solid var(--border);
-  background: var(--bg-sunken);
+  border-radius: var(--r-3);
+  padding: var(--s-4) var(--s-5);
+  box-shadow: var(--shadow-1);
+}
+.disco-hero-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: var(--s-3);
+  align-items: center;
+}
+@media (max-width: 720px) {
+  .disco-hero-row {
+    grid-template-columns: 1fr;
+  }
+}
+.disco-hero-input {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 16px;
+  border-radius: var(--r-2);
+  border: 1.5px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  transition: border-color var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
+}
+.disco-hero-input:focus-visible {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.disco-hero-hint {
+  margin-top: var(--s-2);
+  font-size: 12px;
   color: var(--text-subtle);
   display: flex;
   align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+.disco-hero-hint a { color: var(--accent); text-decoration: underline; }
+
+.api-status {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 6px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text-subtle);
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   font-weight: 600;
+  white-space: nowrap;
 }
 .api-status::before {
   content: "";
@@ -1751,7 +1788,7 @@ body[data-privacy-blur="on"] .app-main::after {
 
 .discovery-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: var(--s-4);
 }
 .discovery-empty {
@@ -1761,6 +1798,143 @@ body[data-privacy-blur="on"] .app-main::after {
   border-radius: var(--r-3);
   background: var(--bg-raised);
   color: var(--text-muted);
+  grid-column: 1 / -1;
+}
+
+/* Horizontal card with cover */
+.disco-card {
+  background: var(--bg-raised);
+  border-radius: var(--r-3);
+  border: 2px solid transparent;
+  box-shadow: var(--shadow-1);
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: var(--s-4);
+  padding: var(--s-4);
+  transition: transform var(--dur-2) var(--ease),
+              border-color var(--dur-2) var(--ease),
+              box-shadow var(--dur-2) var(--ease);
+  cursor: default;
+  position: relative;
+  min-height: 180px;
+}
+.disco-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-rose);
+}
+@media (max-width: 520px) {
+  .disco-card {
+    grid-template-columns: 80px 1fr;
+    gap: var(--s-3);
+    padding: var(--s-3);
+  }
+}
+.disco-card-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: var(--r-2);
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--primary-soft), var(--bg-sunken));
+  box-shadow: 0 2px 8px rgba(72, 0, 3, 0.10);
+  align-self: start;
+}
+.disco-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.disco-card-cover .cover-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-family: var(--font-serif);
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  font-weight: 500;
+  padding: var(--s-2);
+  text-align: center;
+  line-height: 1.1;
+}
+.disco-card-cover .steam-indicator {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  margin: 0;
+  height: 5px;
+  border-radius: 0;
+}
+
+.disco-card-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.disco-card-body h4 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 17px;
+  color: var(--text);
+  line-height: 1.25;
+  margin-right: var(--s-5);
+}
+.disco-card-body .author {
+  font-size: 12px;
+  color: var(--primary);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+  font-weight: 500;
+}
+.disco-card-body .blurb {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: var(--s-2);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.disco-card-body .tropes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: var(--s-2);
+}
+.disco-card-body .tropes .tag {
+  font-size: 10px;
+  padding: 2px 8px;
+  background: var(--bg-sunken);
+  color: var(--text-muted);
+}
+.disco-card-body .insight {
+  margin-top: var(--s-2);
+  padding: 8px 10px;
+  background: var(--primary-soft);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--r-1);
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.disco-card-body .insight strong {
+  color: var(--accent);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+  display: block;
+  margin-bottom: 2px;
+}
+.disco-card-body .card-actions {
+  margin-top: auto;
+  padding-top: var(--s-3);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .disclosure-note {
