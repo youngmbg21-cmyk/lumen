@@ -2382,39 +2382,56 @@
   const cmpState = { slots: [null, null, null], lastDeepAnalysis: null };
 
   function openSlotPicker(slotIdx) {
+    const saved = listSavedBooks();
     const used = cmpState.slots.filter(Boolean);
     const body = util.el("div", { class: "stack" });
-    body.appendChild(util.el("p", { class: "t-muted t-small", text: "Pick a title for this slot. You can have up to three." }));
-    const search = util.el("input", { class: "input", placeholder: "Search titles or authors…", autofocus: true });
+
+    if (!saved.length) {
+      body.appendChild(util.el("p", { class: "t-muted t-small", text: "Compare only works on titles you've saved to your Library. Nothing is saved yet — add books from Discovery or load the starter library in Settings." }));
+      ui.modal({
+        title: `Slot ${slotIdx + 1}`,
+        body,
+        primary:   { label: "Open Discovery", onClick: () => router.go("discovery") },
+        secondary: { label: "Open Settings",   onClick: () => router.go("settings") }
+      });
+      return;
+    }
+
+    const availableCount = saved.filter(b => !used.includes(b.id)).length;
+    body.appendChild(util.el("p", { class: "t-muted t-small", text: availableCount
+      ? `Pick any title saved in your Library. ${availableCount} available, ${saved.length} saved in total.`
+      : "You've already placed every saved title into a slot. Remove one, or save more from Discovery." }));
+
+    const search = util.el("input", { class: "input", placeholder: "Search your library…", autofocus: true });
     body.appendChild(search);
     const list = util.el("div", { class: "stack-sm", style: { maxHeight: "320px", overflowY: "auto", marginTop: "var(--s-2)" } });
     body.appendChild(list);
 
-    const handle = ui.modal({ title: `Add title to slot ${slotIdx + 1}`, body, secondary: { label: "Cancel" } });
+    const handle = ui.modal({ title: `Add a saved title to slot ${slotIdx + 1}`, body, secondary: { label: "Cancel" } });
 
     function paint() {
       const q = (search.value || "").toLowerCase();
       list.innerHTML = "";
-      const candidates = BOOKS
+      const candidates = saved
         .filter(b => !used.includes(b.id))
         .filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
 
       if (!candidates.length) {
-        list.appendChild(util.el("p", { class: "t-small t-subtle", style: { padding: "var(--s-3)" }, text: "No titles match. Try a different search, or remove an existing slot to free one up." }));
+        list.appendChild(util.el("p", { class: "t-small t-subtle", style: { padding: "var(--s-3)" }, text: q ? "No saved titles match that search." : "No saved titles left to place. Remove a slot, or save more titles from Discovery." }));
         return;
       }
       candidates.forEach(b => {
         const row = util.el("button", { class: "btn btn-ghost", style: { justifyContent: "flex-start", textAlign: "left", width: "100%", padding: "10px 12px" },
           onclick: () => {
             cmpState.slots[slotIdx] = b.id;
-            cmpState.lastDeepAnalysis = null;  // invalidate stale analysis
+            cmpState.lastDeepAnalysis = null;
             handle.close();
             renderView();
           }
         }, [
           util.el("div", {}, [
             util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: b.title }),
-            util.el("div", { class: "t-tiny t-subtle", text: `${b.author} · ${util.fmtYear(b.year)}` })
+            util.el("div", { class: "t-tiny t-subtle", text: `${b.author}${b.year ? " · " + util.fmtYear(b.year) : ""}${b._seed ? " · from starter library" : b._discovered ? " · from Discovery" : ""}` })
           ])
         ]);
         list.appendChild(row);
@@ -2626,24 +2643,37 @@
 
   function renderCompare() {
     const s = store.get();
+    const savedIds = new Set(listSavedBooks().map(b => b.id));
 
-    // Seed from Library deep-link
+    // Reconcile: any slot pointing at a book that's no longer saved
+    // (book dismissed from Library, starter library removed, etc.) is
+    // cleared and a stale deep analysis is invalidated with it.
+    let reconciled = false;
+    cmpState.slots = cmpState.slots.map(id => {
+      if (id && !savedIds.has(id)) { reconciled = true; return null; }
+      return id;
+    });
+    if (reconciled) cmpState.lastDeepAnalysis = null;
+
+    // Seed from Library deep-link (only accept if the book is actually saved)
     const seed = sessionStorage.getItem("lumen:compare-seed");
-    if (seed) {
+    if (seed && savedIds.has(seed)) {
       if (!cmpState.slots.includes(seed)) {
         const emptyIdx = cmpState.slots.findIndex(x => !x);
         if (emptyIdx !== -1) cmpState.slots[emptyIdx] = seed;
         else cmpState.slots[0] = seed;
       }
-      sessionStorage.removeItem("lumen:compare-seed");
     }
+    if (seed) sessionStorage.removeItem("lumen:compare-seed");
 
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Compare" }),
+        util.el("div", { class: "t-eyebrow", text: "Compare · from your library" }),
         util.el("h1", { html: "<em>Lineup</em>" }),
-        util.el("p", { class: "lede", text: "Place up to three titles side by side. You'll get per-book scores, category-by-category bars, a radar shape, and a quick verdict — all against your profile. Hit Run analysis for the deeper pass." })
+        util.el("p", { class: "lede", text: savedIds.size
+          ? `Compare up to three titles you've saved. Only books in your Library can be placed in slots — ${savedIds.size} available. Adjust your profile to change the scores.`
+          : "Compare works from titles you've saved to your Library. Add books from Discovery, or load the starter library in Settings, then come back." })
       ])
     ]));
 
@@ -2688,10 +2718,10 @@
     function paint() {
       body.innerHTML = "";
       const filled = cmpState.slots.filter(Boolean);
-      if (!listAllBooks().length) {
+      if (!savedIds.size) {
         body.appendChild(ui.empty({
           title: "Nothing saved to compare yet",
-          message: "Compare draws from books in your Library. Add titles from Discovery or load the starter library in Settings, then come back here.",
+          message: "Compare draws exclusively from books saved in your Library. Add titles from Discovery or load the starter library in Settings, then come back here.",
           actions: [
             { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
             { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
@@ -2699,9 +2729,19 @@
         }));
         return;
       }
+      if (savedIds.size === 1) {
+        body.appendChild(ui.empty({
+          title: "You need at least two saved titles",
+          message: "Compare puts saved titles side by side. Save one more from Discovery and your lineup will unlock.",
+          actions: [
+            { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") }
+          ]
+        }));
+        return;
+      }
       if (filled.length === 0) {
         body.appendChild(ui.empty({
-          title: "Pick up to three titles",
+          title: "Pick up to three titles from your library",
           message: "Scores are evaluated against your current profile. Change your profile and the picture changes."
         }));
         return;
