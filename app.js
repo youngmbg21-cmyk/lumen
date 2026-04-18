@@ -485,16 +485,17 @@
   }
 
   // One KPI card. Mirrors the attached fit-score reference: ring on the
-  // left, uppercase label + italic descriptor on the right.
-  function buildKpiCard({ label, valueHtml, fill, innerText, tone, descriptor, title }) {
-    const card = util.el("div", { class: "kpi-card", title: title || label });
+  // left, uppercase label + italic descriptor stacked on the right.
+  // The numeric value lives INSIDE the ring only — we deliberately drop
+  // the extra "3/5" line below the label because it duplicated the
+  // ring's inner number. Title-attribute carries the full "3/5" /
+  // "56/100" string so hover/assistive tech still see the exact scale.
+  function buildKpiCard({ label, tooltip, fill, innerText, tone, descriptor, title }) {
+    const card = util.el("div", { class: "kpi-card", title: tooltip || title || label });
     const ring = util.el("div", { class: "kpi-ring" }, [kpiRing(fill, innerText, tone)]);
     card.appendChild(ring);
     const body = util.el("div", { class: "kpi-body" });
     body.appendChild(util.el("div", { class: "kpi-label", text: label }));
-    if (valueHtml) {
-      body.appendChild(util.el("div", { class: "kpi-value", html: valueHtml }));
-    }
     body.appendChild(util.el("div", { class: "kpi-sub", text: descriptor }));
     card.appendChild(body);
     return card;
@@ -528,9 +529,9 @@
       const fill = Math.max(0, Math.min(1, value / 5));
       return buildKpiCard({
         label, fill,
-        innerText: String(value),
+        innerText: `${prefix}${value}`,
         tone: kpiToneFromFraction(fill),
-        valueHtml: `${prefix}${value}<span class="kpi-of">/5</span>`,
+        tooltip: `${label}: ${prefix}${value}/5 · ${descriptorFn(value)}`,
         descriptor: descriptorFn(value)
       });
     };
@@ -545,24 +546,26 @@
     // Tags selected — no ceiling, so the ring fills proportionally up to
     // a soft cap of 20 (anything above reads as "extensive").
     const tagFill = Math.max(0, Math.min(1, tagsSelected / 20));
+    const tagsDescriptor = tagsSelected === 0 ? "None yet" : tagsSelected >= 10 ? "Extensive" : tagsSelected >= 4 ? "Shaped" : "Sparse";
     strip.appendChild(buildKpiCard({
       label: "Tags selected",
       fill: tagFill,
       innerText: String(tagsSelected),
       tone: kpiToneFromFraction(tagFill),
-      valueHtml: `${tagsSelected}`,
-      descriptor: tagsSelected === 0 ? "None yet" : tagsSelected >= 10 ? "Extensive" : tagsSelected >= 4 ? "Shaped" : "Sparse"
+      tooltip: `Tags selected: ${tagsSelected} · ${tagsDescriptor}`,
+      descriptor: tagsDescriptor
     }));
 
     // Fit score — the premium card that mirrors the attached reference.
     const fitFill = fit.value / 100;
+    const fitDescriptor = fit.hasData ? kpiDescriptorFit(fit.value) : "No library yet";
     strip.appendChild(buildKpiCard({
       label: "Fit score",
       fill: fitFill,
       innerText: String(fit.value),
       tone: kpiToneFromFraction(fitFill),
-      valueHtml: `${fit.value}<span class="kpi-of">/100</span>`,
-      descriptor: fit.hasData ? kpiDescriptorFit(fit.value) : "No library yet"
+      tooltip: `Fit score: ${fit.value}/100 · ${fitDescriptor}`,
+      descriptor: fitDescriptor
     }));
 
     return strip;
