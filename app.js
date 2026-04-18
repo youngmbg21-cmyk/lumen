@@ -196,15 +196,16 @@
 
   /* -------------------- router -------------------- */
   const ROUTES = [
-    { id: "discover",     label: "Home",          short: "Home",    group: "main",    render: () => views.discover() },
-    { id: "library",      label: "Library",       short: "Library", group: "main",    render: () => views.library() },
-    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",   render: () => views.discovery() },
-    { id: "compare",      label: "Compare",       short: "Compare", group: "main",    render: () => views.compare() },
-    { id: "chat",         label: "Connections",   short: "Connect", group: "main",    render: () => views.chat() },
-    { id: "journal",      label: "Journal",       short: "Journal", group: "personal", render: () => views.journal() },
-    { id: "vault",        label: "Vault",         short: "Vault",   group: "personal", render: () => views.vault() },
-    { id: "profile",      label: "Profile",       short: "Profile", group: "settings", render: () => views.profile() },
-    { id: "transparency", label: "Transparency",  short: "Trust",   group: "settings", render: () => views.transparency() }
+    { id: "discover",     label: "Home",          short: "Home",     group: "main",     render: () => views.discover() },
+    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
+    { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
+    { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
+    { id: "chat",         label: "Connections",   short: "Connect",  group: "main",     render: () => views.chat() },
+    { id: "journal",      label: "Journal",       short: "Journal",  group: "personal", render: () => views.journal() },
+    { id: "vault",        label: "Vault",         short: "Vault",    group: "personal", render: () => views.vault() },
+    { id: "profile",      label: "Profile",       short: "Profile",  group: "settings", render: () => views.profile() },
+    { id: "settings",     label: "Settings",      short: "Settings", group: "settings", render: () => views.settings() },
+    { id: "transparency", label: "Transparency",  short: "Trust",    group: "settings", render: () => views.transparency() }
   ];
 
   const router = {
@@ -655,42 +656,8 @@
 
     const shell = util.el("div", { class: "discovery-shell" });
 
-    // Sidebar: API key + search + status
+    // Sidebar: search + live status. Claude API key now lives in Settings.
     const side = util.el("div", { class: "stack" });
-
-    const keyCard = util.el("div", { class: "card stack" });
-    keyCard.appendChild(util.el("h3", { text: "Claude API key" }));
-    keyCard.appendChild(util.el("p", { class: "t-small t-muted", text: "Stored locally in your browser. Used only for live book analysis." }));
-
-    const keyInput = util.el("input", {
-      type: "password",
-      class: "input",
-      placeholder: "sk-ant-…",
-      value: Disco.getApiKey()
-    });
-    const keyRow = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
-    keyRow.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
-      Disco.setApiKey(keyInput.value);
-      ui.toast(keyInput.value ? "API key saved locally" : "API key cleared");
-    }}, "Save"));
-    keyRow.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
-      keyInput.value = "";
-      Disco.clearApiKey();
-      ui.toast("API key cleared");
-    }}, "Clear"));
-    keyCard.appendChild(keyInput);
-    keyCard.appendChild(keyRow);
-
-    const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
-    keyCard.appendChild(statusBadge);
-
-    keyCard.appendChild(util.el("div", { class: "disclosure-note" }, [
-      util.el("div", {}, [
-        util.el("strong", { text: "Heads up · " }),
-        "Calling Claude from the browser exposes your API key to this page. Use a key scoped for personal experimentation, set spend limits in the Anthropic console, and never share this screen. For real deployments, proxy through a server."
-      ])
-    ]));
-    side.appendChild(keyCard);
 
     const searchCard = util.el("div", { class: "card stack" });
     searchCard.appendChild(util.el("h3", { text: "Search Google Books" }));
@@ -702,7 +669,22 @@
     });
     searchCard.appendChild(searchInput);
     searchCard.appendChild(util.el("button", { class: "btn btn-primary btn-block", onclick: () => runSearch() }, "Search & analyze"));
-    searchCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Returns up to six results. Each is analyzed independently — you can see Claude move down the list." }));
+
+    const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
+    searchCard.appendChild(statusBadge);
+
+    if (!Disco.getApiKey()) {
+      searchCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+        util.el("div", {}, [
+          util.el("strong", { text: "No API key yet · " }),
+          "Add your Claude key in ",
+          util.el("a", { href: "#/settings", style: { color: "var(--accent)", textDecoration: "underline" } }, "Settings"),
+          " to enable AI analysis on results."
+        ])
+      ]));
+    } else {
+      searchCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Each result is analyzed independently — you can see Claude move down the list." }));
+    }
     side.appendChild(searchCard);
 
     shell.appendChild(side);
@@ -735,7 +717,7 @@
     else {
       grid.appendChild(util.el("div", { class: "discovery-empty" }, [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Enter an API key, search the sidebar, and Claude will analyze each blurb as it arrives." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search the sidebar and Claude will analyze each blurb as it arrives. Set your API key in Settings first." })
       ]));
     }
 
@@ -755,7 +737,14 @@
     async function runSearch() {
       const q = searchInput.value.trim();
       if (!q) { ui.toast("Enter a title, author, or topic"); return; }
-      if (!Disco.getApiKey()) { ui.toast("Add a Claude API key first"); return; }
+      if (!Disco.getApiKey()) {
+        ui.toast("Add your Claude API key in Settings first", {
+          action: "Open Settings",
+          onAction: () => router.go("settings"),
+          duration: 4500
+        });
+        return;
+      }
 
       discoveryState.lastQuery = q;
       discoveryState.raw = [];
@@ -886,6 +875,103 @@
   }
 
   /* -------------------- transparency -------------------- */
+  /* -------------------- settings -------------------- */
+  function renderSettings() {
+    const Disco = window.LumenDiscovery;
+    const wrap = util.el("div", { class: "page stack-lg" });
+
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Settings" }),
+        util.el("h1", { text: "Settings" }),
+        util.el("p", { class: "lede", text: "Keys and configuration. Everything here is stored locally on this device." })
+      ])
+    ]));
+
+    // --- Claude API key ---------------------------------------------------
+    const keyCard = util.el("div", { class: "card settings-card stack" });
+    keyCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Claude API key" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Required for AI analysis on Discovery search results. Stored locally, never sent anywhere but Anthropic." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (Disco.getApiKey() ? "settings-badge-ok" : "settings-badge-missing"),
+        text: Disco.getApiKey() ? "Key saved" : "Not set"
+      })
+    ]));
+
+    const keyInput = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "sk-ant-…",
+      value: Disco.getApiKey(),
+      autocomplete: "off",
+      spellcheck: "false"
+    });
+    keyCard.appendChild(keyInput);
+
+    const revealRow = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)" } });
+    const revealInput = util.el("input", { type: "checkbox", onchange: (e) => {
+      keyInput.setAttribute("type", e.target.checked ? "text" : "password");
+    }});
+    revealRow.appendChild(revealInput);
+    revealRow.appendChild(util.el("span", { class: "toggle-track" }));
+    revealRow.appendChild(util.el("span", { class: "toggle-label", text: "Show key" }));
+    keyCard.appendChild(revealRow);
+
+    const keyActions = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
+    keyActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      const val = keyInput.value.trim();
+      if (!val) {
+        Disco.clearApiKey();
+        ui.toast("API key cleared");
+        renderView();
+        return;
+      }
+      Disco.setApiKey(val);
+      ui.toast("API key saved locally");
+      renderView();
+    }}, Disco.getApiKey() ? "Update" : "Save"));
+    keyActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", disabled: !Disco.getApiKey() || null, onclick: () => {
+      ui.modal({
+        title: "Clear Claude API key?",
+        body: "<p class=\"t-muted\">Removes the key from this device. You can paste it back in any time.</p>",
+        primary: { label: "Clear", onClick: () => {
+          Disco.clearApiKey();
+          keyInput.value = "";
+          ui.toast("API key cleared");
+          renderView();
+        }},
+        secondary: { label: "Cancel" }
+      });
+    }}, "Clear"));
+    keyCard.appendChild(keyActions);
+
+    keyCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+      util.el("div", {}, [
+        util.el("strong", { text: "Heads up · " }),
+        "Calling Claude from the browser exposes this key to any script loaded on this page. Use a personal key, set a spend limit in the Anthropic console, and don't paste a team key here. Full detail in ",
+        util.el("a", { href: "#/transparency", style: { color: "var(--accent)", textDecoration: "underline" } }, "Transparency"),
+        "."
+      ])
+    ]));
+    wrap.appendChild(keyCard);
+
+    // --- Quick links ------------------------------------------------------
+    const links = util.el("div", { class: "card settings-card stack" });
+    links.appendChild(util.el("h3", { text: "Other settings" }));
+    links.appendChild(util.el("p", { class: "t-small t-muted", text: "Your reader profile, data export, and full privacy controls live in their own sections." }));
+    links.appendChild(util.el("div", { class: "row-wrap" }, [
+      util.el("a", { class: "btn btn-sm", href: "#/profile" }, "Reader profile"),
+      util.el("a", { class: "btn btn-sm", href: "#/vault" }, "Privacy & Vault"),
+      util.el("a", { class: "btn btn-sm", href: "#/transparency" }, "Transparency & data")
+    ]));
+    wrap.appendChild(links);
+
+    return wrap;
+  }
+
   function renderTransparency() {
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
@@ -2697,6 +2783,10 @@
       return wrap;
     },
 
+    settings() {
+      return renderSettings();
+    },
+
     transparency() {
       return renderTransparency();
     }
@@ -2865,6 +2955,8 @@
       if (discoveryState && discoveryState.lastQuery) chips.push({ label: `Search: "${discoveryState.lastQuery}"` });
       const discoveredCount = (s.discovered || []).length;
       if (discoveredCount) chips.push({ label: `${discoveredCount} discovered` });
+    } else if (routeId === "settings") {
+      chips.push({ label: "Settings" });
     } else if (routeId === "transparency") {
       chips.push({ label: "Transparency" });
     }
@@ -2990,6 +3082,7 @@
         ui.toast("Snapshot exported");
       } },
       { label: "Open Transparency", hint: "", run: () => router.go("transparency") },
+      { label: "Open Settings",     hint: "", run: () => router.go("settings") },
       { label: "Open Sara",          hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
       { label: "Close Sara",         hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
     ];

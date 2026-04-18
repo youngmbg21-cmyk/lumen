@@ -1741,3 +1741,35 @@ body[data-privacy-blur="on"] .app-main::after {
   line-height: 1.55;
 }
 .disclosure-note strong { color: var(--accent); }
+
+/* ============================================================
+   Settings view
+   ============================================================ */
+.settings-card { max-width: 640px; }
+.settings-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.settings-badge {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.settings-badge-ok {
+  background: #D8EED2;
+  color: #2F6B36;
+  border-color: #9FC99A;
+}
+.settings-badge-missing {
+  background: var(--bg-sunken);
+  color: var(--text-subtle);
+}

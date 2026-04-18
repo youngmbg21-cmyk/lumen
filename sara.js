@@ -192,6 +192,7 @@
       journal:  ["Give me a reflection prompt"],
       vault:    ["What have I pinned recently?"],
       profile:  ["What do my settings mean?"],
+      settings: ["Where is my API key stored?", "What can you see?"],
       transparency: ["What won't you do?"]
     };
     return (perRoute[route] || []).concat(base).slice(0, 5);
