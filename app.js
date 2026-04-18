@@ -1319,6 +1319,25 @@
       replies.push(`Your comparison has ${saraCtx.compareSlots.length} title${saraCtx.compareSlots.length === 1 ? "" : "s"}: ${saraCtx.compareSlots.join(", ")}. Want me to call out the biggest tradeoff, or a safest choice?`);
     }
 
+    // Deep-analysis aware replies
+    if (cmpState && cmpState.lastDeepAnalysis) {
+      const deep = cmpState.lastDeepAnalysis;
+      if (/\b(tradeoff|tradeoffs|difference|differs|versus|vs)\b/.test(text)) {
+        const best = deep.tradeoffs[0];
+        if (best) replies.push(`The sharpest tradeoff I see: **${best.a} vs ${best.b}** — ${best.differences.map(d => `${d.leader} wins ${d.category.toLowerCase()} (+${d.magnitude})`).join("; ") || "no dimension separates them by much."}`);
+      }
+      if (/\b(mood|tonight|feel|right for)\b/.test(text)) {
+        const sample = deep.moods[0];
+        if (sample) replies.push(`Mood map: for **${sample.mood.toLowerCase()}**, I'd lean to ${sample.winner}. Ask about other moods if that isn't what you're after.`);
+      }
+      if (/\b(order|sequence|first|start)\b/.test(text) && deep.readingOrder) {
+        replies.push(`Reading order I'd suggest: ${deep.readingOrder.order.map((t, i) => `${i + 1}. ${t}`).join(" — ")}. ${deep.readingOrder.note}`);
+      }
+      if (/\b(confiden|trust|how sure)\b/.test(text)) {
+        replies.push(`Confidence across the lineup: ${deep.confidence.entries.map(e => `${e.title} ${e.confidence}%`).join(", ")}. ${deep.confidence.flags[0] || ""}`.trim());
+      }
+    }
+
     if (/\b(reflect|journal|feel|felt|thought|prompt)\b/.test(text)) {
       if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
         const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
@@ -2015,15 +2034,157 @@
   }
 
   function renderDeepAnalysis(payload) {
-    // Populated in Batch 4. For now render a lightweight placeholder.
-    const card = util.el("div", { class: "card stack" });
+    if (!payload) {
+      const empty = util.el("div", { class: "card" });
+      empty.appendChild(ui.empty({
+        title: "No analysis yet",
+        message: "Pick two or three titles and hit Run analysis to get a deeper read."
+      }));
+      return empty;
+    }
+
+    const card = util.el("div", { class: "card stack-lg" });
+
+    // Header
     card.appendChild(util.el("div", { class: "card-head" }, [
       util.el("h3", { text: "Deep analysis" }),
-      util.el("span", { class: "card-sub t-subtle", text: "Structured output" })
+      util.el("div", { class: "row" }, [
+        util.el("span", { class: "card-sub t-subtle", text: new Date(payload.timestamp).toLocaleString() }),
+        util.el("button", { class: "btn btn-sm", onclick: () => openInSara(payload) }, "Open in Sara"),
+        util.el("button", { class: "btn btn-sm", onclick: () => {
+          saveAnalysis({
+            titleA: payload.titles[0],
+            titleB: payload.titles.slice(1).join(" & "),
+            fitA: payload.summaries[0]?.fit ?? 0,
+            fitB: payload.summaries[1]?.fit ?? 0,
+            verdict: payload.headline,
+            deep: payload
+          });
+        }}, "Save to Vault")
+      ])
     ]));
-    if (payload && payload._render) return payload._render();
-    card.appendChild(util.el("p", { class: "t-muted t-small", text: "Deep analysis module arrives in Batch 4." }));
+
+    // Headline
+    card.appendChild(util.el("div", { class: "deep-head" }, [
+      util.el("div", { class: "t-eyebrow", text: "Headline" }),
+      util.el("h3", { text: payload.headline })
+    ]));
+
+    // Executive summaries
+    const summSection = util.el("div");
+    summSection.appendChild(util.el("div", { class: "deep-section-title", text: "Executive summaries" }));
+    const summGrid = util.el("div", { class: "deep-grid" });
+    payload.summaries.forEach(s => {
+      const tile = util.el("div", { class: "deep-tile" });
+      tile.appendChild(util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
+        util.el("div", { class: "t-serif", style: { fontSize: "15px" }, text: s.title }),
+        util.el("div", { class: "t-mono", style: { color: "var(--accent)" }, text: `${s.fit}` })
+      ]));
+      tile.appendChild(util.el("div", { class: "t-tiny t-subtle", text: `Confidence ${s.confidence}%` }));
+      tile.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: s.summary }));
+      summGrid.appendChild(tile);
+    });
+    summSection.appendChild(summGrid);
+    card.appendChild(summSection);
+
+    // Category winners
+    const winSection = util.el("div");
+    winSection.appendChild(util.el("div", { class: "deep-section-title", text: "Category winners" }));
+    winSection.appendChild(util.el("p", { class: "t-small t-subtle", style: { marginBottom: "var(--s-3)" }, text: "Who leads each scored dimension, and by how much. Decisive wins shape the overall fit most." }));
+    const winTable = util.el("div");
+    payload.categoryWinners.forEach(w => {
+      winTable.appendChild(util.el("div", { class: "deep-win-row" }, [
+        util.el("div", { class: "t-small t-muted", text: w.category }),
+        util.el("div", { class: "t-small", text: w.winner }),
+        util.el("div", { class: `tier ${w.tier}`, text: w.tier })
+      ]));
+    });
+    winSection.appendChild(winTable);
+    card.appendChild(winSection);
+
+    // Thematic takeaway
+    card.appendChild(util.el("div", { class: "deep-tile" }, [
+      util.el("div", { class: "t-eyebrow", text: "Thematic takeaway" }),
+      util.el("p", { class: "t-muted t-small", style: { marginTop: "var(--s-2)" }, text: payload.thematic })
+    ]));
+
+    // Tradeoff matrix
+    if (payload.tradeoffs.length) {
+      const matrix = util.el("div");
+      matrix.appendChild(util.el("div", { class: "deep-section-title", text: "Pairwise tradeoffs" }));
+      matrix.appendChild(util.el("div", { class: "stack-sm" }, payload.tradeoffs.map(p => {
+        const diffsText = p.differences.length
+          ? p.differences.map(d => `${d.leader} wins ${d.category.toLowerCase()} (+${d.magnitude})`).join(" · ")
+          : "No dimension separates them by more than 25 points.";
+        return util.el("div", { class: "deep-pair" }, [
+          util.el("div", { class: "t-eyebrow", text: `${p.a}  vs  ${p.b}` }),
+          util.el("div", { class: "t-small t-muted", text: diffsText })
+        ]);
+      })));
+      card.appendChild(matrix);
+    }
+
+    // Mood mapping
+    const moodSection = util.el("div");
+    moodSection.appendChild(util.el("div", { class: "deep-section-title", text: "Mood mapping" }));
+    moodSection.appendChild(util.el("p", { class: "t-small t-subtle", style: { marginBottom: "var(--s-3)" }, text: "Tonight, depending on what you're after." }));
+    payload.moods.forEach(m => {
+      moodSection.appendChild(util.el("div", { class: "deep-mood-row" }, [
+        util.el("div", { class: "t-small t-muted", text: m.mood }),
+        util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: m.winner }),
+        util.el("div", { class: "tight-flag", text: m.tight ? "close call" : "" })
+      ]));
+    });
+    card.appendChild(moodSection);
+
+    // Reading order
+    if (payload.readingOrder) {
+      const orderSection = util.el("div");
+      orderSection.appendChild(util.el("div", { class: "deep-section-title", text: "Suggested reading order" }));
+      const chips = util.el("div", { class: "row-wrap", style: { gap: "var(--s-2)" } });
+      payload.readingOrder.order.forEach((t, i) => {
+        if (i > 0) chips.appendChild(util.el("span", { class: "reading-order-sep", text: "→" }));
+        chips.appendChild(util.el("span", { class: "reading-order-chip" }, [
+          util.el("span", { class: "num", text: String(i + 1) }),
+          util.el("span", { text: t })
+        ]));
+      });
+      orderSection.appendChild(chips);
+      orderSection.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: payload.readingOrder.note }));
+      card.appendChild(orderSection);
+    }
+
+    // Confidence & uncertainty
+    const confSection = util.el("div");
+    confSection.appendChild(util.el("div", { class: "deep-section-title", text: "Confidence & uncertainty" }));
+    const confGrid = util.el("div", { class: "deep-grid" });
+    payload.confidence.entries.forEach(e => {
+      confGrid.appendChild(util.el("div", { class: "deep-tile" }, [
+        util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: e.title }),
+        util.el("div", { class: "t-tiny t-subtle", text: `Fit ${e.fit} · Confidence ${e.confidence}%` }),
+        util.el("div", { class: "bar", style: { marginTop: "var(--s-2)" } }, [util.el("span", { style: { width: `${e.confidence}%` } })]),
+        e.critical ? util.el("div", { class: "tag tag-danger", style: { marginTop: "var(--s-2)" } }, "critical warning") : null,
+        (e.warnCount > 0 && !e.critical) ? util.el("div", { class: "tag tag-warn", style: { marginTop: "var(--s-2)" } }, `${e.warnCount} warnings`) : null
+      ].filter(Boolean)));
+    });
+    confSection.appendChild(confGrid);
+    payload.confidence.flags.forEach(f => {
+      confSection.appendChild(util.el("div", { class: f.toLowerCase().includes("critical") ? "caution" : "tradeoff", style: { marginTop: "var(--s-3)" } }, f));
+    });
+    card.appendChild(confSection);
+
     return card;
+  }
+
+  function openInSara(payload) {
+    if (!window.LumenSara) return;
+    const titles = payload.titles.join(" · ");
+    window.LumenSara.post(`I just ran a deep analysis on **${titles}**. Here's the headline:\n\n${payload.headline}\n\nAsk me for any part of it — tradeoffs, moods, confidence, or reading order.`);
+    window.LumenSara.setContext({
+      route: "compare",
+      chips: [{ label: "Deep analysis active" }, ...payload.titles.map(t => ({ label: t }))]
+    });
+    window.LumenSara.open();
   }
 
   /* -------------------- views -------------------- */
