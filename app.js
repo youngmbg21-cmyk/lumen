@@ -57,7 +57,7 @@
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
       chats: { sara: [], friends: [] },
       ui: {
-        theme: "light",
+        theme: "rose",
         discreet: false,
         onboardingDone: false,
         adultConfirmed: false,
@@ -3150,13 +3150,7 @@
       }
     }, state.ui.discreet ? "Discreet · on" : "Discreet · off");
 
-    const themeBtn = util.el("button", {
-      class: "btn btn-sm",
-      onclick: () => {
-        store.update(s => { s.ui.theme = s.ui.theme === "dark" ? "light" : "dark"; });
-        applyUIFlags();
-      }
-    }, state.ui.theme === "dark" ? "Light mode" : "Dark mode");
+    const themeBtn = buildThemeSwitcher(state.ui.theme);
 
     const saraLauncher = util.el("button", {
       class: "sara-launcher",
@@ -3251,9 +3245,46 @@
     return ctx;
   }
 
+  const THEMES = [
+    { id: "rose",      label: "Rose Atelier",  preview: "linear-gradient(135deg, #f9f0ec, #b84a62, #8e2e44)" },
+    { id: "plum",      label: "Midnight Plum", preview: "linear-gradient(135deg, #3a2340, #28182c, #160c19)" },
+    { id: "pearl",     label: "Pearl & Gold",  preview: "linear-gradient(135deg, #faf6ef, #c9a050, #7a5c28)" },
+    { id: "botanical", label: "Botanical Dusk", preview: "linear-gradient(135deg, #e6ddc8, #a86670, #6a7e5a)" }
+  ];
+  function normalizeTheme(t) {
+    if (THEMES.some(x => x.id === t)) return t;
+    if (t === "dark") return "plum";
+    return "rose";
+  }
+  function buildThemeSwitcher(currentRaw) {
+    const current = normalizeTheme(currentRaw);
+    const pill = util.el("div", { class: "theme-switcher", role: "group", "aria-label": "Theme" });
+    THEMES.forEach(t => {
+      const dot = util.el("button", {
+        type: "button",
+        class: "theme-dot" + (t.id === current ? " is-active" : ""),
+        "aria-label": t.label,
+        "aria-pressed": t.id === current ? "true" : "false",
+        title: t.label,
+        style: { background: t.preview },
+        onclick: () => {
+          store.update(s => { s.ui.theme = t.id; });
+          applyUIFlags();
+        }
+      });
+      pill.appendChild(dot);
+    });
+    return pill;
+  }
+
   function applyUIFlags() {
     const s = store.get();
-    document.documentElement.setAttribute("data-theme", s.ui.theme);
+    const theme = normalizeTheme(s.ui.theme);
+    // Body-class migration for the new four-theme system.
+    document.body.classList.remove("theme-rose", "theme-plum", "theme-pearl", "theme-botanical");
+    document.body.classList.add("theme-" + theme);
+    // Legacy attributes kept so existing CSS rules / scripts don't break.
+    document.documentElement.setAttribute("data-theme", theme);
     document.documentElement.setAttribute("data-discreet", s.ui.discreet ? "on" : "off");
     renderTopbar();
     renderSidebar();
@@ -3357,7 +3388,11 @@
   function openPalette() {
     const commands = [
       ...ROUTES.map(r => ({ label: `Go to ${r.label}`, hint: r.id, run: () => router.go(r.id) })),
-      { label: "Toggle theme", hint: "T", run: () => { store.update(s => { s.ui.theme = s.ui.theme === "dark" ? "light" : "dark"; }); applyUIFlags(); } },
+      { label: "Toggle theme", hint: "T", run: () => { store.update(s => {
+          const order = ["rose", "plum", "pearl", "botanical"];
+          const cur = order.indexOf(normalizeTheme(s.ui.theme));
+          s.ui.theme = order[(cur + 1) % order.length];
+        }); applyUIFlags(); } },
       { label: "Toggle discreet mode", hint: "D", run: () => { store.update(s => { s.ui.discreet = !s.ui.discreet; }); applyUIFlags(); } },
       { label: "New journal entry", hint: "", run: () => {
         const draft = newEntryDraft();
@@ -3462,7 +3497,11 @@
       }
 
       if (e.key.toLowerCase() === "t" && !e.metaKey && !e.ctrlKey) {
-        store.update(s => { s.ui.theme = s.ui.theme === "dark" ? "light" : "dark"; });
+        store.update(s => {
+          const order = ["rose", "plum", "pearl", "botanical"];
+          const cur = order.indexOf(normalizeTheme(s.ui.theme));
+          s.ui.theme = order[(cur + 1) % order.length];
+        });
         applyUIFlags();
       } else if (e.key.toLowerCase() === "d" && !e.metaKey && !e.ctrlKey) {
         store.update(s => { s.ui.discreet = !s.ui.discreet; });

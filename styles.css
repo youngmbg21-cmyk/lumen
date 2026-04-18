@@ -1,54 +1,10 @@
 /* ============================================================
-   Lumen — Design system (Batch 1, part 1 of N)
-   Tokens, reset, typography, base layers
+   Lumen — Editorial Dashboard (Phase 1 — theme tokens + overlay)
+   Four selectable themes via body class. Full palette per theme.
    ============================================================ */
 
-/* ---------- Tokens: light (Spiced Palette — Feminine Editorial) ---------- */
+/* ---------- Shared tokens: geometry, motion, layout, fonts ---------- */
 :root {
-  /* Surfaces */
-  --bg:       #F9F5F0;
-  --bg-raised:#FFFFFF;
-  --bg-sunken:#F3ECE3;
-  --bg-alt:   #E8DED2;
-  --overlay:  rgba(72, 0, 3, 0.45);
-
-  /* Lines */
-  --border:      #E8DED2;
-  --border-bold: #C9B8A8;
-
-  /* Ink */
-  --text:        #2D2424;
-  --text-muted:  #5A4841;
-  --text-subtle: #8F7C74;
-  --text-invert: #F9F5F0;
-
-  /* Accent — Deep Cherry; Primary — Dusty Rose */
-  --accent:       #480003;
-  --accent-soft:  rgba(72, 0, 3, 0.08);
-  --accent-dim:   rgba(72, 0, 3, 0.18);
-  --accent-ink:   #FFFFFF;
-  --primary:      #D97A81;
-  --primary-soft: rgba(217, 122, 129, 0.14);
-  --primary-dim:  rgba(217, 122, 129, 0.28);
-
-  /* Steam levels */
-  --steam-1: #F2D0D3;
-  --steam-3: #D97A81;
-  --steam-5: #480003;
-
-  /* State */
-  --good:   #2D6A4F;
-  --warn:   #B5651D;
-  --danger: #480003;
-  --info:   #3B5A7A;
-
-  /* Elevation */
-  --shadow-1: 0 1px 2px rgba(72, 0, 3, 0.04);
-  --shadow-2: 0 1px 2px rgba(72, 0, 3, 0.05), 0 4px 16px rgba(72, 0, 3, 0.05);
-  --shadow-3: 0 2px 4px rgba(72, 0, 3, 0.08), 0 12px 32px rgba(72, 0, 3, 0.10);
-  --shadow-rose: 0 15px 40px rgba(217, 122, 129, 0.20);
-  --focus:    0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
-
   /* Radii */
   --r-1: 6px;
   --r-2: 10px;
@@ -68,8 +24,8 @@
   --s-8: 64px;
 
   /* Typography */
-  --font-sans:  "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-serif: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans:  "DM Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: "Cormorant Garamond", ui-serif, "Baskerville", Georgia, "Times New Roman", serif;
   --font-mono:  "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   /* Motion */
@@ -80,50 +36,205 @@
 
   /* Layout */
   --shell-sidebar: 248px;
-  --shell-topbar:  56px;
+  --shell-topbar:  64px;
   --content-max:   1200px;
 }
 
-/* ---------- Tokens: dark ---------- */
-[data-theme="dark"] {
-  --bg:        #14110e;
-  --bg-raised: #1c1915;
-  --bg-sunken: #23201b;
-  --bg-alt:    #2d2924;
-  --overlay:   rgba(0, 0, 0, 0.6);
+/* ---------- Theme: ROSE ATELIER (default) ---------- */
+body.theme-rose {
+  --bg-base:    #f9f0ec;
+  --bg-surface: #ffffff;
+  --bg-sunk:    #f2e4df;
+  --bg-deep:    #e9d5cd;
 
-  --border:      #2d2924;
-  --border-bold: #4a4037;
+  --border:        #e5cfc6;
+  --border-strong: #c9a396;
 
-  --text:        #ede7dc;
-  --text-muted:  #b8ad99;
-  --text-subtle: #8a7f71;
-  --text-invert: #14110e;
+  --text:      #2b1a1a;
+  --text-soft: #5c3e3e;
+  --text-mute: #9b7f78;
 
-  --accent:      #d97a81;
-  --accent-soft: rgba(217, 122, 129, 0.10);
-  --accent-dim:  rgba(217, 122, 129, 0.22);
-  --accent-ink:  #14110e;
+  --accent:      #b84a62;
+  --accent-deep: #8e2e44;
+  --accent-glow: rgba(184, 74, 98, 0.10);
+  --accent-mid:  rgba(184, 74, 98, 0.22);
 
-  --good:   #7fb89c;
-  --warn:   #d9a066;
-  --danger: #d97a81;
-  --info:   #8aa8c7;
+  --gold:   #c19565;
+  --sage:   #7a8c6f;
+  --warn:   #c17c3c;
+  --danger: #a63a3a;
 
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-2: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.25);
-  --shadow-3: 0 2px 4px rgba(0,0,0,0.35), 0 12px 32px rgba(0,0,0,0.35);
+  --bg-pattern: radial-gradient(1200px 700px at 85% -10%, rgba(184, 74, 98, 0.10), transparent 65%),
+                radial-gradient(900px 600px at -10% 110%, rgba(193, 149, 101, 0.10), transparent 60%);
+
+  --shadow-soft: 0 1px 2px rgba(142, 46, 68, 0.06), 0 6px 22px rgba(142, 46, 68, 0.06);
+  --shadow-lift: 0 2px 4px rgba(142, 46, 68, 0.08), 0 20px 50px rgba(142, 46, 68, 0.14);
 }
 
-/* ---------- Tokens: discreet overlay (applied with [data-discreet="on"]) ---------- */
+/* ---------- Theme: MIDNIGHT PLUM ---------- */
+body.theme-plum {
+  --bg-base:    #1d1220;
+  --bg-surface: #28182c;
+  --bg-sunk:    #231428;
+  --bg-deep:    #160c19;
+
+  --border:        #3a2340;
+  --border-strong: #5a3a63;
+
+  --text:      #f4e6ea;
+  --text-soft: #d4b8c1;
+  --text-mute: #a58596;
+
+  --accent:      #e0829a;
+  --accent-deep: #c05d78;
+  --accent-glow: rgba(224, 130, 154, 0.12);
+  --accent-mid:  rgba(224, 130, 154, 0.28);
+
+  --gold:   #d4a574;
+  --sage:   #9cb89a;
+  --warn:   #e0a060;
+  --danger: #e07070;
+
+  --bg-pattern: radial-gradient(1200px 700px at 85% -10%, rgba(224, 130, 154, 0.14), transparent 65%),
+                radial-gradient(900px 600px at -10% 110%, rgba(212, 165, 116, 0.10), transparent 60%);
+
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 22px rgba(0, 0, 0, 0.30);
+  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.45), 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- Theme: PEARL & GOLD ---------- */
+body.theme-pearl {
+  --bg-base:    #faf6ef;
+  --bg-surface: #ffffff;
+  --bg-sunk:    #f3ebdb;
+  --bg-deep:    #e8dcc2;
+
+  --border:        #e2d4b5;
+  --border-strong: #c9b17f;
+
+  --text:      #2d2416;
+  --text-soft: #5c4d32;
+  --text-mute: #9c8a66;
+
+  --accent:      #9c7a3c;
+  --accent-deep: #7a5c28;
+  --accent-glow: rgba(156, 122, 60, 0.10);
+  --accent-mid:  rgba(156, 122, 60, 0.22);
+
+  --gold:   #c9a050;
+  --sage:   #8a9c70;
+  --warn:   #b88a3c;
+  --danger: #a85040;
+
+  --bg-pattern: radial-gradient(1200px 700px at 85% -10%, rgba(156, 122, 60, 0.08), transparent 65%),
+                radial-gradient(900px 600px at -10% 110%, rgba(201, 160, 80, 0.10), transparent 60%);
+
+  --shadow-soft: 0 1px 2px rgba(122, 92, 40, 0.06), 0 6px 22px rgba(122, 92, 40, 0.06);
+  --shadow-lift: 0 2px 4px rgba(122, 92, 40, 0.08), 0 20px 50px rgba(122, 92, 40, 0.12);
+}
+
+/* ---------- Theme: BOTANICAL DUSK ---------- */
+body.theme-botanical {
+  --bg-base:    #f1ebe1;
+  --bg-surface: #ffffff;
+  --bg-sunk:    #e6ddc8;
+  --bg-deep:    #d4c6a7;
+
+  --border:        #cfc1a3;
+  --border-strong: #a89670;
+
+  --text:      #22281c;
+  --text-soft: #4a5240;
+  --text-mute: #8a8e78;
+
+  --accent:      #a86670;
+  --accent-deep: #7d4450;
+  --accent-glow: rgba(168, 102, 112, 0.10);
+  --accent-mid:  rgba(168, 102, 112, 0.22);
+
+  --gold:   #b89a60;
+  --sage:   #6a7e5a;
+  --warn:   #b87244;
+  --danger: #a65040;
+
+  --bg-pattern: radial-gradient(1200px 700px at 85% -10%, rgba(168, 102, 112, 0.10), transparent 65%),
+                radial-gradient(900px 600px at -10% 110%, rgba(106, 126, 90, 0.10), transparent 60%);
+
+  --shadow-soft: 0 1px 2px rgba(34, 40, 28, 0.06), 0 6px 22px rgba(34, 40, 28, 0.06);
+  --shadow-lift: 0 2px 4px rgba(34, 40, 28, 0.10), 0 20px 50px rgba(34, 40, 28, 0.14);
+}
+
+/* ---------- Compatibility shims (existing class names) ---------- */
+/* Older selectors referenced --bg, --bg-raised, --bg-sunken, --accent-soft,
+   --accent-dim, --primary-soft, --shadow-1, --shadow-2, --shadow-3, --border-bold.
+   Map them to the new theme tokens so existing JS-authored inline styles and
+   older CSS rules keep rendering correctly during the phased migration. */
+:root, body {
+  --bg:           var(--bg-base);
+  --bg-raised:    var(--bg-surface);
+  --bg-sunken:    var(--bg-sunk);
+  --bg-alt:       var(--bg-deep);
+  --border-bold:  var(--border-strong);
+  --text-muted:   var(--text-soft);
+  --text-subtle:  var(--text-mute);
+  --text-invert:  var(--bg-base);
+  --accent-soft:  var(--accent-glow);
+  --accent-dim:   var(--accent-mid);
+  --accent-ink:   #ffffff;
+  --primary:      var(--accent);
+  --primary-soft: var(--accent-glow);
+  --primary-dim:  var(--accent-mid);
+  --good:         var(--sage);
+  --info:         var(--gold);
+  --shadow-1:     var(--shadow-soft);
+  --shadow-2:     var(--shadow-soft);
+  --shadow-3:     var(--shadow-lift);
+  --shadow-rose:  var(--shadow-lift);
+  --overlay:      rgba(0, 0, 0, 0.5);
+  --focus:        0 0 0 2px var(--bg-surface), 0 0 0 4px var(--accent);
+  /* Steam-level colour mapping preserved */
+  --steam-1:      color-mix(in srgb, var(--accent) 28%, white);
+  --steam-3:      var(--accent);
+  --steam-5:      var(--accent-deep);
+}
+body.theme-plum {
+  --steam-1: color-mix(in srgb, var(--accent) 35%, var(--bg-base));
+}
+
+/* ---------- Discreet overlay ---------- */
 [data-discreet="on"] {
-  --accent:      #6b6258;
-  --accent-soft: rgba(107, 98, 88, 0.08);
-  --accent-dim:  rgba(107, 98, 88, 0.18);
+  --accent:      var(--text-mute);
+  --accent-deep: var(--text-soft);
+  --accent-glow: rgba(0, 0, 0, 0.04);
+  --accent-mid:  rgba(0, 0, 0, 0.10);
 }
-[data-discreet="on"] [data-theme="dark"],
-[data-theme="dark"][data-discreet="on"] {
-  --accent:      #8a8178;
+
+/* ---------- Background pattern + noise overlay ---------- */
+body {
+  background-color: var(--bg-base);
+  background-image: var(--bg-pattern);
+  background-attachment: fixed;
+  background-size: 100% 100%;
+  position: relative;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.55;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.12 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+body.theme-plum::before {
+  opacity: 0.35;
+  mix-blend-mode: overlay;
+}
+/* Ensure app chrome sits above the noise layer */
+.app, .app > *, .toast-host, #modal-host, .sara-panel, .sara-fab {
+  position: relative;
+  z-index: 1;
 }
 
 /* ---------- Reset ---------- */
@@ -1988,4 +2099,37 @@ body[data-privacy-blur="on"] .app-main::after {
   border: 1px solid var(--border);
   border-radius: var(--r-2);
   background: var(--bg-raised);
+}
+
+/* ============================================================
+   Theme switcher pill (topbar)
+   ============================================================ */
+.theme-switcher {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-sunk);
+  border: 1px solid var(--border);
+  align-items: center;
+}
+.theme-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  padding: 0;
+  border: 1.5px solid transparent;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  transition: transform var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
+}
+.theme-dot:hover { transform: scale(1.06); }
+.theme-dot.is-active {
+  border-color: var(--accent-deep);
+  transform: scale(1.08);
+}
+.theme-dot:focus-visible {
+  outline: none;
+  border-color: var(--accent-deep);
+  box-shadow: 0 0 0 3px var(--accent-mid), inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
