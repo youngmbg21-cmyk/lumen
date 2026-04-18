@@ -69,41 +69,221 @@
     localStorage.removeItem(GBOOKS_KEY_STORAGE);
   }
 
-  // Strict category gate. Discovery is intentionally restricted to
-  // novel-fiction erotica titles only. Results that fail this predicate
-  // are dropped before rendering and before Claude enrichment.
-  const EROTICA_CATEGORY_RE = /\berotic(a|ism)?\b/i;
-  // Strong, unambiguous markers that a Google Books result is an erotica
-  // novel (not "romance with heat", not literary fiction with sex scenes).
-  const EROTICA_STRONG_RE = /\b(erotica|erotic (?:novel|fiction|romance|tale|stories|literature))\b/i;
-  // Soft signals we accept only in combination with at least one other
-  // signal (e.g. subject line + keyword, or category + keyword).
-  const EROTICA_SOFT_RE = /\b(sensual|passionate|seductive|desire|lust|forbidden|taboo|bdsm|kink|fetish|explicit|adult fiction)\b/i;
-  // Hard disqualifiers — non-fiction formats and adjacent genres that
-  // should never pass the erotica-only gate, even if a keyword slips in.
-  const NON_FICTION_BLOCK_RE = /\b(self[- ]?help|memoir|biography|cookbook|travel|history|academic|textbook|manual|guide|religion|spirituality|philosophy|business|parenting|poetry anthology)\b/i;
+  // ============================================================
+  // Strict erotica-only gate. Discovery surfaces only novel-fiction
+  // erotica. The filter is deliberately aggressive — results are
+  // rejected by default unless they positively clear every rule.
+  //
+  // The gate has three layers:
+  //   1. Metadata requirements  — a category must literally contain
+  //      the word "erotica" (not merely "erotic").
+  //   2. Category blocklist     — full Google Books BISAC-derived
+  //      category names that never belong in this surface.
+  //   3. Title / description    — blocklist of non-fiction and
+  //      adjacent-genre patterns (workbook, handbook, psychology of,
+  //      how to, workplace, leadership, academic, case study, etc.).
+  // Any single failing rule rejects the result.
+  //
+  // Claude's classifier is the second independent layer and applies
+  // four signals: isErotica, confidence (>=75), format in {erotica-
+  // novel, erotic-romance-novel}, and containsNonfictionSignal=false.
+  // ============================================================
+
+  // Strict category match: the literal word "erotica". "erotic"
+  // alone (as in "erotic love" in a psychology category) must NOT
+  // pass. Word boundaries only.
+  const EROTICA_CATEGORY_EXACT_RE = /\berotica\b/i;
+
+  // Google Books uses BISAC-derived category strings like
+  // "Psychology / Human Sexuality", "Social Science / Gender Studies",
+  // "Family & Relationships / Love & Romance", "Body, Mind & Spirit /
+  // Sexuality", "Business & Economics / Workplace Culture", etc. Any
+  // category matching this pattern instantly disqualifies the book.
+  const DISALLOWED_CATEGORY_RE = new RegExp([
+    "\\bpsychology\\b",
+    "\\bsociology\\b",
+    "\\bsocial\\s*science(?:s)?\\b",
+    "\\bself[- ]?help\\b",
+    "\\bbusiness\\b",
+    "\\beconomics\\b",
+    "\\bfamily\\b",
+    "\\brelationships?\\b",
+    "\\breligion\\b",
+    "\\bspirituality\\b",
+    "\\bhealth\\b",
+    "\\bfitness\\b",
+    "\\bphilosophy\\b",
+    "\\bpolitical\\s*science\\b",
+    "\\bmedical\\b",
+    "\\beducation\\b",
+    "\\breference\\b",
+    "\\blaw\\b",
+    "\\bscience\\b",
+    "\\btechnology\\b",
+    "\\btravel\\b",
+    "\\bbiography\\b",
+    "\\bautobiography\\b",
+    "\\bhistory\\b",
+    "\\btrue\\s*crime\\b",
+    "\\bcooking\\b",
+    "\\bcookbook\\b",
+    "\\bjuvenile\\b",
+    "\\byoung\\s*adult\\b",
+    "\\bchildren(?:'s)?\\b",
+    "\\bcomics\\b",
+    "\\bgraphic\\s*novels?\\b",
+    "\\bcrafts\\b",
+    "\\bhobbies\\b",
+    "\\bgames\\b",
+    "\\bgardening\\b",
+    "\\bperforming\\s*arts\\b",
+    "\\bsports\\b",
+    "\\btransportation\\b",
+    "\\bstudy\\s*aids\\b",
+    "\\bnature\\b",
+    "\\bhouse\\b",
+    "\\bhome\\b",
+    "\\barchitecture\\b",
+    "\\bmusic\\b",
+    "\\bdrama\\b",
+    "\\bart\\b",
+    "\\bliterary\\s*criticism\\b",
+    "\\bcriticism\\b",
+    "\\bessays?\\b",
+    "\\bpoetry\\b",
+    "\\bmemoir(?:s)?\\b",
+    "\\bparenting\\b",
+    "\\bmanual(?:s)?\\b",
+    "\\btextbook(?:s)?\\b",
+    "\\bbody,?\\s*mind\\b",
+    "\\bmind\\s*&\\s*spirit\\b",
+    "\\bnon[- ]?fiction\\b"
+  ].join("|"), "i");
+
+  // Title patterns that strongly signal non-fiction / adjacent genres.
+  // Keep the list broad — the user explicitly called out workplace
+  // books, psychology, relationship analysis, and general guides.
+  const DISALLOWED_TITLE_RE = new RegExp([
+    "\\bworkbook\\b",
+    "\\bhandbook\\b",
+    "\\bmanual\\b",
+    "\\btextbook\\b",
+    "\\bguide\\s+to\\b",
+    "\\bguide\\s+for\\b",
+    "\\bcomplete\\s+guide\\b",
+    "\\bpractical\\s+guide\\b",
+    "\\bpsychology\\s+of\\b",
+    "\\bscience\\s+of\\b",
+    "\\bsociology\\s+of\\b",
+    "\\bphilosophy\\s+of\\b",
+    "\\bhistory\\s+of\\b",
+    "\\bart\\s+of\\b(?!\\s+(?:love|seduction))",
+    "\\bhow\\s+to\\b",
+    "\\bstep[- ]?by[- ]?step\\b",
+    "\\bfor\\s+dummies\\b",
+    "\\bessentials?\\s+of\\b",
+    "\\bprinciples?\\s+of\\b",
+    "\\bintroduction\\s+to\\b",
+    "\\btheor(?:y|ies)\\s+of\\b",
+    "\\bcase\\s+stud(?:y|ies)\\b",
+    "\\bcompanion\\s+to\\b",
+    "\\bplaybook\\b",
+    "\\bleadership\\b",
+    "\\bworkplace\\b",
+    "\\bexecutive(?:'s)?\\b",
+    "\\bcareer(?:s)?\\b",
+    "\\bmanager(?:ial)?\\b",
+    "\\bnegotiation\\b",
+    "\\bnegotiating\\b",
+    "\\bcoaching\\b",
+    "\\btherapy\\b",
+    "\\btherapist(?:'s)?\\b",
+    "\\bcounsell?ing\\b",
+    "\\bresearch\\b",
+    "\\bhandbook(?:s)?\\b"
+  ].join("|"), "i");
+
+  // Description signatures that strongly suggest the book is
+  // non-fiction even if the category string is missing or vague.
+  const DISALLOWED_DESC_RE = new RegExp([
+    "\\bworkbook\\b",
+    "\\bmanual\\b",
+    "\\bhandbook\\b",
+    "\\btextbook\\b",
+    "\\bstep[- ]?by[- ]?step\\b",
+    "\\bessentials?\\s+of\\b",
+    "\\bfor\\s+(?:dummies|beginners)\\b",
+    "\\bpractical\\s+guide\\b",
+    "\\bpractical\\s+advice\\b",
+    "\\bexperts?\\s+(?:guide|advice)\\b",
+    "\\bscientific\\s+stud(?:y|ies)\\b",
+    "\\bresearch\\s+(?:paper|findings|shows|suggests)\\b",
+    "\\bdata[- ]driven\\b",
+    "\\bcase\\s+stud(?:y|ies)\\b",
+    "\\bevidence[- ]based\\b",
+    "\\bself[- ]?help\\b",
+    "\\bacademic\\s+text\\b",
+    "\\bclinical\\s+(?:insight|study|advice)\\b",
+    "\\bhow[- ]to\\s+(?:guide|book|manual)\\b"
+  ].join("|"), "i");
+
+  // Positive signal: a fiction category string, as a safeguard. If a
+  // result carries "Erotica" but also "Fiction" or equivalent, we
+  // treat that as reassurance the book is a novel rather than a
+  // category metadata glitch.
+  const FICTION_CATEGORY_RE = /\bfiction\b/i;
+
+  // Explicit positive markers in the description — must appear in
+  // addition to a qualifying category for marginal cases.
+  const EROTICA_DESCRIPTION_RE = /\b(erotica|erotic (?:novel|fiction|romance|tale|stories|literature))\b/i;
 
   function classifyEroticaMatch(item) {
     const cats = (item.categories || []).map(c => String(c).toLowerCase());
-    const text = `${item.title || ""} ${item.description || ""}`;
-    const catHit = cats.some(c => EROTICA_CATEGORY_RE.test(c));
-    const strongHit = EROTICA_STRONG_RE.test(text);
-    const softHit = EROTICA_SOFT_RE.test(text);
-    // Apply the non-fiction block only to Google's structured categories,
-    // not to the free-text description. Descriptions can mention "guide"
-    // or "memoir" incidentally inside a legitimate erotica novel blurb.
-    const blockedCat = cats.some(c => NON_FICTION_BLOCK_RE.test(c));
-    // Admit only strict combinations:
-    //  1. Google Books' own Erotica category, OR
-    //  2. Explicit erotica phrasing in title/description, OR
-    //  3. Soft sensuality signal AND an existing erotica category hit.
-    // Anything else — including plain romance, literary fiction with sex
-    // scenes, or non-fiction — is rejected.
-    if (blockedCat) return { accepted: false, reason: "non-fiction category" };
-    if (catHit) return { accepted: true, reason: "category=erotica" };
-    if (strongHit) return { accepted: true, reason: "strong keyword match" };
-    if (softHit && catHit) return { accepted: true, reason: "soft+category" };
-    return { accepted: false, reason: "no erotica signal" };
+    const title = String(item.title || "");
+    const desc = String(item.description || "");
+
+    // --- Rule 1: must have at least one Google Books category.
+    // Without a category we have no structured signal and anything
+    // ambiguous is rejected by policy.
+    if (!cats.length) return { accepted: false, reason: "no categories" };
+
+    // --- Rule 2: at least one category must literally contain the
+    // word "erotica". "erotic" alone (e.g. "Psychology / Erotic love")
+    // is NOT enough.
+    const hasEroticaCat = cats.some(c => EROTICA_CATEGORY_EXACT_RE.test(c));
+    if (!hasEroticaCat) return { accepted: false, reason: "no 'erotica' category" };
+
+    // --- Rule 3: no category may match the disallowed non-fiction /
+    // adjacent-genre blocklist. A book with both "Erotica" and
+    // "Psychology / Human Sexuality" is rejected — that's the exact
+    // pattern letting non-fiction erotica analyses slip through now.
+    const disallowedCat = cats.find(c => DISALLOWED_CATEGORY_RE.test(c));
+    if (disallowedCat) return { accepted: false, reason: `disallowed category: ${disallowedCat}` };
+
+    // --- Rule 4: title must not match the non-fiction / workplace /
+    // psychology-of blocklist. This catches "The Psychology of the
+    // Erotic", "Workbook for ...", "Leadership & Desire", etc.
+    if (DISALLOWED_TITLE_RE.test(title)) {
+      return { accepted: false, reason: "non-fiction title pattern" };
+    }
+
+    // --- Rule 5: description must not match the non-fiction / guide
+    // / workbook / research blocklist.
+    if (DISALLOWED_DESC_RE.test(desc)) {
+      return { accepted: false, reason: "non-fiction description pattern" };
+    }
+
+    // At this point: has a bona fide "erotica" category, no
+    // disallowed categories, no disallowed title / description
+    // patterns. If a fiction category is also present, that's the
+    // strongest possible signal. If only an erotica category is
+    // present, we still require a positive description signal
+    // (e.g. mentions "erotic novel" / "erotic fiction") to accept,
+    // so purely metadata-based glitches don't pass.
+    const hasFictionCat = cats.some(c => FICTION_CATEGORY_RE.test(c));
+    if (hasFictionCat) return { accepted: true, reason: "erotica + fiction categories" };
+    if (EROTICA_DESCRIPTION_RE.test(desc)) return { accepted: true, reason: "erotica category + description signal" };
+    return { accepted: false, reason: "erotica category but no fiction/description signal" };
   }
 
   // 1) Google Books search. Unauthenticated requests share a low daily quota;
@@ -115,14 +295,47 @@
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
     const gkey = getGoogleKey();
-    // Over-fetch so we still have enough cards after the strict
-    // post-filter drops borderline results.
-    const fetchCount = Math.max(maxResults * 3, 20);
+    // Over-fetch — the hard post-filter is aggressive and will reject
+    // the majority of a raw Google Books page. Fetching 40 candidates
+    // keeps us comfortably above the 6-card target after filtering.
+    const fetchCount = Math.max(maxResults * 6, 40);
     const normalized = query.trim();
-    // subject:"Erotica" binds the entire search to the Erotica shelf on
-    // Google Books. -subject:"Religion" etc. shaves off a few common
-    // false positives that slip into the shelf.
-    const q = `${normalized} subject:"Erotica" -subject:"Religion" -subject:"Self-Help"`;
+    // Constrain the query on both sides: require Erotica AND Fiction
+    // subjects, and actively reject the adjacent-genre subjects that
+    // caused the current leaks (psychology, social science, self-
+    // help, business, family & relationships, body mind & spirit,
+    // religion, health, philosophy, essays, poetry, memoir, history,
+    // biography, reference). Google ANDs each bare term in `q`, so
+    // this is an intersection and all negatives are enforced.
+    const q = [
+      normalized,
+      'subject:"Erotica"',
+      'subject:"Fiction"',
+      '-subject:"Psychology"',
+      '-subject:"Social Science"',
+      '-subject:"Self-Help"',
+      '-subject:"Business & Economics"',
+      '-subject:"Family & Relationships"',
+      '-subject:"Body, Mind & Spirit"',
+      '-subject:"Religion"',
+      '-subject:"Health & Fitness"',
+      '-subject:"Philosophy"',
+      '-subject:"Medical"',
+      '-subject:"Political Science"',
+      '-subject:"Education"',
+      '-subject:"Reference"',
+      '-subject:"Literary Criticism"',
+      '-subject:"Memoir"',
+      '-subject:"Biography & Autobiography"',
+      '-subject:"History"',
+      '-subject:"True Crime"',
+      '-subject:"Poetry"',
+      '-subject:"Essays"',
+      '-subject:"Juvenile Fiction"',
+      '-subject:"Juvenile Nonfiction"',
+      '-subject:"Young Adult Fiction"',
+      '-subject:"Young Adult Nonfiction"'
+    ].join(" ");
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(q)
       + "&maxResults=" + fetchCount
@@ -209,20 +422,25 @@
     setStatus("reading", `Claude is reading · ${book.title}`);
 
     const prompt = [
-      "You are an editorial analyst for Lumen, a private reading companion for adult literature.",
-      "Lumen's Discovery surface is intentionally restricted to novel-fiction erotica titles only.",
-      "Analyze the book below and return ONLY a compact JSON object matching this schema:",
-      '{ "isErotica": <boolean>, "heat": <integer 1-5>, "tropes": <array of 2-4 short lowercase strings>, "insight": <one calm sentence under 28 words> }.',
-      "Rules:",
-      "- isErotica = true ONLY if the book is fiction whose primary category is erotica / erotic fiction / erotic romance (explicit, sexual content is central, not incidental).",
-      "  false for: general fiction, literary fiction with sex scenes, romance without explicit erotic focus, non-fiction, memoirs, self-help, manuals, poetry anthologies, or any borderline title. When in doubt, return false.",
+      "You are an editorial classifier for Lumen, a private reading companion for adult literature.",
+      "Lumen's Discovery surface is intentionally restricted to erotica novels only.",
+      "Return ONLY a compact JSON object matching this schema — nothing else:",
+      '{ "isErotica": <boolean>, "confidence": <integer 0-100>, "format": <one of "erotica-novel" | "erotic-romance-novel" | "romance-novel" | "general-fiction" | "nonfiction" | "other">, "containsNonfictionSignal": <boolean>, "heat": <integer 1-5>, "tropes": <array of 2-4 short lowercase strings>, "insight": <one calm sentence under 28 words> }.',
+      "CLASSIFICATION RULES — be strict.",
+      "- isErotica = true ONLY when the book is a novel (fiction) whose PRIMARY category and purpose is erotica / erotic fiction / erotic romance, with explicit sexual content as a central element.",
+      "- isErotica = false for: romance novels without explicit erotica positioning, general fiction with sex scenes, literary fiction with sensual undertones, psychology books, self-help, workplace or leadership books, relationship advice, sociology, academic texts, essays, memoirs, biographies, poetry collections, manuals, guides, workbooks, therapy / counselling books, cookbooks, travel, or anything else non-novel.",
+      "- When the genre is ambiguous (e.g. 'dark romance', 'spicy romance', 'romantic suspense') default to false unless the description or author positioning makes erotica-fiction the explicit primary category.",
+      "- confidence = your certainty in the isErotica value, 0-100.",
+      "- format = the single best-fitting format tag from the enum. Use 'nonfiction' for any analytical / advisory / academic / research-driven book, even if it discusses erotic themes.",
+      "- containsNonfictionSignal = true if the title or description suggests psychology, self-help, workplace, academic, research, case-study, handbook, workbook, manual, guide, therapy, or relationship-advice positioning. When uncertain, return true.",
       "- heat = overall sensual/erotic intensity on a 1 (barely-there) to 5 (unreserved) scale.",
       "- tropes = 2-4 concise narrative tropes (e.g. 'forbidden love', 'slow burn'). No quotes, no full stops.",
       "- insight = one non-judgemental sentence about what kind of reader this suits. Avoid hype. Do not make up facts.",
-      "- Output strictly valid JSON, no prose, no backticks.",
+      "- Output strictly valid JSON, no prose, no backticks. When in doubt about ANY field, err toward rejection (isErotica=false, low confidence, containsNonfictionSignal=true).",
       "",
       `Title: ${book.title}`,
       `Author: ${book.author}`,
+      `Categories: ${((book.categories || []).join("; ")) || "(none)"}`,
       `Description: ${(book.description || "").slice(0, 1500)}`
     ].join("\n");
 
@@ -270,6 +488,14 @@
     return parsed;
   }
 
+  // Allowed format strings that pass the "erotica novel" gate on
+  // Claude's side. Everything else — including romance-novel and
+  // general-fiction — is rejected even if isErotica slipped in.
+  const ACCEPTED_FORMATS = new Set(["erotica-novel", "erotic-romance-novel"]);
+  // Confidence floor for Claude's classifier. Anything below this is
+  // rejected — a decisive "yes" is required, not a lukewarm one.
+  const CONFIDENCE_FLOOR = 75;
+
   function parseAnalysis(raw) {
     if (!raw) return null;
     // Extract the first JSON object in the response
@@ -280,11 +506,29 @@
       const heat = Math.max(1, Math.min(5, parseInt(obj.heat, 10) || 3));
       const tropes = Array.isArray(obj.tropes) ? obj.tropes.filter(t => typeof t === "string").slice(0, 4) : [];
       const insight = typeof obj.insight === "string" ? obj.insight.trim() : "";
-      // Default to true ONLY when the model explicitly says true. Any
-      // other value — including missing/unknown — is treated as a
-      // rejection so borderline titles never slip through.
-      const isErotica = obj.isErotica === true;
-      return { isErotica, heat, tropes, insight };
+      // Strict boolean defaults: missing / unknown / parse-failed
+      // values all read as rejection so borderline titles never slip
+      // through. Claude must explicitly say {isErotica: true,
+      // confidence>=75, format in accepted set, containsNonfictionSignal:
+      // false}. Any deviation is treated as "not erotica".
+      const rawIsErotica = obj.isErotica === true;
+      const rawConfidence = Math.max(0, Math.min(100, parseInt(obj.confidence, 10)));
+      const confidence = Number.isFinite(rawConfidence) ? rawConfidence : 0;
+      const format = typeof obj.format === "string" ? obj.format.toLowerCase().trim() : "";
+      const containsNonfictionSignal = obj.containsNonfictionSignal === true;
+      const formatOk = ACCEPTED_FORMATS.has(format);
+      const isErotica = rawIsErotica
+        && confidence >= CONFIDENCE_FLOOR
+        && formatOk
+        && !containsNonfictionSignal;
+      return {
+        isErotica,
+        heat, tropes, insight,
+        classifierConfidence: confidence,
+        classifierFormat: format || "unknown",
+        classifierNonfictionSignal: containsNonfictionSignal,
+        classifierRawIsErotica: rawIsErotica
+      };
     } catch (e) {
       return null;
     }

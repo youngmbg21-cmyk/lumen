@@ -1134,18 +1134,18 @@
 
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Discovery · erotica-only" }),
+        util.el("div", { class: "t-eyebrow", text: "Discovery · erotica novels only" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Discovery is intentionally restricted to novel-fiction erotica titles only. Queries are bound to the Erotica subject on Google Books, and Claude double-checks every result — general fiction, romance, literary fiction with sex scenes, and non-fiction are excluded." })
+        util.el("p", { class: "lede", text: "Discovery returns erotica novels only. Romance, literary fiction, psychology, self-help, workplace and leadership books, relationship advice, sociology, memoirs, essays, academic titles, manuals and guides are all actively excluded." })
       ])
     ]));
 
-    // Erotica-only notice — sits directly above the search so the
-    // restriction is always visible, in both tailored and broad modes.
+    // Erotica-only notice — always visible above the search so the
+    // restriction is unmistakable, in both tailored and broad modes.
     wrap.appendChild(util.el("div", { class: "card card-quiet", style: { padding: "var(--s-3)", borderLeft: "3px solid var(--accent)" } }, [
       util.el("div", { class: "t-small" }, [
-        util.el("strong", { text: "Erotica-only results. " }),
-        util.el("span", { class: "t-muted", text: "Borderline titles — general fiction with sensual passages, mainstream romance, literary novels with sex scenes, non-fiction, memoirs, manuals — are filtered out by query, by keyword rules, and by Claude's classifier before being shown." })
+        util.el("strong", { text: "Erotica novels only — hard filter. " }),
+        util.el("span", { class: "t-muted", text: "Three independent gates reject non-erotica: (1) the Google Books query ANDs subject:Erotica + subject:Fiction and negatively excludes Psychology, Social Science, Self-Help, Business & Economics, Family & Relationships, Body Mind & Spirit, Religion, Health, Philosophy, Memoir, Biography, History, Literary Criticism, Essays, Poetry and Juvenile / Young Adult subjects; (2) a local metadata gate requires a Google Books category containing the literal word 'erotica', blocks adjacent-genre categories, and rejects title / description patterns like 'workbook', 'handbook', 'psychology of', 'leadership', 'workplace', 'case study', 'how to'; (3) Claude's classifier must return isErotica=true with ≥75 confidence, format in {erotica-novel, erotic-romance-novel}, and no non-fiction signal. When in doubt, a result is rejected." })
       ])
     ]));
 
@@ -1359,7 +1359,15 @@
             if (idx !== -1) discoveryState.raw.splice(idx, 1);
             delete discoveryState.enrichments[book.id];
             rejected += 1;
-            console.debug("[Lumen Discovery] Claude rejected non-erotica title:", book.title);
+            // Log the full classifier trace so it's easy to debug why
+            // a specific title was rejected in the console.
+            console.debug("[Lumen Discovery] Classifier rejected non-erotica:", {
+              title: book.title,
+              rawIsErotica: result.classifierRawIsErotica,
+              confidence: result.classifierConfidence,
+              format: result.classifierFormat,
+              nonfictionSignal: result.classifierNonfictionSignal
+            });
           } else {
             discoveryState.enrichments[book.id] = result;
           }
