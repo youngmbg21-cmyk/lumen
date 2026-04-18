@@ -57,13 +57,37 @@
     setStatus("idle", "API key cleared");
   }
 
-  // 1) Google Books search
+  // 1) Google Books search. No API key required for basic search.
+  // Throws an Error with a human-readable message the UI can render.
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
-    const url = `https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query.trim())}&maxResults=${maxResults}&printType=books`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Google Books ${res.status}`);
-    const data = await res.json();
+    const url = "https://www.googleapis.com/books/v1/volumes"
+      + "?q=" + encodeURIComponent(query.trim())
+      + "&maxResults=" + maxResults;
+
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (networkErr) {
+      console.error("[Lumen Discovery] Network error calling Google Books:", networkErr);
+      throw new Error("Can't reach Google Books — check your connection or see the console for the exact error.");
+    }
+
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
+      console.error("[Lumen Discovery] Google Books returned", res.status, detail);
+      throw new Error(`Google Books returned HTTP ${res.status}.` + (detail ? ` ${detail}` : ""));
+    }
+
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      console.error("[Lumen Discovery] Malformed Google Books response:", parseErr);
+      throw new Error("Google Books returned an unreadable response.");
+    }
+
     const items = (data.items || []).map(item => {
       const v = item.volumeInfo || {};
       return {

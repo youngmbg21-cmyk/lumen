@@ -870,8 +870,16 @@
       try {
         items = await Disco.searchBooks(q);
       } catch (err) {
-        ui.toast("Google Books search failed");
-        resultsLabel.textContent = "Search failed — try again";
+        const message = (err && err.message) || "Search failed";
+        console.error("[Lumen Discovery] Search failed:", err);
+        resultsLabel.textContent = `Search failed for "${q}"`;
+        grid.innerHTML = "";
+        grid.appendChild(util.el("div", { class: "discovery-empty" }, [
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Couldn't reach Google Books" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" }, text: message }),
+          util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" }, text: "Most often this is a network hiccup or a browser extension blocking googleapis.com. The full error is in your console." }),
+          util.el("button", { class: "btn btn-primary btn-sm", style: { marginTop: "var(--s-3)" }, onclick: () => runSearch() }, "Try again")
+        ]));
         return;
       }
 
