@@ -1103,6 +1103,154 @@ body {
 }
 
 /* ============================================================
+   Profile page — two-column shell with snapshot sidebar
+   ============================================================ */
+.profile-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--s-5);
+  align-items: start;
+}
+.profile-side {
+  position: sticky;
+  top: calc(var(--shell-topbar) + var(--s-4));
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+@media (max-width: 1100px) {
+  .profile-shell { grid-template-columns: 1fr; }
+  .profile-side { position: static; }
+}
+
+/* Two-column slider layout inside the sliders card */
+.profile-sliders { padding: var(--s-6); }
+.profile-slider-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-6);
+}
+@media (max-width: 820px) {
+  .profile-slider-grid { grid-template-columns: 1fr; gap: var(--s-5); }
+}
+
+/* Slider field — label row, slider row with big italic value, help below */
+.slider-field { display: block; }
+.slider-field + .slider-field { margin-top: 0; /* handled by .stack-lg gaps */ }
+.slider-field .field-label { margin-bottom: var(--s-3); }
+.slider-field-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--s-4);
+  align-items: center;
+}
+.slider-field-row .slider { margin: 0; }
+.slider-field-row .slider-value {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 28px;
+  line-height: 1;
+  color: var(--accent-deep);
+  min-width: 40px;
+  text-align: right;
+  letter-spacing: -0.02em;
+}
+.slider-field .field-help {
+  margin-top: var(--s-3);
+  font-size: 12px;
+  color: var(--text-mute);
+  line-height: 1.5;
+}
+
+/* Two-column chip row inside the tastes card (style + dynamics) */
+.profile-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
+}
+@media (max-width: 820px) { .profile-two-col { grid-template-columns: 1fr; } }
+
+/* ---------- Profile snapshot card ---------- */
+.snapshot-head { margin-bottom: var(--s-4); }
+.snapshot-head h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.snapshot-head h3 em {
+  font-style: italic;
+  color: var(--accent-deep);
+}
+
+.snapshot-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  margin-bottom: var(--s-5);
+}
+.snapshot-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+  gap: var(--s-3);
+}
+.snapshot-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.snapshot-value {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 22px;
+  color: var(--accent-deep);
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+.snapshot-value .snap-of {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--text-mute);
+  margin-left: 1px;
+  letter-spacing: 0;
+}
+.snapshot-value .snap-gte {
+  font-family: var(--font-mono);
+  font-style: normal;
+  font-size: 14px;
+  color: var(--accent-deep);
+  margin-right: 2px;
+  font-weight: 500;
+  position: relative;
+  top: -2px;
+}
+
+.snapshot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.snapshot-actions .hero-cta {
+  width: 100%;
+  justify-content: center;
+}
+.snapshot-actions .btn-small {
+  width: 100%;
+  justify-content: center;
+}
+
+/* ============================================================
    Compare surface — scorecards, bars, radar
    ============================================================ */
 .cmp-grid {

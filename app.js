@@ -253,13 +253,19 @@
     return card;
   }
 
-  function numericSlider(key, label, help) {
+  // Build a label block: uppercase label on the left, optional italic
+  // serif ornament word on the right. Matches the editorial field-label
+  // pattern from the mockup (e.g. "DESIRED HEAT LEVEL … temperature").
+  function buildFieldLabel(labelText, ornament) {
+    const nodes = [util.el("span", { text: labelText })];
+    if (ornament) nodes.push(util.el("span", { class: "field-ornament", text: ornament }));
+    return util.el("div", { class: "field-label" }, nodes);
+  }
+
+  function numericSlider(key, label, help, ornament) {
     const state = store.get();
-    const row = util.el("div", { class: "field" });
-    row.appendChild(util.el("div", { class: "field-row" }, [
-      util.el("label", { class: "field-label", for: `prof_${key}`, text: label }),
-      util.el("span", { class: "slider-value", id: `prof_${key}_val`, text: String(state.profile[key]) })
-    ]));
+    const row = util.el("div", { class: "field slider-field" });
+    row.appendChild(buildFieldLabel(label, ornament));
     const input = util.el("input", {
       class: "slider",
       id: `prof_${key}`,
@@ -268,19 +274,24 @@
       oninput: (e) => {
         const v = parseInt(e.target.value, 10);
         store.update(s => { s.profile[key] = v; });
-        document.getElementById(`prof_${key}_val`).textContent = String(v);
+        const disp = document.getElementById(`prof_${key}_val`);
+        if (disp) disp.textContent = String(v);
         refreshProfilePreview();
       }
     });
-    row.appendChild(input);
+    const sliderRow = util.el("div", { class: "slider-field-row" }, [
+      input,
+      util.el("span", { class: "slider-value", id: `prof_${key}_val`, text: String(state.profile[key]) })
+    ]);
+    row.appendChild(sliderRow);
     if (help) row.appendChild(util.el("div", { class: "field-help", text: help }));
     return row;
   }
 
-  function chipGroup(key, label, vocab, { exclude = false, help } = {}) {
+  function chipGroup(key, label, vocab, { exclude = false, help, ornament } = {}) {
     const state = store.get();
     const wrap = util.el("div", { class: "field" });
-    wrap.appendChild(util.el("div", { class: "field-label", text: label }));
+    if (label || ornament) wrap.appendChild(buildFieldLabel(label || "", ornament));
     const row = util.el("div", { class: "row-wrap" });
     vocab.forEach(v => {
       const pressed = state.profile[key].includes(v);
@@ -322,46 +333,63 @@
     return wrap;
   }
 
+  // Render the right-hand Profile snapshot card — editorial layout with
+  // uppercase label rows and italic Cormorant values like "3/5", "≥5/5".
+  // All values recompute on every slider / chip interaction.
   function refreshProfilePreview() {
-    const host = document.getElementById("profile-preview");
+    const host = document.getElementById("profile-snapshot");
     if (!host) return;
     host.innerHTML = "";
     const s = store.get();
-    const pool = listAllBooks();
-    host.appendChild(util.el("div", { class: "card-head" }, [
-      util.el("h3", { text: "Live preview" }),
-      util.el("span", { class: "card-sub t-subtle", text: pool.length ? `${pool.length} saved title${pool.length === 1 ? "" : "s"}` : "no saved titles yet" })
+    const p = s.profile;
+    const tagKeys = ["tone", "pacing", "style", "dynamic", "trope", "kink", "orientation"];
+    const tagsSelected = tagKeys.reduce((acc, k) => acc + ((p[k] || []).length), 0);
+
+    host.appendChild(util.el("div", { class: "snapshot-head" }, [
+      util.el("h3", { html: "Profile <em>snapshot</em>" }),
+      util.el("div", { class: "t-eyebrow", style: { marginTop: "2px" }, text: "Live summary" })
     ]));
-    if (!pool.length) {
-      host.appendChild(ui.empty({
-        title: "Your library is empty",
-        message: "Add books from Discovery or load the starter library in Settings to see how your profile ranks them.",
-        actions: [
-          { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
-          { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
-        ]
-      }));
-      return;
-    }
-    const result = Engine.rankRecommendations(s.profile, s.weights, pool);
-    const top = result.scored.slice(0, 3);
-    const matchLine = util.el("div", { class: "t-small t-subtle", style: { marginTop: "var(--s-1)" }, text: `${result.matched} of ${result.screened} pass your filters` });
-    host.appendChild(matchLine);
-    if (!top.length) {
-      host.appendChild(ui.empty({ title: "No matches yet", message: "Loosen an exclusion or warning strictness." }));
-      return;
-    }
-    const list = util.el("div", { class: "stack-sm" });
-    top.forEach(sc => {
-      list.appendChild(util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline", padding: "var(--s-3) 0", borderBottom: "1px solid var(--border)" } }, [
-        util.el("div", {}, [
-          util.el("div", { class: "t-serif", style: { fontSize: "15px" }, text: sc.book.title }),
-          util.el("div", { class: "t-tiny t-subtle", text: sc.book.author })
-        ]),
-        util.el("div", { class: "t-mono", style: { color: "var(--accent)" }, text: `${sc.fitScore}` })
-      ]));
-    });
+
+    const list = util.el("div", { class: "snapshot-list" });
+    const row = (label, valueHtml) => {
+      const r = util.el("div", { class: "snapshot-row" });
+      r.appendChild(util.el("span", { class: "snapshot-label", text: label }));
+      r.appendChild(util.el("span", { class: "snapshot-value", html: valueHtml }));
+      return r;
+    };
+    list.appendChild(row("Heat",            `${p.heat}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Explicit",        `${p.explicit}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Emotion",         `${p.emotion}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Consent floor",   `<span class="snap-gte">≥</span>${p.consent}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Taboo tolerance", `${p.taboo}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Plot weight",     `${p.plot}<span class="snap-of">/5</span>`));
+    list.appendChild(row("Tags selected",   `${tagsSelected}`));
     host.appendChild(list);
+
+    const actions = util.el("div", { class: "snapshot-actions" });
+    actions.appendChild(util.el("button", {
+      class: "hero-cta",
+      onclick: () => {
+        router.go("discover");
+        ui.toast("Recommendations refreshed from your profile");
+      }
+    }, "Run recommendations"));
+    actions.appendChild(util.el("button", {
+      class: "btn btn-small",
+      onclick: () => {
+        ui.modal({
+          title: "Reset profile?",
+          body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
+          primary: { label: "Reset", onClick: () => {
+            store.update(s2 => { s2.profile = structuredClone(DEFAULT_PROFILE); });
+            renderView();
+            ui.toast("Profile reset");
+          }},
+          secondary: { label: "Cancel" }
+        });
+      }
+    }, "Reset profile"));
+    host.appendChild(actions);
   }
 
   /* -------------------- library -------------------- */
@@ -3375,95 +3403,86 @@
     },
 
     profile() {
-      const wrap = util.el("div", { class: "page" });
+      const wrap = util.el("div", { class: "page profile-page" });
 
       wrap.appendChild(util.el("div", { class: "page-head" }, [
         util.el("div", {}, [
-          util.el("div", { class: "t-eyebrow", text: "Profile" }),
-          util.el("h1", { html: "Your <em>reader</em> profile" }),
-          util.el("p", { class: "lede", text: "What you tell Lumen here shapes every recommendation. All values stay on this device." })
+          util.el("h1", { html: "Tell us how <em>you</em> read." }),
+          util.el("p", { class: "lede", text: "Every field feeds the weighted fit score. Leave any at default if you have no preference — the engine will treat it neutrally. Changes apply instantly across the dashboard." })
         ]),
         util.el("div", { class: "row" }, [
-          util.el("button", { class: "btn btn-ghost", onclick: () => {
-            ui.modal({
-              title: "Reset profile?",
-              body: "<p class=\"t-muted\">This restores every control to its default. Your saved books, journal, and vault are not touched.</p>",
-              primary: { label: "Reset", onClick: () => {
-                store.update(s => { s.profile = structuredClone(DEFAULT_PROFILE); });
-                renderView();
-                ui.toast("Profile reset");
-              }},
-              secondary: { label: "Cancel" }
-            });
-          } }, "Reset"),
-          util.el("button", { class: "btn", onclick: () => launchOnboarding(true) }, "Re-run onboarding")
+          util.el("button", { class: "btn btn-small", onclick: () => launchOnboarding(true) }, "Re-run onboarding")
         ])
       ]));
 
-      const grid = util.el("div", { style: { display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: "var(--s-5)", alignItems: "start" } });
+      const grid = util.el("div", { class: "profile-shell" });
       const col = util.el("div", { class: "stack-lg" });
 
-      // Numeric card
-      const numericCard = util.el("div", { class: "card" });
-      numericCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Intensity" }),
-        util.el("span", { class: "card-sub t-subtle", text: "1 = low · 5 = high" })
-      ]));
-      numericCard.appendChild(util.el("div", { class: "stack" }, [
-        numericSlider("heat",     "Heat level",          "How physically charged do you want the reading to feel."),
-        numericSlider("explicit", "Explicitness",        "How direct the language is — from implied to graphic."),
-        numericSlider("emotion",  "Emotional intensity", "Emotional weight and psychological depth."),
-        numericSlider("consent",  "Consent clarity",     "How clearly consent is depicted and respected."),
-        numericSlider("taboo",    "Taboo tolerance",     "Your appetite for transgressive or edge-of-taboo material."),
-        numericSlider("plot",     "Plot vs scene",       "1 = scenes-driven · 5 = plot-driven")
-      ]));
-      col.appendChild(numericCard);
+      // --- Sliders (two-column pairing matching the mockup) ---------------
+      const slidersCard = util.el("div", { class: "card profile-sliders" });
+      const slidersGrid = util.el("div", { class: "profile-slider-grid" });
 
-      // Strictness
-      const strictCard = util.el("div", { class: "card" });
-      strictCard.appendChild(util.el("h3", { text: "Warning sensitivity" }));
-      strictCard.appendChild(util.el("p", { class: "t-muted t-small", style: { margin: "var(--s-2) 0 var(--s-4)" }, text: "How heavily content warnings should reduce a book's fit score." }));
-      strictCard.appendChild(segmented("warnStrict", [
-        { label: "Permissive", value: "permissive" },
-        { label: "Moderate",   value: "moderate" },
-        { label: "Strict",     value: "strict" }
-      ]));
-      col.appendChild(strictCard);
+      const leftCol = util.el("div", { class: "stack-lg" }, [
+        numericSlider("heat",    "Desired heat level",  "1 = implied, 5 = intense throughout",                        "temperature"),
+        numericSlider("emotion", "Emotional intensity", "From playful & light to intense & consuming",                 "weight of feeling"),
+        numericSlider("taboo",   "Taboo tolerance",     "Willingness to engage with transgressive themes",             "transgression"),
+        chipGroup("tone", "Preferred tone", VOCAB.tone, { ornament: "voice" })
+      ]);
+      const rightCol = util.el("div", { class: "stack-lg" }, [
+        numericSlider("explicit", "Explicitness preference", "How direct vs. veiled the prose should be",                              "directness"),
+        numericSlider("consent",  "Consent clarity floor",   "5 = on-page, unambiguous; lower tolerates period-typical framing",       "non-negotiable"),
+        numericSlider("plot",     "Plot vs scene weighting", "1 = scene-heavy, 5 = strong narrative architecture",                     "architecture"),
+        chipGroup("pacing", "Preferred pacing", VOCAB.pacing, { ornament: "rhythm" })
+      ]);
+      slidersGrid.appendChild(leftCol);
+      slidersGrid.appendChild(rightCol);
+      slidersCard.appendChild(slidersGrid);
+      col.appendChild(slidersCard);
 
-      // Tag groups (collapsed under a disclosure)
-      const tagsCard = util.el("details", { class: "card", open: true, style: { padding: "var(--s-5)" } });
-      tagsCard.appendChild(util.el("summary", { style: { cursor: "pointer", fontFamily: "var(--font-serif)", fontSize: "19px", marginBottom: "var(--s-4)" }, text: "Tastes (optional)" }));
-      tagsCard.appendChild(util.el("div", { class: "stack" }, [
-        chipGroup("tone",        "Tone",               VOCAB.tone),
-        chipGroup("pacing",      "Pacing",             VOCAB.pacing),
-        chipGroup("style",       "Literary style",     VOCAB.style),
-        chipGroup("dynamic",     "Relationship dynamic", VOCAB.dynamic),
-        chipGroup("trope",       "Tropes",             VOCAB.trope),
-        chipGroup("kink",        "Kink tags",          VOCAB.kink),
-        chipGroup("orientation", "Orientation",        VOCAB.orientation)
+      // --- Tastes (literary style + relationship dynamics + tropes + themes) ---
+      const tastesCard = util.el("div", { class: "card stack-lg" });
+      tastesCard.appendChild(util.el("div", { class: "profile-two-col" }, [
+        chipGroup("style",   "Literary style",      VOCAB.style),
+        chipGroup("dynamic", "Relationship dynamics", VOCAB.dynamic)
       ]));
-      col.appendChild(tagsCard);
+      tastesCard.appendChild(chipGroup("trope", "Tropes of interest", VOCAB.trope, { ornament: "tap to choose" }));
+      tastesCard.appendChild(chipGroup("kink",  "Themes & kink tags", VOCAB.kink));
+      tastesCard.appendChild(chipGroup("orientation", "Gender pairing / orientation", VOCAB.orientation));
+      col.appendChild(tastesCard);
 
-      // Exclusions
+      // --- Hard exclusions ------------------------------------------------
       const excludeCard = util.el("div", { class: "card" });
-      excludeCard.appendChild(util.el("h3", { text: "Hard exclusions" }));
-      excludeCard.appendChild(util.el("p", { class: "t-muted t-small", style: { margin: "var(--s-2) 0 var(--s-4)" }, text: "Any book carrying a selected warning is dropped from results. This is absolute." }));
-      excludeCard.appendChild(chipGroup("exclude", "", ALL_WARNINGS, { exclude: true }));
+      excludeCard.appendChild(buildFieldLabel("Hard exclusions — never show", "firm boundaries"));
+      excludeCard.appendChild(util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } },
+        ALL_WARNINGS.map(w => ui.chip(w, {
+          pressed: store.get().profile.exclude.includes(w),
+          exclude: true,
+          onToggle: (on) => {
+            store.update(s2 => {
+              const list = s2.profile.exclude;
+              if (on && !list.includes(w)) list.push(w);
+              else if (!on) s2.profile.exclude = list.filter(x => x !== w);
+            });
+            refreshProfilePreview();
+          }
+        }))
+      ));
+      excludeCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Any book tagged with these is removed entirely" }));
       col.appendChild(excludeCard);
 
-      // Scenarios
+      // --- Quick scenarios ------------------------------------------------
       const scenariosCard = util.el("div", { class: "card" });
       scenariosCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Quick scenarios" }),
-        util.el("span", { class: "card-sub t-subtle", text: "Preset profiles — applied to the sliders above." })
+        util.el("h3", { html: "Quick <em>scenarios</em>" }),
+        util.el("span", { class: "card-sub t-subtle", text: "Preset profiles — applied to the controls above." })
       ]));
       SCENARIOS.forEach(sc => {
-        const row = util.el("div", { class: "row", style: { justifyContent: "space-between", padding: "var(--s-3) 0", borderTop: "1px solid var(--border)" } }, [
+        const row = util.el("div", { class: "row", style: { justifyContent: "space-between", padding: "var(--s-3) 0", borderTop: "1px solid var(--border)", gap: "var(--s-3)" } }, [
           util.el("div", { style: { minWidth: 0 } }, [
             util.el("div", { class: "t-serif", style: { fontSize: "15px" }, text: sc.name }),
             util.el("div", { class: "t-small t-subtle", text: sc.desc })
           ]),
-          util.el("button", { class: "btn btn-sm", onclick: () => {
+          util.el("button", { class: "btn btn-small", onclick: () => {
             store.update(s => { s.profile = Object.assign(structuredClone(DEFAULT_PROFILE), structuredClone(sc.profile)); s.ui.activeScenarioId = sc.id; });
             ui.toast(`Applied: ${sc.name}`);
             renderView();
@@ -3475,10 +3494,24 @@
 
       grid.appendChild(col);
 
-      // Preview column
-      const preview = util.el("div", { class: "card", id: "profile-preview", style: { position: "sticky", top: "calc(var(--shell-topbar) + var(--s-4))" } });
-      grid.appendChild(preview);
+      // --- Right sidebar: Profile snapshot + Content controls -------------
+      const side = util.el("div", { class: "profile-side" });
 
+      const snapshotCard = util.el("div", { class: "card", id: "profile-snapshot" });
+      side.appendChild(snapshotCard);
+
+      const controlsCard = util.el("div", { class: "card stack" });
+      controlsCard.appendChild(util.el("h3", { html: "Content <em>controls</em>" }));
+      controlsCard.appendChild(buildFieldLabel("Warning strictness", "tone of the filter"));
+      controlsCard.appendChild(segmented("warnStrict", [
+        { label: "Lenient",  value: "permissive" },
+        { label: "Moderate", value: "moderate" },
+        { label: "Strict",   value: "strict" }
+      ]));
+      controlsCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Higher strictness penalises books with many content warnings and auto-deprioritises those with critical flags." }));
+      side.appendChild(controlsCard);
+
+      grid.appendChild(side);
       wrap.appendChild(grid);
 
       setTimeout(refreshProfilePreview, 0);
