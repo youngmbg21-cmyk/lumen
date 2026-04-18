@@ -199,7 +199,7 @@
     { id: "discover",     label: "Home",          short: "Home",    group: "main",    render: () => views.discover() },
     { id: "library",      label: "Library",       short: "Library", group: "main",    render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare", group: "main",    render: () => views.compare() },
-    { id: "chat",         label: "Chat",          short: "Chat",    group: "main",    render: () => views.chat() },
+    { id: "chat",         label: "Connections",   short: "Connect", group: "main",    render: () => views.chat() },
     { id: "journal",      label: "Journal",       short: "Journal", group: "personal", render: () => views.journal() },
     { id: "vault",        label: "Vault",         short: "Vault",   group: "personal", render: () => views.vault() },
     { id: "profile",      label: "Profile",       short: "Profile", group: "settings", render: () => views.profile() },
@@ -1267,16 +1267,28 @@
     };
   }
 
-  function saraRespond(userText) {
+  function saraRespond(userText, saraCtx) {
     const text = userText.toLowerCase();
     const ctx = saraContextSummary();
     const s = store.get();
     const ranked = Engine.rankRecommendations(s.profile, s.weights);
+    saraCtx = saraCtx || (window.LumenSara && window.LumenSara.context) || {};
 
-    const bookMentioned = BOOKS.find(b =>
+    // Resolve referential phrases via live context
+    let bookMentioned = BOOKS.find(b =>
       text.includes(b.title.toLowerCase()) ||
       text.includes(b.title.toLowerCase().split(" ").slice(0, 2).join(" ").toLowerCase())
     );
+    const referential = /\b(this book|this title|it|that one)\b/.test(text);
+    if (!bookMentioned && referential) {
+      // Pick the book most likely being referenced based on route
+      if (saraCtx.route === "compare" && (saraCtx.compareSlots || []).length) {
+        bookMentioned = BOOKS.find(b => saraCtx.compareSlots.includes(b.title));
+      } else if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
+        const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
+        if (entry && entry.bookId) bookMentioned = BOOKS.find(b => b.id === entry.bookId);
+      }
+    }
 
     const replies = [];
 
@@ -1294,12 +1306,28 @@
       }
     }
 
-    if (/\bcompare\b/.test(text)) {
-      replies.push(`I can do that. Open the Compare tab and pick two titles — I'll lay out scores, a radar, and a plain-language verdict.`);
+    if (/\bcompare\b/.test(text) || /\b(difference|differ|versus|vs)\b/.test(text)) {
+      if (saraCtx.route === "compare" && (saraCtx.compareSlots || []).length >= 2) {
+        const titles = saraCtx.compareSlots;
+        replies.push(`Looking at your current lineup (${titles.join(", ")}): the sharpest differences usually show on heat, emotional intensity, and consent clarity. Hit **Run analysis** for the full tradeoff matrix.`);
+      } else {
+        replies.push(`Open the Compare tab and pick up to three titles — I'll lay out scores, a radar, category bars, and a plain-language verdict.`);
+      }
     }
 
-    if (/\b(reflect|journal|feel|felt|thought)\b/.test(text)) {
-      replies.push(`The Journal is the right place for that — freeform or prompted entries, all private. Want me to suggest a reflection prompt?`);
+    if (/\b(summari[sz]e|summary|lineup|pick one)\b/.test(text) && saraCtx.route === "compare" && (saraCtx.compareSlots || []).length) {
+      replies.push(`Your comparison has ${saraCtx.compareSlots.length} title${saraCtx.compareSlots.length === 1 ? "" : "s"}: ${saraCtx.compareSlots.join(", ")}. Want me to call out the biggest tradeoff, or a safest choice?`);
+    }
+
+    if (/\b(reflect|journal|feel|felt|thought|prompt)\b/.test(text)) {
+      if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
+        const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
+        const book = entry && entry.bookId ? BOOKS.find(b => b.id === entry.bookId) : null;
+        if (book) replies.push(`For your entry on **${book.title}**, try: "Where in the book did you lose your footing, and what caught you there?"`);
+        else       replies.push(`A prompt for this entry: "What did you want more of, and what was on the page already?"`);
+      } else {
+        replies.push(`The Journal is the right place for that — freeform or prompted entries, all private. Want me to suggest a reflection prompt?`);
+      }
     }
 
     if (/\b(safe|private|who|see|share|upload)\b/.test(text)) {
@@ -1358,44 +1386,60 @@
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Chat" }),
-        util.el("h1", { text: "Private conversations" }),
-        util.el("p", { class: "lede", text: "Sara is your reading companion. Friends is an optional local-only space for sharing titles — nothing leaves this device." })
+        util.el("div", { class: "t-eyebrow", text: "Connections" }),
+        util.el("h1", { text: "Your private social layer" }),
+        util.el("p", { class: "lede", text: "Sara lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
       ])
     ]));
 
-    const shell = util.el("div", { class: "chat-shell" });
-    const threads = util.el("div", { class: "chat-threads" });
-    shell.appendChild(threads);
+    // Sara summary card
+    const saraMsgs = store.get().chats.sara || [];
+    const lastMsg = saraMsgs[saraMsgs.length - 1];
+    const saraCard = util.el("div", { class: "card" });
+    saraCard.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Sara · conversation history" }),
+      util.el("div", { class: "row" }, [
+        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Sara"),
+        util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
+          ui.modal({
+            title: "Clear Sara's memory?",
+            body: "<p class=\"t-muted\">Deletes every message between you and Sara on this device. A fresh greeting will replace it.</p>",
+            primary: { label: "Clear", onClick: () => {
+              store.update(s => { s.chats.sara = []; });
+              ensureSeedSara();
+              ui.toast("Sara's memory cleared");
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }}, "Clear history")
+      ])
+    ]));
+    saraCard.appendChild(util.el("div", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" },
+      text: `${saraMsgs.length} message${saraMsgs.length === 1 ? "" : "s"} stored locally${lastMsg ? " · last: " + new Date(lastMsg.ts).toLocaleString() : ""}` }));
 
-    const saraThread = util.el("div", { class: "chat-thread", "aria-current": chatState.active === "sara" ? "true" : null,
-      onclick: () => { chatState.active = "sara"; chatState.friendId = null; paint(); }
-    }, [
-      util.el("div", { class: "chat-thread-name", text: "Sara" }),
-      util.el("div", { class: "chat-thread-sub", text: "Your reading companion" })
-    ]);
-    threads.appendChild(saraThread);
+    if (saraMsgs.length > 1) {
+      const transcript = util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-4)", maxHeight: "320px", overflowY: "auto", padding: "var(--s-3)", background: "var(--bg-sunken)", borderRadius: "var(--r-2)", border: "1px solid var(--border)" } });
+      saraMsgs.slice(-10).forEach(m => {
+        transcript.appendChild(util.el("div", { style: { padding: "6px 0", borderBottom: "1px dashed var(--border)" } }, [
+          util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Sara"} · ${new Date(m.ts).toLocaleTimeString()}` }),
+          util.el("div", { class: "t-small", style: { marginTop: "2px" }, text: (m.text || "").replace(/\*\*(.+?)\*\*/g, "$1") })
+        ]));
+      });
+      saraCard.appendChild(transcript);
+    }
+    wrap.appendChild(saraCard);
 
-    threads.appendChild(util.el("div", { class: "t-eyebrow", style: { padding: "var(--s-3) var(--s-2) var(--s-2)" }, text: "Friends" }));
-
-    const friends = store.get().chats.friends;
-    friends.forEach(f => {
-      threads.appendChild(util.el("div", { class: "chat-thread",
-        "aria-current": chatState.active === "friend" && chatState.friendId === f.id ? "true" : null,
-        onclick: () => { chatState.active = "friend"; chatState.friendId = f.id; paint(); }
-      }, [
-        util.el("div", { class: "chat-thread-name", text: f.name }),
-        util.el("div", { class: "chat-thread-sub", text: f.messages.length ? `${f.messages.length} message${f.messages.length > 1 ? "s" : ""}` : "New" })
-      ]));
-    });
-
-    threads.appendChild(util.el("button", { class: "btn btn-sm btn-ghost", style: { marginTop: "var(--s-2)" },
-      onclick: () => {
+    // Friends layer
+    const friendsCard = util.el("div", { class: "card" });
+    friendsCard.appendChild(util.el("div", { class: "card-head" }, [
+      util.el("h3", { text: "Friends · local-only" }),
+      util.el("button", { class: "btn btn-sm", onclick: () => {
         ui.modal({
           title: "Add a friend",
           body: (() => {
             const div = util.el("div", { class: "stack" });
-            div.appendChild(util.el("p", { class: "t-muted t-small", text: "Friends are local only — this is a private, single-device prototype of a social layer. No accounts, no syncing." }));
+            div.appendChild(util.el("p", { class: "t-muted t-small", text: "Friends are local only — a private, single-device prototype of a social layer. No accounts, no syncing." }));
             const input = util.el("input", { class: "input", placeholder: "Display name", id: "friend-name-input" });
             div.appendChild(input);
             return div;
@@ -1409,70 +1453,35 @@
           }},
           secondary: { label: "Cancel" }
         });
-      }
-    }, "+ Add friend"));
+      }}, "+ Add friend")
+    ]));
 
-    const panel = util.el("div", { class: "chat-panel" });
-    shell.appendChild(panel);
-    wrap.appendChild(shell);
-
-    function paint() {
-      threads.querySelectorAll(".chat-thread").forEach(t => t.removeAttribute("aria-current"));
-      if (chatState.active === "sara") saraThread.setAttribute("aria-current", "true");
-
-      panel.innerHTML = "";
-      if (chatState.active === "sara") paintSara(panel);
-      else paintFriend(panel, chatState.friendId);
-    }
-
-    function paintSara(host) {
-      const ctx = saraContextSummary();
-      host.appendChild(util.el("div", { class: "chat-head" }, [
-        util.el("div", {}, [
-          util.el("div", { class: "t-serif", style: { fontSize: "17px" }, text: "Sara" }),
-          util.el("div", { class: "t-small t-subtle", text: `Knows: warning strictness ${ctx.strictness}, ${ctx.topTags.length} tag preferences, ${ctx.currentReading.length} book${ctx.currentReading.length === 1 ? "" : "s"} in progress` })
-        ]),
-        util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
-          store.update(s => { s.chats.sara = []; });
-          ensureSeedSara();
-          paintSara(host);
-        } }, "Reset conversation")
-      ]));
-
-      const body = util.el("div", { class: "chat-body" });
-      const msgs = store.get().chats.sara;
-      msgs.forEach(m => body.appendChild(util.el("div", {
-        class: "chat-msg " + (m.role === "user" ? "from-me" : "from-them"),
-        html: m.text.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      })));
-      host.appendChild(body);
-
-      const suggestions = util.el("div", { class: "chat-suggestions" });
-      ["What should I read tonight?", "Compare two titles for me", "Why does Lumen score that way?", "How private is this?"].forEach(q => {
-        suggestions.appendChild(util.el("button", { class: "chip", onclick: () => send(q) }, q));
+    const friends = store.get().chats.friends;
+    if (!friends.length) {
+      friendsCard.appendChild(ui.empty({
+        title: "No friends yet",
+        message: "Add a local-only friend to share titles and exchange notes. Nothing syncs to any server."
+      }));
+    } else {
+      const shell = util.el("div", { class: "chat-shell" });
+      const threads = util.el("div", { class: "chat-threads" });
+      friends.forEach(f => {
+        threads.appendChild(util.el("div", { class: "chat-thread",
+          "aria-current": chatState.friendId === f.id ? "true" : null,
+          onclick: () => { chatState.friendId = f.id; paintFriend(panel, f.id); threads.querySelectorAll(".chat-thread").forEach(el => el.removeAttribute("aria-current")); threads.lastChild.previousSibling; }
+        }, [
+          util.el("div", { class: "chat-thread-name", text: f.name }),
+          util.el("div", { class: "chat-thread-sub", text: f.messages.length ? `${f.messages.length} message${f.messages.length > 1 ? "s" : ""}` : "New" })
+        ]));
       });
-      host.appendChild(suggestions);
-
-      const compose = util.el("form", { class: "chat-compose", onsubmit: (e) => { e.preventDefault(); const t = ta.value.trim(); if (t) send(t); } });
-      const ta = util.el("textarea", { placeholder: "Message Sara…", onkeydown: (e) => {
-        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const t = ta.value.trim(); if (t) send(t); }
-      }});
-      compose.appendChild(ta);
-      compose.appendChild(util.el("button", { class: "btn btn-primary", type: "submit" }, "Send"));
-      host.appendChild(compose);
-
-      setTimeout(() => body.scrollTop = body.scrollHeight, 20);
-
-      function send(text) {
-        appendChatMessage("sara", null, "user", text);
-        setTimeout(() => {
-          appendChatMessage("sara", null, "sara", saraRespond(text));
-          paintSara(host);
-        }, 280);
-        paintSara(host);
-        ta.value = "";
-      }
+      shell.appendChild(threads);
+      const panel = util.el("div", { class: "chat-panel" });
+      shell.appendChild(panel);
+      friendsCard.appendChild(shell);
+      if (!chatState.friendId && friends.length) chatState.friendId = friends[0].id;
+      setTimeout(() => paintFriend(panel, chatState.friendId), 0);
     }
+    wrap.appendChild(friendsCard);
 
     function paintFriend(host, friendId) {
       const f = store.get().chats.friends.find(x => x.id === friendId);
@@ -1561,7 +1570,6 @@
       setTimeout(() => body.scrollTop = body.scrollHeight, 20);
     }
 
-    setTimeout(paint, 0);
     return wrap;
   }
 
@@ -2223,11 +2231,60 @@
     }
     root.focus();
     if (window.LumenSara) {
-      window.LumenSara.setContext({
-        route: r.id,
-        chips: [{ label: "You're on: " + r.label }]
-      });
+      window.LumenSara.setContext(computeSaraContext(r.id));
     }
+  }
+
+  function computeSaraContext(routeId) {
+    const s = store.get();
+    const chips = [];
+    const ctx = { route: routeId, chips, book: null, compareSlots: [], journalEntryId: null };
+    const readingCount = Object.entries(s.bookStates).filter(([, v]) => v === "reading").length;
+    const wantCount    = Object.entries(s.bookStates).filter(([, v]) => v === "want").length;
+
+    if (routeId === "discover") {
+      chips.push({ label: "Home" });
+      chips.push({ label: `Strictness: ${s.profile.warnStrict}` });
+      if (readingCount) chips.push({ label: `Reading ${readingCount}` });
+    } else if (routeId === "library") {
+      chips.push({ label: "Library" });
+      if (libState && libState.query) chips.push({ label: `Search: "${libState.query}"` });
+      if (libState && libState.readingFilter !== "all") chips.push({ label: `Filter: ${libState.readingFilter}` });
+    } else if (routeId === "compare") {
+      chips.push({ label: "Compare" });
+      const titles = (cmpState.slots || [cmpState.a, cmpState.b])
+        .filter(Boolean)
+        .map(id => BOOKS.find(b => b.id === id)?.title)
+        .filter(Boolean);
+      titles.forEach(t => chips.push({ label: t }));
+      ctx.compareSlots = titles;
+    } else if (routeId === "journal") {
+      chips.push({ label: "Journal" });
+      const entry = s.journal.find(e => e.id === journalState.selectedId);
+      if (entry) {
+        chips.push({ label: entry.title ? `Entry: ${entry.title}` : "Untitled entry" });
+        if (entry.bookId) {
+          const b = BOOKS.find(x => x.id === entry.bookId);
+          if (b) chips.push({ label: `On: ${b.title}` });
+        }
+        ctx.journalEntryId = entry.id;
+      }
+    } else if (routeId === "vault") {
+      chips.push({ label: "Vault" });
+      if (s.vault.pinned.length)   chips.push({ label: `${s.vault.pinned.length} pinned` });
+      if (s.vault.analyses.length) chips.push({ label: `${s.vault.analyses.length} saved analyses` });
+    } else if (routeId === "profile") {
+      chips.push({ label: "Profile" });
+      chips.push({ label: `Heat ${s.profile.heat}/5` });
+      chips.push({ label: `Consent ${s.profile.consent}/5` });
+      chips.push({ label: `Strictness: ${s.profile.warnStrict}` });
+    } else if (routeId === "chat") {
+      chips.push({ label: "Connections" });
+      chips.push({ label: `${s.chats.friends.length} friend${s.chats.friends.length === 1 ? "" : "s"}` });
+    } else if (routeId === "transparency") {
+      chips.push({ label: "Transparency" });
+    }
+    return ctx;
   }
 
   function applyUIFlags() {
