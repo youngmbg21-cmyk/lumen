@@ -1606,6 +1606,38 @@ body[data-privacy-blur="on"] .app-main::after {
   border-color: var(--primary);
   box-shadow: var(--shadow-rose);
 }
+.book-card.has-dismiss { position: relative; }
+.card-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease),
+              background var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+  z-index: 2;
+}
+.book-card:hover .card-dismiss,
+.card-dismiss:focus-visible { opacity: 1; }
+.card-dismiss:hover {
+  background: var(--primary-soft);
+  color: var(--accent);
+  border-color: var(--primary);
+}
+@media (hover: none) {
+  .card-dismiss { opacity: 0.7; }
+}
 .book-card h4 {
   font-family: var(--font-serif);
   font-weight: 500;
@@ -1772,4 +1804,14 @@ body[data-privacy-blur="on"] .app-main::after {
 .settings-badge-missing {
   background: var(--bg-sunken);
   color: var(--text-subtle);
+}
+.settings-hidden-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-2);
+  background: var(--bg-raised);
 }

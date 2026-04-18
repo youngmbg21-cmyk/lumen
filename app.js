@@ -51,6 +51,8 @@
       weights: { ...DEFAULT_WEIGHTS },
       bookStates: {},
       tags: {},
+      hidden: {},
+      discovered: [],
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
       chats: { sara: [], friends: [] },
@@ -381,6 +383,85 @@
     });
   }
 
+  // Merged view of catalogue + user-discovered books.
+  function discoveredAsBook(d) {
+    return {
+      id: d.id,
+      title: d.title,
+      author: d.author,
+      year: parseInt(d.year, 10) || 0,
+      description: d.description || "",
+      category: "web-discovered",
+      subgenre: "",
+      heat_level: d.heat || 3,
+      explicitness: d.heat || 3,
+      emotional_intensity: 3,
+      consent_clarity: 3,
+      taboo_level: 2,
+      plot_weight: 3,
+      tone: [], pacing: [], literary_style: [],
+      relationship_dynamic: [], trope_tags: d.tropes || [],
+      kink_tags: [], gender_pairing: [], orientation_tags: [],
+      content_warnings: [],
+      source: d.source || "Google Books",
+      source_url: d.sourceUrl || null,
+      thumbnail: d.thumbnail || null,
+      aiInsight: d.aiInsight || null,
+      _discovered: true
+    };
+  }
+  function findBook(bookId) {
+    const hit = BOOKS.find(b => b.id === bookId);
+    if (hit) return hit;
+    const d = (store.get().discovered || []).find(x => x.id === bookId);
+    return d ? discoveredAsBook(d) : null;
+  }
+  function listAllBooks() {
+    const discovered = (store.get().discovered || []).map(discoveredAsBook);
+    return BOOKS.concat(discovered);
+  }
+  function isHidden(bookId) {
+    return !!store.get().hidden[bookId];
+  }
+
+  function dismissFromLibrary(bookId) {
+    const s = store.get();
+    const isDiscovered = (s.discovered || []).some(d => d.id === bookId);
+    const snapshot = {
+      discovered: isDiscovered ? s.discovered.find(d => d.id === bookId) : null,
+      bookState: s.bookStates[bookId],
+      tags: s.tags[bookId] ? [...s.tags[bookId]] : null,
+      hidden: !!s.hidden[bookId]
+    };
+    store.update(st => {
+      if (isDiscovered) {
+        st.discovered = (st.discovered || []).filter(d => d.id !== bookId);
+      }
+      st.hidden[bookId] = true;
+      delete st.bookStates[bookId];
+      delete st.tags[bookId];
+    });
+    return snapshot;
+  }
+
+  function restoreDismissed(bookId, snapshot) {
+    store.update(st => {
+      delete st.hidden[bookId];
+      if (snapshot) {
+        if (snapshot.discovered) {
+          st.discovered = st.discovered || [];
+          if (!st.discovered.some(d => d.id === bookId)) st.discovered.unshift(snapshot.discovered);
+        }
+        if (snapshot.bookState) st.bookStates[bookId] = snapshot.bookState;
+        if (snapshot.tags && snapshot.tags.length) st.tags[bookId] = snapshot.tags;
+      }
+    });
+  }
+
+  function unhideBook(bookId) {
+    store.update(st => { delete st.hidden[bookId]; });
+  }
+
   function readingStateBadge(bookId) {
     const st = getReadingState(bookId);
     if (st === "none") return null;
@@ -402,9 +483,25 @@
   }
 
   function bookCardFull(book, scored) {
-    const card = util.el("div", { class: "book-card",
+    const card = util.el("div", { class: "book-card has-dismiss",
       onclick: () => openBookDetail(book.id)
     });
+    // Dismiss control — top-right. Confirmation is handled inline via undo toast.
+    card.appendChild(util.el("button", {
+      class: "card-dismiss",
+      "aria-label": `Dismiss ${book.title}`,
+      title: "Dismiss from library",
+      onclick: (e) => {
+        e.stopPropagation();
+        const snapshot = dismissFromLibrary(book.id);
+        ui.toast(`Dismissed ${book.title}`, {
+          action: "Undo",
+          onAction: () => { restoreDismissed(book.id, snapshot); renderView(); },
+          duration: 5000
+        });
+        renderView();
+      }
+    }, "×"));
     // Steam Engine — heat-level indicator bar
     card.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     const head = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
@@ -414,21 +511,24 @@
     card.appendChild(head);
     card.appendChild(util.el("h4", { text: book.title }));
     card.appendChild(util.el("div", { class: "author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
-    card.appendChild(util.el("p", { class: "blurb", text: book.description.slice(0, 160) + (book.description.length > 160 ? "…" : "") }));
+    card.appendChild(util.el("p", { class: "blurb", text: (book.description || "").slice(0, 160) + ((book.description || "").length > 160 ? "…" : "") }));
     const badges = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } });
     const rsBadge = readingStateBadge(book.id);
     if (rsBadge) badges.appendChild(rsBadge);
-    if (book.content_warnings.length) badges.appendChild(ui.tag(`${book.content_warnings.length} warning${book.content_warnings.length > 1 ? "s" : ""}`, "warn"));
+    if (book._discovered) badges.appendChild(ui.tag("from discovery", "accent"));
+    if ((book.content_warnings || []).length) badges.appendChild(ui.tag(`${book.content_warnings.length} warning${book.content_warnings.length > 1 ? "s" : ""}`, "warn"));
     if (scored && scored.confidence < 60) badges.appendChild(ui.tag(`low confidence`, "danger"));
     card.appendChild(badges);
     return card;
   }
 
   function openBookDetail(bookId) {
-    const book = BOOKS.find(b => b.id === bookId);
+    const book = findBook(bookId);
     if (!book) return;
     const s = store.get();
-    const scored = Engine.compareBooks([bookId], s.profile, s.weights)[0];
+    const scored = BOOKS.some(b => b.id === bookId)
+      ? Engine.compareBooks([bookId], s.profile, s.weights)[0]
+      : null;
     const userTags = s.tags[bookId] || [];
 
     const body = util.el("div", { class: "stack" });
@@ -520,15 +620,19 @@
 
   function renderLibrary() {
     const s = store.get();
-    const ranked = Engine.rankRecommendations(s.profile, s.weights);
+    const hidden = s.hidden || {};
+    const allBooks = listAllBooks().filter(b => !hidden[b.id]);
+    const totalVisible = allBooks.length;
+    const discoveredCount = (s.discovered || []).filter(d => !hidden[d.id]).length;
+    const ranked = Engine.rankRecommendations(s.profile, s.weights, allBooks);
     const scoredMap = Object.fromEntries(ranked.scored.map(x => [x.book.id, x]));
 
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Library" }),
-        util.el("h1", { text: "Everything in the catalogue" }),
-        util.el("p", { class: "lede", text: `${BOOKS.length} titles · filter by how you want to read them, or drop anything that doesn't pass your exclusions.` })
+        util.el("h1", { text: "Your saved collection" }),
+        util.el("p", { class: "lede", text: `${totalVisible} title${totalVisible === 1 ? "" : "s"}${discoveredCount ? ` · ${discoveredCount} from Discovery` : ""} · dismiss anything that doesn't belong` })
       ])
     ]));
 
@@ -560,7 +664,7 @@
     });
     filterRow.appendChild(rfSegmented);
 
-    const categories = ["all", ...new Set(BOOKS.map(b => b.category))];
+    const categories = ["all", ...new Set(allBooks.map(b => b.category))];
     const catSelect = util.el("select", {
       class: "select", style: { maxWidth: "260px" },
       onchange: (e) => { libState.category = e.target.value; updateGrid(); }
@@ -595,7 +699,7 @@
 
     function updateGrid() {
       const q = libState.query;
-      let filtered = BOOKS.filter(b => {
+      let filtered = allBooks.filter(b => {
         if (q && !(b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))) return false;
         if (libState.category !== "all" && b.category !== libState.category) return false;
         if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
@@ -608,18 +712,31 @@
           return sb - sa;
         }
         if (libState.sort === "title") return a.title.localeCompare(b.title);
-        if (libState.sort === "year")  return a.year - b.year;
+        if (libState.sort === "year")  return (a.year || 0) - (b.year || 0);
         return 0;
       });
 
-      const excluded = BOOKS.length - Engine.applyHardExclusions(BOOKS, Engine.normalizeProfile(s.profile)).length;
+      const excluded = allBooks.length - Engine.applyHardExclusions(allBooks, Engine.normalizeProfile(s.profile)).length;
+      const hiddenCount = Object.keys(hidden).length;
       stats.innerHTML = "";
-      stats.appendChild(util.el("span", {}, `Showing ${filtered.length} of ${BOOKS.length}`));
-      if (excluded > 0) stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
+      stats.appendChild(util.el("span", {}, `Showing ${filtered.length} of ${allBooks.length}`));
+      if (excluded > 0)   stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
+      if (hiddenCount)    stats.appendChild(util.el("a", { class: "tag tag-accent", href: "#/settings", style: { textDecoration: "none" } }, `${hiddenCount} dismissed — restore in Settings`));
 
       grid.innerHTML = "";
       if (!filtered.length) {
-        grid.appendChild(ui.empty({ title: "Nothing matches those filters", message: "Try clearing the search or reading-state filter." }));
+        if (allBooks.length === 0) {
+          grid.appendChild(ui.empty({
+            title: "Your library is empty",
+            message: "You've dismissed everything in the catalogue. Restore items from Settings, or add new titles via Discovery.",
+            actions: [
+              { label: "Open Settings", variant: "btn-ghost",   onClick: () => router.go("settings") },
+              { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") }
+            ]
+          }));
+        } else {
+          grid.appendChild(ui.empty({ title: "Nothing matches those filters", message: "Try clearing the search or reading-state filter." }));
+        }
         return;
       }
       filtered.forEach(b => grid.appendChild(bookCardFull(b, scoredMap[b.id])));
@@ -789,7 +906,37 @@
     function renderDiscoCard(book) {
       const enrich = discoveryState.enrichments[book.id];
       const heat = enrich && !enrich.error ? enrich.heat : null;
-      const card = util.el("div", { class: "book-card", "data-disco-id": book.id });
+      const card = util.el("div", { class: "book-card has-dismiss", "data-disco-id": book.id });
+
+      // Dismiss — drops this card from the current results feed
+      card.appendChild(util.el("button", {
+        class: "card-dismiss",
+        "aria-label": `Dismiss ${book.title}`,
+        title: "Dismiss from results",
+        onclick: (e) => {
+          e.stopPropagation();
+          const idx = discoveryState.raw.findIndex(b => b.id === book.id);
+          if (idx === -1) return;
+          const removed = discoveryState.raw.splice(idx, 1)[0];
+          delete discoveryState.enrichments[book.id];
+          const node = document.querySelector(`[data-disco-id="${book.id}"]`);
+          if (node) node.remove();
+          const countEl = document.getElementById("disco-count");
+          if (countEl) {
+            countEl.textContent = discoveryState.raw.length
+              ? `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
+              : `All results dismissed — try a new search`;
+          }
+          ui.toast(`Dismissed ${book.title}`, {
+            action: "Undo",
+            onAction: () => {
+              discoveryState.raw.splice(idx, 0, removed);
+              renderView();
+            },
+            duration: 4000
+          });
+        }
+      }, "×"));
 
       // Steam Engine bar (reveals once analyzed)
       const steam = util.el("div", {
@@ -957,6 +1104,63 @@
       ])
     ]));
     wrap.appendChild(keyCard);
+
+    // --- Hidden books -----------------------------------------------------
+    const hiddenIds = Object.keys(store.get().hidden || {});
+    const hiddenCard = util.el("div", { class: "card settings-card stack" });
+    hiddenCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Hidden books" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Titles you've dismissed from your library. Restore any of them here." })
+      ]),
+      util.el("span", { class: "settings-badge " + (hiddenIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: hiddenIds.length ? `${hiddenIds.length} hidden` : "None" })
+    ]));
+    if (!hiddenIds.length) {
+      hiddenCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing is hidden right now. Dismiss a card from the Library to send it here." }));
+    } else {
+      const list = util.el("div", { class: "stack-sm" });
+      hiddenIds.forEach(id => {
+        const book = findBook(id);
+        if (!book) {
+          // Orphaned id (discovered item fully removed). Show a minimal row.
+          list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
+            util.el("div", {}, [
+              util.el("div", { class: "t-small t-muted", text: "Untracked title" }),
+              util.el("div", { class: "t-tiny t-subtle", text: `id: ${id}` })
+            ]),
+            util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { unhideBook(id); renderView(); } }, "Forget")
+          ]));
+          return;
+        }
+        list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
+          util.el("div", {}, [
+            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book.title }),
+            util.el("div", { class: "t-tiny t-subtle", text: `${book.author}${book._discovered ? " · from Discovery" : ""}` })
+          ]),
+          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
+            unhideBook(id);
+            ui.toast(`Restored ${book.title}`);
+            renderView();
+          } }, "Restore")
+        ]));
+      });
+      hiddenCard.appendChild(list);
+      if (hiddenIds.length > 1) {
+        hiddenCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
+          ui.modal({
+            title: "Restore all hidden books?",
+            body: "<p class=\"t-muted\">Brings every dismissed title back into your library.</p>",
+            primary: { label: "Restore all", onClick: () => {
+              store.update(st => { st.hidden = {}; });
+              ui.toast("All hidden books restored");
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          });
+        }}, "Restore all"));
+      }
+    }
+    wrap.appendChild(hiddenCard);
 
     // --- Quick links ------------------------------------------------------
     const links = util.el("div", { class: "card settings-card stack" });
