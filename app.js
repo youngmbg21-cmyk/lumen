@@ -2871,6 +2871,9 @@
         ])
       ]));
 
+      // Live dashboard KPI row
+      wrap.appendChild(buildHomeKpis(s, result));
+
       // Sara check-in
       wrap.appendChild(util.el("div", { class: "card card-accent" }, [
         util.el("div", { class: "t-eyebrow", text: "Sara · your guide" }),
@@ -2902,21 +2905,18 @@
       }
       wrap.appendChild(picksCard);
 
-      // Weekly insight — seeded by week-of-year so it's stable-ish
+      // Weekly KPI strip — journal / pinned / tracked
       const entriesThisWeek = s.journal.filter(e => Date.now() - e.ts < 1000 * 60 * 60 * 24 * 7).length;
       const pinnedCount = s.vault.pinned.length;
       const readingStateCount = Object.keys(s.bookStates).length;
       if (entriesThisWeek || pinnedCount || readingStateCount) {
-        const insightsCard = util.el("div", { class: "card" });
-        insightsCard.appendChild(util.el("div", { class: "card-head" }, [
-          util.el("h3", { text: "This week" }),
-          util.el("span", { class: "card-sub t-subtle", text: "A quiet summary" })
+        const insightsCard = util.el("div", { class: "panel" });
+        insightsCard.appendChild(util.el("div", { class: "ornament ornament-fleuron" }, "This week"));
+        insightsCard.appendChild(buildKpiGrid([
+          { label: "Journal entries", value: entriesThisWeek,   unit: "", sub: entriesThisWeek === 1 ? "recorded this week" : "recorded this week", tone: "default" },
+          { label: "Pinned books",    value: pinnedCount,       sub: "saved to your vault",         tone: "gold" },
+          { label: "Books tracked",   value: readingStateCount, sub: "in a reading state",          tone: "good" }
         ]));
-        const row = util.el("div", { class: "row-wrap", style: { gap: "var(--s-5)" } });
-        if (entriesThisWeek) row.appendChild(kpiBlock(entriesThisWeek, entriesThisWeek === 1 ? "journal entry" : "journal entries"));
-        if (pinnedCount)     row.appendChild(kpiBlock(pinnedCount,     pinnedCount === 1 ? "book pinned" : "books pinned"));
-        if (readingStateCount) row.appendChild(kpiBlock(readingStateCount, "books tracked"));
-        insightsCard.appendChild(row);
         wrap.appendChild(insightsCard);
       }
 
@@ -3085,6 +3085,152 @@
       util.el("div", { class: "t-mono", style: { fontSize: "24px", color: "var(--accent)" }, text: String(value) }),
       util.el("div", { class: "t-tiny t-subtle", text: label })
     ]);
+  }
+
+  /* ---------- Home KPI composition ---------- */
+  function buildHomeKpis(s, result) {
+    const allBooks = listAllBooks ? listAllBooks().filter(b => !(s.hidden || {})[b.id]) : BOOKS;
+    const matched = result.matched;
+    const screened = result.screened;
+    const excluded = result.excluded;
+    const scored = result.scored || [];
+    const avgFit = scored.length ? Math.round(scored.reduce((a, x) => a + x.fitScore, 0) / scored.length) : 0;
+    const topFit = scored[0] ? scored[0].fitScore : 0;
+    const topTitle = scored[0] ? scored[0].book.title : "—";
+    const highConf = scored.filter(x => x.confidence >= 70).length;
+    const cleanCount = allBooks.filter(b => (b.content_warnings || []).length === 0).length;
+
+    recordKpiHistory({ avgFit, topFit, matched, highConf });
+    const dAvg = deltaText(avgFit, kpiHistory.avgFit);
+    const dTop = deltaText(topFit, kpiHistory.topFit);
+    const dMat = deltaText(matched, kpiHistory.matched);
+    const dHi  = deltaText(highConf, kpiHistory.highConf);
+
+    const pctOfCat = screened > 0 ? Math.round((matched / screened) * 100) : 0;
+
+    return buildKpiGrid([
+      {
+        label: "Titles in catalogue",
+        value: screened,
+        sub: `${allBooks.length} visible to you`,
+        tone: "default"
+      },
+      {
+        label: "Passed your filters",
+        value: matched,
+        unit: "",
+        sub: `${pctOfCat}% of catalogue`,
+        delta: dMat.delta, deltaDir: dMat.dir,
+        tone: "good",
+        spark: [...kpiHistory.matched]
+      },
+      {
+        label: "Average fit",
+        value: avgFit,
+        unit: "%",
+        sub: "across matches",
+        delta: dAvg.delta, deltaDir: dAvg.dir,
+        tone: "default",
+        spark: [...kpiHistory.avgFit]
+      },
+      {
+        label: "Your top match",
+        value: topFit,
+        unit: "%",
+        sub: topTitle.length > 22 ? topTitle.slice(0, 22) + "…" : topTitle,
+        delta: dTop.delta, deltaDir: dTop.dir,
+        tone: "gold",
+        spark: [...kpiHistory.topFit]
+      },
+      {
+        label: "High confidence",
+        value: highConf,
+        sub: "≥ 70% signal density",
+        delta: dHi.delta, deltaDir: dHi.dir,
+        tone: "good",
+        spark: [...kpiHistory.highConf]
+      },
+      {
+        label: "Clean titles",
+        value: cleanCount,
+        sub: "no content warnings",
+        tone: excluded > 0 ? "warn" : "default"
+      }
+    ]);
+  }
+
+  /* ---------- KPI scorecard helpers (supply-chain style) ---------- */
+  // Each item: { label, value, unit?, sub?, delta?, deltaDir? "up"|"down"|"flat",
+  //              tone?: "default"|"good"|"warn"|"gold"|"danger",
+  //              spark?: number[] (0-100 scale) }
+  function buildKpiGrid(items) {
+    const grid = util.el("div", { class: "kpi-grid" });
+    items.forEach(item => {
+      const card = util.el("div", { class: "kpi-card" + (item.tone && item.tone !== "default" ? " kpi-" + item.tone : "") });
+      card.appendChild(util.el("div", { class: "kpi-label", text: item.label }));
+      const valNode = util.el("div", { class: "kpi-value" });
+      const numSpan = util.el("em", { text: String(item.value) });
+      valNode.appendChild(numSpan);
+      if (item.unit) valNode.appendChild(util.el("span", { class: "unit", text: item.unit }));
+      card.appendChild(valNode);
+      if (item.sub || item.delta) {
+        const sub = util.el("div", { class: "kpi-sub" });
+        if (item.delta) {
+          const dir = item.deltaDir || "flat";
+          sub.appendChild(util.el("span", { class: "delta " + dir, text: item.delta }));
+        }
+        if (item.sub) sub.appendChild(util.el("span", { text: item.sub }));
+        card.appendChild(sub);
+      }
+      if (item.spark && item.spark.length >= 2) {
+        card.appendChild(buildSparkline(item.spark));
+      }
+      grid.appendChild(card);
+    });
+    return grid;
+  }
+
+  function buildSparkline(values) {
+    const W = 46, H = 18;
+    const max = Math.max(...values, 1);
+    const min = Math.min(...values, 0);
+    const range = (max - min) || 1;
+    const step = values.length > 1 ? W / (values.length - 1) : W;
+    const points = values.map((v, i) => {
+      const x = i * step;
+      const y = H - ((v - min) / range) * (H - 2) - 1;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    const d = "M" + points.join(" L");
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "kpi-spark");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+    svg.setAttribute("width", W);
+    svg.setAttribute("height", H);
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+    return svg;
+  }
+
+  /* Maintain rolling sparkline history of recent fit-score states so the
+     KPI cards feel live. Scoped to this session only — not persisted. */
+  const kpiHistory = { avgFit: [], topFit: [], matched: [], highConf: [] };
+  function recordKpiHistory(sample) {
+    for (const [k, v] of Object.entries(sample)) {
+      const arr = kpiHistory[k] = (kpiHistory[k] || []);
+      arr.push(v);
+      if (arr.length > 6) arr.shift();
+    }
+  }
+  function deltaText(current, history) {
+    if (!history || history.length < 2) return { delta: "—", dir: "flat" };
+    const prev = history[history.length - 2];
+    const diff = Math.round(current - prev);
+    if (diff === 0) return { delta: "±0", dir: "flat" };
+    if (diff > 0)  return { delta: "▲ " + diff,  dir: "up" };
+    return { delta: "▼ " + Math.abs(diff), dir: "down" };
   }
 
   function pageHead(title, lede) {
