@@ -198,6 +198,7 @@
   const ROUTES = [
     { id: "discover",     label: "Home",          short: "Home",    group: "main",    render: () => views.discover() },
     { id: "library",      label: "Library",       short: "Library", group: "main",    render: () => views.library() },
+    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",   render: () => views.discovery() },
     { id: "compare",      label: "Compare",       short: "Compare", group: "main",    render: () => views.compare() },
     { id: "chat",         label: "Connections",   short: "Connect", group: "main",    render: () => views.chat() },
     { id: "journal",      label: "Journal",       short: "Journal", group: "personal", render: () => views.journal() },
@@ -218,23 +219,25 @@
   function bookCardMini(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
     const card = util.el("a", {
-      class: "card card-raised",
+      class: "book-card",
       href: "#",
-      style: { display: "block", textDecoration: "none", color: "inherit" },
+      style: { textDecoration: "none", color: "inherit" },
       onclick: (e) => { e.preventDefault(); onClick && onClick(scored); }
     });
+    // Steam Engine
+    card.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     card.appendChild(util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
       util.el("div", { style: { minWidth: 0 } }, [
         util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || "") }),
-        util.el("h3", { class: "t-serif", text: book.title, style: { marginTop: "2px" } }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `${book.author} · ${util.fmtYear(book.year)}` })
+        util.el("h4", { text: book.title, style: { marginTop: "2px" } }),
+        util.el("div", { class: "author", text: `${book.author} · ${util.fmtYear(book.year)}` })
       ]),
       util.el("div", { style: { textAlign: "right", flexShrink: "0" } }, [
         util.el("div", { class: "t-mono", style: { fontSize: "22px", color: "var(--accent)" }, text: `${fitScore}` }),
         util.el("div", { class: "t-tiny t-subtle", text: `${confidence}% conf.` })
       ])
     ]));
-    card.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-3)", display: "-webkit-box", WebkitLineClamp: "3", WebkitBoxOrient: "vertical", overflow: "hidden" }, text: book.description }));
+    card.appendChild(util.el("p", { class: "blurb", text: book.description }));
     if (why.reasons.length) {
       card.appendChild(util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } },
         why.reasons.slice(0, 2).map(r => ui.tag(r, "accent"))
@@ -398,18 +401,19 @@
   }
 
   function bookCardFull(book, scored) {
-    const state = getReadingState(book.id);
-    const card = util.el("div", { class: "card card-raised", style: { cursor: "pointer", display: "flex", flexDirection: "column" },
+    const card = util.el("div", { class: "book-card",
       onclick: () => openBookDetail(book.id)
     });
+    // Steam Engine — heat-level indicator bar
+    card.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     const head = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
       util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }),
       scored ? util.el("div", { class: "t-mono", style: { color: "var(--accent)", fontSize: "18px" }, text: `${scored.fitScore}` }) : null
     ].filter(Boolean));
     card.appendChild(head);
-    card.appendChild(util.el("h3", { class: "t-serif", style: { marginTop: "var(--s-2)", fontSize: "18px" }, text: book.title }));
-    card.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "2px" }, text: `${book.author} · ${util.fmtYear(book.year)}` }));
-    card.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-3)", flex: "1 1 auto" }, text: book.description.slice(0, 160) + (book.description.length > 160 ? "…" : "") }));
+    card.appendChild(util.el("h4", { text: book.title }));
+    card.appendChild(util.el("div", { class: "author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    card.appendChild(util.el("p", { class: "blurb", text: book.description.slice(0, 160) + (book.description.length > 160 ? "…" : "") }));
     const badges = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } });
     const rsBadge = readingStateBadge(book.id);
     if (rsBadge) badges.appendChild(rsBadge);
@@ -624,6 +628,263 @@
     return wrap;
   }
 
+  /* -------------------- discovery (web search + Claude) -------------------- */
+  const discoveryState = {
+    lastQuery: "",
+    raw: [],        // Google Books results in insertion order
+    enrichments: {} // id -> { heat, tropes, insight } | { error: true, message }
+  };
+
+  function steamClass(heat) {
+    if (heat >= 4) return "steam-high";
+    if (heat >= 3) return "steam-med";
+    return "steam-low";
+  }
+
+  function renderDiscovery() {
+    const Disco = window.LumenDiscovery;
+    const wrap = util.el("div", { class: "page stack-lg" });
+
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Discovery" }),
+        util.el("h1", { text: "Search the web. Ask the engine." }),
+        util.el("p", { class: "lede", text: "Pull real titles from Google Books, have Claude read each blurb, and drop what resonates straight into your library." })
+      ])
+    ]));
+
+    const shell = util.el("div", { class: "discovery-shell" });
+
+    // Sidebar: API key + search + status
+    const side = util.el("div", { class: "stack" });
+
+    const keyCard = util.el("div", { class: "card stack" });
+    keyCard.appendChild(util.el("h3", { text: "Claude API key" }));
+    keyCard.appendChild(util.el("p", { class: "t-small t-muted", text: "Stored locally in your browser. Used only for live book analysis." }));
+
+    const keyInput = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "sk-ant-…",
+      value: Disco.getApiKey()
+    });
+    const keyRow = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
+    keyRow.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      Disco.setApiKey(keyInput.value);
+      ui.toast(keyInput.value ? "API key saved locally" : "API key cleared");
+    }}, "Save"));
+    keyRow.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
+      keyInput.value = "";
+      Disco.clearApiKey();
+      ui.toast("API key cleared");
+    }}, "Clear"));
+    keyCard.appendChild(keyInput);
+    keyCard.appendChild(keyRow);
+
+    const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
+    keyCard.appendChild(statusBadge);
+
+    keyCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+      util.el("div", {}, [
+        util.el("strong", { text: "Heads up · " }),
+        "Calling Claude from the browser exposes your API key to this page. Use a key scoped for personal experimentation, set spend limits in the Anthropic console, and never share this screen. For real deployments, proxy through a server."
+      ])
+    ]));
+    side.appendChild(keyCard);
+
+    const searchCard = util.el("div", { class: "card stack" });
+    searchCard.appendChild(util.el("h3", { text: "Search Google Books" }));
+    const searchInput = util.el("input", {
+      class: "input",
+      placeholder: "Title, author, or topic…",
+      value: discoveryState.lastQuery,
+      onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
+    });
+    searchCard.appendChild(searchInput);
+    searchCard.appendChild(util.el("button", { class: "btn btn-primary btn-block", onclick: () => runSearch() }, "Search & analyze"));
+    searchCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Returns up to six results. Each is analyzed independently — you can see Claude move down the list." }));
+    side.appendChild(searchCard);
+
+    shell.appendChild(side);
+
+    // Main grid
+    const gridWrap = util.el("div");
+    const resultsHead = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline", marginBottom: "var(--s-3)" } });
+    const resultsLabel = util.el("div", { class: "t-small t-subtle", id: "disco-count", text: "No search yet" });
+    resultsHead.appendChild(resultsLabel);
+    gridWrap.appendChild(resultsHead);
+
+    const grid = util.el("div", { class: "discovery-grid", id: "disco-grid" });
+    gridWrap.appendChild(grid);
+
+    shell.appendChild(gridWrap);
+    wrap.appendChild(shell);
+
+    // Status updates
+    const unsub = Disco.onStatus((s) => {
+      statusBadge.className = `api-status status-${s.status}`;
+      statusBadge.textContent = s.lastMessage;
+    });
+    // Re-render will drop the old node; we detach on a router change via a best-effort weak cleanup
+    setTimeout(() => {
+      if (!document.body.contains(statusBadge)) unsub();
+    }, 60_000);
+
+    // Initial paint from cached results (if any)
+    if (discoveryState.raw.length) paintGrid();
+    else {
+      grid.appendChild(util.el("div", { class: "discovery-empty" }, [
+        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Enter an API key, search the sidebar, and Claude will analyze each blurb as it arrives." })
+      ]));
+    }
+
+    function paintGrid() {
+      grid.innerHTML = "";
+      if (!discoveryState.raw.length) {
+        grid.appendChild(util.el("div", { class: "discovery-empty" }, [
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "No results" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Try a different title, author, or keyword." })
+        ]));
+        return;
+      }
+      discoveryState.raw.forEach(book => grid.appendChild(renderDiscoCard(book)));
+      resultsLabel.textContent = `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
+    }
+
+    async function runSearch() {
+      const q = searchInput.value.trim();
+      if (!q) { ui.toast("Enter a title, author, or topic"); return; }
+      if (!Disco.getApiKey()) { ui.toast("Add a Claude API key first"); return; }
+
+      discoveryState.lastQuery = q;
+      discoveryState.raw = [];
+      discoveryState.enrichments = {};
+      grid.innerHTML = "";
+      resultsLabel.textContent = `Searching Google Books for "${q}"…`;
+
+      let items;
+      try {
+        items = await Disco.searchBooks(q);
+      } catch (err) {
+        ui.toast("Google Books search failed");
+        resultsLabel.textContent = "Search failed — try again";
+        return;
+      }
+
+      if (!items.length) {
+        resultsLabel.textContent = `No results for "${q}"`;
+        grid.appendChild(util.el("div", { class: "discovery-empty" }, [
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing turned up" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Try a different keyword, an author surname, or a more specific title." })
+        ]));
+        return;
+      }
+
+      discoveryState.raw = items;
+      paintGrid();
+
+      // Analyse sequentially so the status badge narrates progress
+      for (const book of items) {
+        try {
+          const result = await Disco.analyzeWithClaude(book);
+          discoveryState.enrichments[book.id] = result;
+        } catch (err) {
+          discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
+        }
+        const node = document.querySelector(`[data-disco-id="${book.id}"]`);
+        if (node) node.replaceWith(renderDiscoCard(book));
+      }
+    }
+
+    function renderDiscoCard(book) {
+      const enrich = discoveryState.enrichments[book.id];
+      const heat = enrich && !enrich.error ? enrich.heat : null;
+      const card = util.el("div", { class: "book-card", "data-disco-id": book.id });
+
+      // Steam Engine bar (reveals once analyzed)
+      const steam = util.el("div", {
+        class: "steam-indicator" + (heat ? " " + steamClass(heat) : ""),
+        style: heat ? null : { background: "var(--bg-sunken)", opacity: "0.6" }
+      });
+      card.appendChild(steam);
+
+      card.appendChild(util.el("h4", { text: book.title }));
+      card.appendChild(util.el("div", { class: "author", text: book.author + (book.year ? ` · ${book.year}` : "") }));
+      card.appendChild(util.el("p", { class: "blurb", text: book.description }));
+
+      if (enrich && !enrich.error) {
+        if (enrich.tropes && enrich.tropes.length) {
+          const tr = util.el("div", { class: "tropes" });
+          enrich.tropes.forEach(t => tr.appendChild(util.el("span", { class: "tag" }, t)));
+          card.appendChild(tr);
+        }
+        card.appendChild(util.el("div", { class: "insight" }, [
+          util.el("strong", { text: `AI Insight · heat ${enrich.heat}/5` }),
+          util.el("div", { text: enrich.insight || "No insight returned." })
+        ]));
+      } else if (enrich && enrich.error) {
+        card.appendChild(util.el("div", { class: "insight", style: { background: "var(--primary-soft)", borderLeftColor: "var(--accent)" } }, [
+          util.el("strong", { text: "Analysis failed" }),
+          util.el("div", { text: "Claude couldn't be reached for this title. The rest of the result stands." })
+        ]));
+      } else {
+        card.appendChild(util.el("div", { class: "insight", style: { opacity: 0.7 } }, [
+          util.el("strong", { text: "Claude is reading…" }),
+          util.el("div", { text: "Analysis will appear here in a moment." })
+        ]));
+      }
+
+      const actions = util.el("div", { class: "card-actions" });
+      actions.appendChild(util.el("button", { class: "btn btn-sm btn-primary", onclick: (e) => {
+        e.stopPropagation();
+        addDiscoveryToLibrary(book, enrich);
+      }}, "Add to library"));
+      if (book.sourceUrl) {
+        actions.appendChild(util.el("a", {
+          class: "btn btn-sm btn-ghost",
+          href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer"
+        }, "View source"));
+      }
+      card.appendChild(actions);
+
+      return card;
+    }
+
+    return wrap;
+  }
+
+  function addDiscoveryToLibrary(book, enrich) {
+    const s = store.get();
+    const existing = (s.discovered || []).find(d => d.id === book.id);
+    if (existing) {
+      ui.toast(`${book.title} is already in your library`);
+      return;
+    }
+    store.update(st => {
+      st.discovered = st.discovered || [];
+      st.discovered.unshift({
+        id: book.id,
+        title: book.title,
+        author: book.author,
+        year: book.year,
+        description: book.description,
+        source: "Google Books",
+        sourceUrl: book.sourceUrl || null,
+        heat: enrich && !enrich.error ? enrich.heat : null,
+        tropes: enrich && !enrich.error ? (enrich.tropes || []) : [],
+        aiInsight: enrich && !enrich.error ? enrich.insight : null,
+        addedAt: Date.now()
+      });
+      st.bookStates[book.id] = "want";
+    });
+    ui.toast(`Added ${book.title} to your library as "want to read"`, {
+      action: "Open library",
+      onAction: () => router.go("library"),
+      duration: 4200
+    });
+  }
+
   /* -------------------- transparency -------------------- */
   function renderTransparency() {
     const wrap = util.el("div", { class: "page stack-lg" });
@@ -653,7 +914,10 @@
       util.el("h3", { text: "What stays on your device" }),
       util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Sara conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
       util.el("h3", { text: "What the vault passcode does and does not do" }),
-      util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." })
+      util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." }),
+      util.el("h3", { text: "About the Discovery tab — calling Claude from your browser" }),
+      util.el("p", { class: "t-muted", text: "The Discovery tab calls the Anthropic Messages API directly from this page using an opt-in header ('anthropic-dangerous-direct-browser-access'). That convenience carries a real tradeoff: your API key sits inside your browser's localStorage, and any script loaded on this page — including any browser extension — can read it. The key is also sent with every request, so any network intermediary could observe it." }),
+      util.el("p", { class: "t-muted", text: "Use a key dedicated to personal experimentation, set a low monthly spend limit in the Anthropic console, and never paste a team or production key here. If you want real safety, run a small server-side proxy and point Lumen at that instead. Google Books calls also go directly from your browser, but that API does not require authentication." })
     ]);
     wrap.appendChild(privacy);
 
@@ -2302,6 +2566,10 @@
       return renderLibrary();
     },
 
+    discovery() {
+      return renderDiscovery();
+    },
+
     compare() {
       return renderCompare();
     },
@@ -2592,6 +2860,11 @@
     } else if (routeId === "chat") {
       chips.push({ label: "Connections" });
       chips.push({ label: `${s.chats.friends.length} friend${s.chats.friends.length === 1 ? "" : "s"}` });
+    } else if (routeId === "discovery") {
+      chips.push({ label: "Discovery" });
+      if (discoveryState && discoveryState.lastQuery) chips.push({ label: `Search: "${discoveryState.lastQuery}"` });
+      const discoveredCount = (s.discovered || []).length;
+      if (discoveredCount) chips.push({ label: `${discoveredCount} discovered` });
     } else if (routeId === "transparency") {
       chips.push({ label: "Transparency" });
     }
