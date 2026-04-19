@@ -748,7 +748,6 @@
 
     <aside class="right-col">
       <div class="panel detail-panel">
-        <div class="panel-head"><span class="panel-title">Selected Title</span><span class="panel-sub">in detail</span></div>
         <div class="panel-body flush">
           <div class="detail-cover" id="detailCover">
             <div class="detail-cover-meta">
