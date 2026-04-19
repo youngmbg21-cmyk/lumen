@@ -3708,8 +3708,35 @@
       ...(compareLines.length ? compareLines : ["(none)"]),
       ``,
       `--- library stats ---`,
-      ...libLines
+      ...libLines,
+      ``,
+      `--- terminal view ---`,
+      ...terminalContextLines()
     ].join("\n");
+  }
+
+  // Snapshot the Lumen Terminal's local view filters + selection so
+  // Sara can answer questions like "what am I filtering?" and "why
+  // is this title in front of me?" without re-querying the engine.
+  // Returns `(none)` lines when the Terminal module hasn't booted.
+  function terminalContextLines() {
+    const T = window.LumenTerminal;
+    if (!T || !T._state) return ["(terminal not initialised)"];
+    const st = T._state;
+    const lines = [];
+    lines.push(`sortKey: ${st.sortKey} ${st.sortDir}`);
+    if (st.search) lines.push(`search: "${st.search}"`);
+    if (st.subgenreFilter) lines.push(`subgenre filter: ${st.subgenreFilter}`);
+    if (st.toneFilter && st.toneFilter.size) lines.push(`tone filter: ${[...st.toneFilter].join(", ")}`);
+    if (st.dynFilter && st.dynFilter.size)   lines.push(`dynamic filter: ${[...st.dynFilter].join(", ")}`);
+    if (st.selectedId) {
+      try {
+        const b = findBook(st.selectedId);
+        if (b) lines.push(`selected: ${b.title} (id=${b.id})`);
+      } catch (e) { /* ignore */ }
+    }
+    if (lines.length === 1 && !st.selectedId) lines.push("(no view filters active)");
+    return lines;
   }
 
   function computeSaraContext(routeId) {

@@ -706,6 +706,282 @@
     return col;
   }
 
+  // ================= Slice C: right column (detail + similar + brief) =================
+
+  // Resolve the currently selected book (or fall back to the top
+  // of the pool so the right column is never empty when there's
+  // anything to look at).
+  function pickSelected(pool) {
+    if (!pool.length) return null;
+    if (termState.selectedId) {
+      const found = pool.find(b => b.id === termState.selectedId);
+      if (found) return found;
+    }
+    return pool[0];
+  }
+
+  // Inline book detail — cover, title, fit + confidence rings,
+  // user-vs-book overlap radar, summary, KV pairs, signal tags,
+  // advisory warnings. Reuses the radar from Slice B with the
+  // book passed as the comparison shape.
+  function renderBookDetail(book) {
+    const wrap = el("div", { class: "term-panel term-detail-panel" });
+    wrap.appendChild(el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: "Selected title" }),
+      el("span", { class: "panel-sub", text: "in detail" })
+    ]));
+
+    if (!book) {
+      const empty = el("div", { class: "panel-body" });
+      empty.appendChild(el("p", { class: "t-small t-subtle",
+        text: "Click a row in the grid to mark a selection. Anything in your catalogue can be inspected here." }));
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    // Cover header — image with a quiet linear-gradient fallback,
+    // title + author overlaid bottom-left.
+    const cover = el("div", { class: "term-detail-cover" });
+    if (book.cover_url) {
+      const img = el("img", {
+        src: String(book.cover_url).replace(/^http:/, "https:"),
+        alt: `Cover of ${book.title}`,
+        loading: "lazy",
+        onerror: function () { this.remove(); }
+      });
+      cover.appendChild(img);
+    }
+    cover.appendChild(el("div", { class: "term-detail-cover-meta" }, [
+      el("div", { class: "term-detail-title", text: book.title }),
+      el("div", { class: "term-detail-author",
+        text: `${book.author}${book.year ? " · " + book.year : ""}` })
+    ]));
+    wrap.appendChild(cover);
+
+    const body = el("div", { class: "term-detail-content" });
+
+    // Fit + confidence pair.
+    const fitClsName = book.fit >= 70 ? "is-sage" : book.fit >= 50 ? "" : "is-warn";
+    const confClsName = book.confidence >= 70 ? "is-sage" : book.confidence >= 45 ? "" : "is-warn";
+    const fitStrip = el("div", { class: "term-detail-fit-strip" });
+    fitStrip.appendChild(el("div", { class: "term-detail-fit-cell" }, [
+      el("div", { class: "term-detail-fit-label", text: "Fit for her" }),
+      el("div", { class: "term-detail-fit-val " + fitClsName, text: book.fit + "%" })
+    ]));
+    fitStrip.appendChild(el("div", { class: "term-detail-fit-cell" }, [
+      el("div", { class: "term-detail-fit-label", text: "Confidence" }),
+      el("div", { class: "term-detail-fit-val " + confClsName, text: book.confidence + "%" })
+    ]));
+    body.appendChild(fitStrip);
+
+    // Overlap radar — user profile filled, book overlaid in dashed gold.
+    const profile = window.Lumen.store.get().profile;
+    const overlapWrap = el("div", { class: "term-detail-radar-wrap" });
+    overlapWrap.appendChild(el("div", { class: "term-detail-radar-title", text: "Overlap" }));
+    overlapWrap.appendChild(el("div", { class: "term-detail-radar-sub", text: "her profile vs this title" }));
+    const overlapHost = el("div", { class: "term-detail-radar-host" });
+    overlapHost.appendChild(renderRadar(profile, { comparison: book, className: "is-detail" }));
+    overlapWrap.appendChild(overlapHost);
+    body.appendChild(overlapWrap);
+
+    // Editorial summary.
+    body.appendChild(el("div", { class: "term-detail-summary",
+      text: book.description || "No editorial summary on file for this title yet." }));
+
+    // KV table — subgenre, series, year, pairing.
+    const kv = el("dl", { class: "term-detail-kv" });
+    const kvPairs = [
+      ["Subgenre",   book.subgenre || "—"],
+      ["Series",     book.series || "standalone"],
+      ["Published",  book.year ? String(book.year) : "—"],
+      ["Pairing",    (book.orientation || []).map(o => o.replace(/-/g, " ")).join(", ") || "—"]
+    ];
+    kvPairs.forEach(([k, v]) => {
+      kv.appendChild(el("dt", { text: k }));
+      kv.appendChild(el("dd", { text: v }));
+    });
+    body.appendChild(kv);
+
+    // Signal tags + advisory warnings, two clearly separate strips.
+    body.appendChild(el("div", { class: "term-chip-section-label", style: { marginBottom: "6px" }, text: "Signals" }));
+    const sigStrip = el("div", { class: "term-detail-tags" });
+    const sigList = [
+      ...(book.tone || []).map(t => ({ text: t, cls: "" })),
+      ...(book.dynamic || []).map(t => ({ text: t, cls: "is-gold" })),
+      ...(book.trope || []).map(t => ({ text: t, cls: "" })),
+      ...(book.kink || []).map(t => ({ text: t, cls: "" }))
+    ];
+    if (sigList.length) {
+      sigList.slice(0, 18).forEach(t => {
+        sigStrip.appendChild(el("span", { class: "term-detail-tag " + t.cls, text: t.text.replace(/-/g, " ") }));
+      });
+    } else {
+      sigStrip.appendChild(el("span", { class: "t-small t-subtle", style: { fontStyle: "italic" }, text: "no tagged signals" }));
+    }
+    body.appendChild(sigStrip);
+
+    body.appendChild(el("div", { class: "term-chip-section-label",
+      style: { marginTop: "10px", marginBottom: "6px" }, text: "Advisory flags" }));
+    const warnStrip = el("div", { class: "term-detail-tags" });
+    if ((book.warnings || []).length) {
+      book.warnings.forEach(w => warnStrip.appendChild(
+        el("span", { class: "term-detail-tag is-warn", text: w })
+      ));
+    } else {
+      warnStrip.appendChild(el("span", { class: "t-small t-subtle", style: { fontStyle: "italic", color: "var(--t-sage)" },
+        text: "no warnings flagged" }));
+    }
+    body.appendChild(warnStrip);
+
+    // Quick actions — Open detail sheet, Pin to Sara.
+    const actions = el("div", { class: "term-detail-actions" });
+    actions.appendChild(el("button", {
+      type: "button", class: "term-action-btn is-primary",
+      onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(book.id); }
+    }, "Open full detail"));
+    actions.appendChild(el("button", {
+      type: "button", class: "term-action-btn",
+      onclick: () => {
+        const Sara = window.LumenSara;
+        if (Sara && Sara.pinBook) Sara.pinBook(book.id);
+      }
+    }, "Pin to Sara"));
+    body.appendChild(actions);
+
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  // Similar-by-signal-overlap. Lightweight scoring against the
+  // selected book using tone / dynamic / trope / kink overlaps
+  // plus subgenre match minus heat & plot deltas. Top 5.
+  function renderSimilar(book, pool, rerender) {
+    const wrap = el("div", { class: "term-panel" });
+    wrap.appendChild(el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: "Similar to this" }),
+      el("span", { class: "panel-sub", text: "by signal overlap" })
+    ]));
+    const body = el("div", { class: "panel-body term-similar-list" });
+    if (!book) {
+      body.appendChild(el("p", { class: "t-small t-subtle", style: { fontStyle: "italic", textAlign: "center" },
+        text: "select a title above" }));
+      wrap.appendChild(body);
+      return wrap;
+    }
+    const overlapOf = (other) => {
+      let s = 0;
+      const inter = (a, b) => (a || []).filter(x => (b || []).includes(x)).length;
+      s += inter(book.tone, other.tone) * 3;
+      s += inter(book.dynamic, other.dynamic) * 4;
+      s += inter(book.trope, other.trope) * 5;
+      s += inter(book.kink, other.kink) * 2;
+      if (book.subgenre === other.subgenre) s += 4;
+      s -= Math.abs((book.heat || 0) - (other.heat || 0));
+      s -= Math.abs((book.plot || 0) - (other.plot || 0));
+      return s;
+    };
+    const ranked = pool.filter(b => b.id !== book.id)
+      .map(b => ({ b, s: overlapOf(b) }))
+      .sort((x, y) => y.s - x.s)
+      .slice(0, 5);
+    if (!ranked.length) {
+      body.appendChild(el("p", { class: "t-small t-subtle", style: { fontStyle: "italic", textAlign: "center" },
+        text: "no other titles in the current view" }));
+      wrap.appendChild(body);
+      return wrap;
+    }
+    ranked.forEach(({ b, s }) => {
+      const pct = Math.max(30, Math.min(95, 40 + s * 4));
+      const item = el("div", {
+        class: "term-similar-item",
+        role: "button", tabindex: "0",
+        onclick: () => { termState.selectedId = b.id; rerender(); },
+        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); termState.selectedId = b.id; rerender(); } }
+      });
+      const cover = el("div", { class: "term-similar-cover" });
+      if (b.cover_url) {
+        const img = el("img", { src: String(b.cover_url).replace(/^http:/, "https:"), alt: "",
+          onerror: function () { this.style.display = "none"; } });
+        cover.appendChild(img);
+      }
+      item.appendChild(cover);
+      const meta = el("div", { class: "term-similar-meta" });
+      meta.appendChild(el("div", { class: "term-similar-title", text: b.title }));
+      meta.appendChild(el("div", { class: "term-similar-author", text: b.author }));
+      item.appendChild(meta);
+      item.appendChild(el("div", { class: "term-similar-score", text: pct + "%" }));
+      body.appendChild(item);
+    });
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  // Editor's brief — dynamic prose grounded in the current view.
+  // Ends with a Sara CTA so the Terminal feeds into the chat
+  // surface rather than ending in a dead-end card.
+  function renderEditorsBrief(pool, visible, selected) {
+    const wrap = el("div", { class: "term-panel term-brief" });
+    wrap.appendChild(el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: "Editor's brief" }),
+      el("span", { class: "panel-sub", text: "what the data is saying" })
+    ]));
+    const body = el("div", { class: "panel-body" });
+
+    let headline, prose;
+    if (!pool.length) {
+      headline = `An <em>empty</em> shelf.`;
+      prose = "There is nothing to read on the data yet — import your curated catalogue from Settings, or pull a few titles from Discovery, and the brief lights up.";
+    } else {
+      const strong = visible.filter(b => b.fit >= 70).length;
+      const sums = {};
+      visible.filter(b => b.fit >= 60).forEach(b => { sums[b.subgenre] = (sums[b.subgenre] || 0) + 1; });
+      const topGenre = Object.entries(sums).sort((a, b) => b[1] - a[1])[0];
+      const tone = [...termState.toneFilter][0];
+      if (strong >= 20) {
+        headline = `Her compass is <em>richly served</em>.`;
+        prose = `${strong} titles clear 70% — the catalogue runs deep in her territory. Lean into ${topGenre ? topGenre[0] : "her top subgenre"} for the highest-fit reads.`;
+      } else if (strong >= 8) {
+        headline = `A <em>specialist's</em> taste.`;
+        prose = `${strong} titles meet her threshold. She's looking for specific signals${tone ? ` — the ${tone} tone reads particularly well` : ""}${topGenre ? `, anchored in ${topGenre[0]}` : ""}.`;
+      } else if (strong > 0) {
+        headline = `A <em>particular</em> reader.`;
+        prose = `Only ${strong} titles clear 70%. Try widening the tone filter or softening the consent floor by one step to expand the eligible pool.`;
+      } else {
+        headline = `An <em>unmet</em> signature.`;
+        prose = `Nothing in view clears 70% right now. Relax taboo tolerance, drop a chip filter, or import more catalogue — the engine is honest, not pessimistic.`;
+      }
+    }
+
+    body.appendChild(el("div", { class: "term-brief-headline", html: headline }));
+    body.appendChild(el("p", { class: "term-brief-body", text: prose }));
+
+    // Sara CTA — primary path off the Terminal into a conversation.
+    const cta = el("div", { class: "term-brief-cta" });
+    const askBtn = el("button", { type: "button", class: "term-action-btn is-primary",
+      onclick: () => {
+        const Sara = window.LumenSara;
+        if (!Sara) return;
+        if (selected && Sara.pinBook) Sara.pinBook(selected.id);
+        if (Sara.open) Sara.open();
+      }
+    }, selected ? `Ask Sara about ${selected.title.slice(0, 24)}${selected.title.length > 24 ? "…" : ""}` : "Ask Sara about this view");
+    cta.appendChild(askBtn);
+    body.appendChild(cta);
+
+    wrap.appendChild(body);
+    return wrap;
+  }
+
+  // Right column composition.
+  function renderRightColumn(pool, visible, rerender) {
+    const col = el("aside", { class: "term-right" });
+    const selected = pickSelected(visible.length ? visible : pool);
+    col.appendChild(renderBookDetail(selected));
+    col.appendChild(renderSimilar(selected, visible.length ? visible : pool, rerender));
+    col.appendChild(renderEditorsBrief(pool, visible, selected));
+    return col;
+  }
+
   // ================= main render =================
   function render() {
     const L = window.Lumen;
@@ -727,16 +1003,7 @@
     const dash = el("div", { class: "term-dashboard" });
     dash.appendChild(renderLeftColumn(rerender));
     dash.appendChild(renderCentreColumn(pool, visible, rerender));
-
-    // Right column — Slice C lands here next.
-    const rightPlaceholder = el("aside", { class: "term-right" });
-    rightPlaceholder.appendChild(panel("Selected title",
-      "Slice C lands here",
-      el("div", { class: "panel-body" }, [
-        el("p", { class: "t-small t-subtle", text: "Inline detail, similar-by-signal-overlap, and the editor's brief arrive in the final slice. Click a row in the grid to mark a selection — it'll fill in here when Slice C ships." })
-      ])
-    ));
-    dash.appendChild(rightPlaceholder);
+    dash.appendChild(renderRightColumn(pool, visible, rerender));
 
     wrap.appendChild(dash);
     wrap.appendChild(renderDistribution(pool, rerender));
