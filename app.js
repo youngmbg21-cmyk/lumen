@@ -307,6 +307,7 @@
   /* -------------------- router -------------------- */
   const ROUTES = [
     { id: "discover",     label: "Home",          short: "Home",     group: "main",     render: () => views.discover() },
+    { id: "terminal",     label: "Terminal",      short: "Terminal", group: "main",     render: () => views.terminal() },
     { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
@@ -5091,6 +5092,22 @@
 
     settings() {
       return renderSettings();
+    },
+
+    terminal() {
+      // Terminal view lives in terminal.js so the analytics surface
+      // can evolve independently. Fall back to a notice if the
+      // module didn't load for any reason.
+      if (window.LumenTerminal && typeof window.LumenTerminal.render === "function") {
+        try { return window.LumenTerminal.render(); }
+        catch (e) { console.error("[Lumen Terminal] render failed:", e); }
+      }
+      const wrap = util.el("div", { class: "page stack-lg" });
+      wrap.appendChild(ui.empty({
+        title: "Terminal module unavailable",
+        message: "The Terminal view didn't load. Reload the page; if the problem persists, the terminal.js script may have failed to parse."
+      }));
+      return wrap;
     },
 
     transparency() {
