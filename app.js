@@ -4545,53 +4545,6 @@
       radarCard.appendChild(legend);
       body.appendChild(radarCard);
 
-      // Quick analysis
-      const ai = quickAnalysis(scoredList, s.profile);
-      const aiCard = util.el("div", { class: "card stack" });
-      aiCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Quick analysis" }),
-        util.el("div", { class: "row" }, [
-          util.el("span", { class: "card-sub t-subtle", text: "Auto · rule-based" }),
-          util.el("button", { class: "btn btn-sm", onclick: () => {
-            saveAnalysis({
-              titleA: scoredList[0].book.title,
-              titleB: scoredList.slice(1).map(s => s.book.title).join(" & "),
-              fitA: scoredList[0].fitScore,
-              fitB: scoredList[1]?.fitScore ?? 0,
-              verdict: ai.verdict
-            });
-          }}, "Save to Vault")
-        ])
-      ]));
-      aiCard.appendChild(util.el("div", { class: "verdict" }, [
-        util.el("div", { class: "t-eyebrow", text: "Verdict" }),
-        util.el("p", { style: { marginTop: "var(--s-2)", fontSize: "15px", lineHeight: "1.55" }, text: ai.verdict })
-      ]));
-
-      if (ai.differences.length) {
-        aiCard.appendChild(util.el("div", {}, [
-          util.el("div", { class: "field-label", text: "Where they diverge" }),
-          util.el("ul", { style: { paddingLeft: "var(--s-4)" } }, ai.differences.map(d => util.el("li", { class: "t-muted t-small", style: { marginTop: "4px" }, text: d })))
-        ]));
-      }
-
-      const bestForGrid = util.el("div", { class: `cmp-grid cmp-${filled.length}` });
-      ai.bestForMap.forEach(m => bestForGrid.appendChild(util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: `${m.title} · best for` }),
-        util.el("p", { class: "t-muted t-small", style: { marginTop: "var(--s-2)" }, text: m.text })
-      ])));
-      aiCard.appendChild(bestForGrid);
-
-      if (ai.tradeoffs.length) {
-        ai.tradeoffs.forEach(t => aiCard.appendChild(util.el("div", { class: t.includes("critical") ? "caution" : "tradeoff" }, t)));
-      }
-      aiCard.appendChild(util.el("p", { class: "t-muted t-small", text: ai.ifYouLiked }));
-      if (ai.thinMetadata) {
-        aiCard.appendChild(util.el("div", { class: "tradeoff" }, "Confidence is moderate across the lineup — metadata is thin or your profile has few expressed tastes. Take the verdict with a grain of salt."));
-      }
-
-      body.appendChild(aiCard);
-
       // Deep analysis (if run) — Batch 4 will populate this; Batch 3 leaves the scaffold
       if (cmpState.lastDeepAnalysis) {
         body.appendChild(renderDeepAnalysis(cmpState.lastDeepAnalysis));
