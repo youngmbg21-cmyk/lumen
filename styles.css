@@ -4759,9 +4759,12 @@ body[data-sidenav="overlay"] .app-side {
   box-shadow: 0 24px 60px -24px rgba(60, 38, 22, 0.35);
   overflow-y: auto;
 }
+/* Scrim stays invisible and click-through even in overlay mode —
+   the floating sidebar never darkens or blocks the Terminal so the
+   user can click nav-links and Terminal content freely. */
 body[data-sidenav="overlay"] #sidenav-scrim {
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
 }
 body[data-sidenav="hidden"] .app-top {
   grid-column: 1 / -1;

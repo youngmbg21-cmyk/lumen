@@ -338,7 +338,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 .lumen-terminal .taste-compass {
   position: relative;
-  padding: 4px;
+  padding: 2px;
 }
 .lumen-terminal .compass-label {
   text-align: center;
@@ -383,7 +383,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   grid-template-columns: 80px 1fr 24px;
   gap: 8px;
   align-items: center;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .lumen-terminal .slider-mini-label {
   font-family: 'JetBrains Mono', monospace;
@@ -429,7 +429,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 
 /* Filter chips — tone + dynamic toggle pills */
 .lumen-terminal .filter-section {
-  padding-top: 10px;
+  padding-top: 5px;
   border-top: 1px dashed var(--border-faint);
 }
 .lumen-terminal .filter-section-label {
@@ -439,7 +439,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   text-transform: uppercase;
   color: var(--text-mute);
   font-weight: 600;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 .lumen-terminal .chip-row {
   display: flex;
@@ -568,6 +568,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
   gap: 14px;
+  align-items: start;
 }
 .lumen-terminal .charts-row.charts-row-2col {
   grid-template-columns: 1fr 1fr;
@@ -622,13 +623,13 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* Bar charts — trope + era */
-.lumen-terminal .barchart { padding: 6px 7px; }
+.lumen-terminal .barchart { padding: 3px 7px; }
 .lumen-terminal .bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 34px;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .lumen-terminal .bar-label {
   font-size: 10px;
