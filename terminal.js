@@ -504,6 +504,208 @@
     return col;
   }
 
+  // ================= Slice B: left column (compass + sliders + chips) =================
+
+  // Radar SVG. Six axes (heat / explicit / emotion / consent / taboo
+  // / plot), each scored 1-5. Used both for the user's profile
+  // compass on the left and (in Slice C) for an overlap radar
+  // comparing the user's profile against the selected book.
+  function renderRadar(values, opts) {
+    opts = opts || {};
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "term-radar-svg" + (opts.className ? " " + opts.className : ""));
+    svg.setAttribute("viewBox", "-110 -110 220 220");
+    svg.setAttribute("aria-hidden", "true");
+
+    const axes = ["heat", "explicit", "emotion", "consent", "taboo", "plot"];
+    const R = 85;
+
+    // Background rings.
+    [0.25, 0.5, 0.75, 1].forEach(t => {
+      const ring = document.createElementNS(NS, "circle");
+      ring.setAttribute("class", "term-radar-ring");
+      ring.setAttribute("cx", "0"); ring.setAttribute("cy", "0");
+      ring.setAttribute("r", String(R * t));
+      svg.appendChild(ring);
+    });
+
+    // Axes + labels.
+    axes.forEach((axis, i) => {
+      const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+      const x = (Math.cos(angle) * R).toFixed(1);
+      const y = (Math.sin(angle) * R).toFixed(1);
+      const lx = (Math.cos(angle) * (R + 14)).toFixed(1);
+      const ly = (Math.sin(angle) * (R + 14)).toFixed(1);
+      const line = document.createElementNS(NS, "line");
+      line.setAttribute("class", "term-radar-axis");
+      line.setAttribute("x1", "0"); line.setAttribute("y1", "0");
+      line.setAttribute("x2", x);   line.setAttribute("y2", y);
+      svg.appendChild(line);
+      const t = document.createElementNS(NS, "text");
+      t.setAttribute("class", "term-radar-label");
+      t.setAttribute("x", lx); t.setAttribute("y", ly);
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("dominant-baseline", "middle");
+      t.textContent = axis.toUpperCase().slice(0, 4);
+      svg.appendChild(t);
+    });
+
+    // Comparison shape (e.g. focus book) drawn underneath the
+    // primary so the user's profile reads on top.
+    if (opts.comparison) {
+      const cmpPts = axes.map((a, i) => {
+        const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+        const r = (clamp1to5(opts.comparison[a]) / 5) * R;
+        return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+      });
+      const cmpPath = document.createElementNS(NS, "path");
+      cmpPath.setAttribute("class", "term-radar-shape is-cmp");
+      cmpPath.setAttribute("d", "M " + cmpPts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ") + " Z");
+      svg.appendChild(cmpPath);
+    }
+
+    // Primary shape + points.
+    const pts = axes.map((axis, i) => {
+      const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+      const r = (clamp1to5(values[axis]) / 5) * R;
+      return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    });
+    const path = document.createElementNS(NS, "path");
+    path.setAttribute("class", "term-radar-shape");
+    path.setAttribute("d", "M " + pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ") + " Z");
+    svg.appendChild(path);
+    pts.forEach(p => {
+      const dot = document.createElementNS(NS, "circle");
+      dot.setAttribute("class", "term-radar-point");
+      dot.setAttribute("cx", p.x.toFixed(1));
+      dot.setAttribute("cy", p.y.toFixed(1));
+      dot.setAttribute("r", "2.6");
+      svg.appendChild(dot);
+    });
+    return svg;
+  }
+
+  // Six 1-5 sliders. Writes go through Lumen.store so changes
+  // here propagate to Profile, Daily Picks, Compare, and Sara on
+  // the next turn — no parallel profile.
+  function renderProfileSliders(rerender) {
+    const L = window.Lumen;
+    const profile = L.store.get().profile;
+    const wrap = el("div", { class: "term-sliders" });
+    const fields = [
+      { key: "heat",     label: "Heat" },
+      { key: "explicit", label: "Explicit" },
+      { key: "emotion",  label: "Emotion" },
+      { key: "consent",  label: "Consent ≥" },
+      { key: "taboo",    label: "Taboo" },
+      { key: "plot",     label: "Plot" }
+    ];
+    fields.forEach(f => {
+      const row = el("div", { class: "term-slider-row" });
+      row.appendChild(el("div", { class: "term-slider-label", text: f.label }));
+      const input = el("input", {
+        type: "range", min: "1", max: "5", step: "1",
+        value: String(profile[f.key]),
+        "aria-label": f.label,
+        oninput: (e) => {
+          const v = parseInt(e.target.value, 10);
+          // Live readout updates without a re-render so the slider
+          // feels responsive; re-render on `change` once the user
+          // releases to refresh the dependent KPIs / heatmap / grid.
+          val.textContent = String(v);
+          L.store.update(s => { s.profile[f.key] = v; });
+        },
+        onchange: () => rerender()
+      });
+      const val = el("div", { class: "term-slider-val", text: String(profile[f.key]) });
+      row.appendChild(input);
+      row.appendChild(val);
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  // Tone + dynamic chip filters — local to termState only. Toggling
+  // a chip never writes to the user's profile.tone / profile.dynamic;
+  // these are view-side filters that narrow what the grid + heatmap
+  // + bars show, not edits to her actual taste settings.
+  const TONE_OPTIONS = [
+    "dark", "intense", "obsessive", "sensual", "tender", "lyrical",
+    "wry", "reflective", "transgressive", "playful"
+  ];
+  const DYN_OPTIONS = [
+    "dominance-submission", "power-exchange", "forbidden",
+    "enemies-to-lovers", "marriage", "reverse-harem", "fated-mates",
+    "second-chance", "courtship", "mutual-longing"
+  ];
+
+  function renderChipFilter(label, options, filterSet, rerender) {
+    const section = el("div", { class: "term-chip-section" });
+    section.appendChild(el("div", { class: "term-chip-section-label", text: label }));
+    const row = el("div", { class: "term-chip-row" });
+    options.forEach(opt => {
+      const active = filterSet.has(opt);
+      const chip = el("button", {
+        type: "button",
+        class: "term-chip" + (active ? " is-active" : ""),
+        "aria-pressed": active ? "true" : "false",
+        title: opt.replace(/-/g, " "),
+        onclick: () => {
+          if (filterSet.has(opt)) filterSet.delete(opt);
+          else filterSet.add(opt);
+          rerender();
+        }
+      });
+      chip.textContent = opt.replace(/-/g, " ");
+      row.appendChild(chip);
+    });
+    section.appendChild(row);
+    return section;
+  }
+
+  // Compose the full left column: compass head + radar + sliders +
+  // tone chips + dynamic chips, all inside one panel for visual
+  // calm.
+  function renderLeftColumn(rerender) {
+    const L = window.Lumen;
+    const profile = L.store.get().profile;
+    const col = el("aside", { class: "term-left" });
+    const wrap = el("div", { class: "term-panel" });
+    wrap.appendChild(el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: "Your compass" }),
+      el("span", { class: "panel-sub", text: "her taste" })
+    ]));
+    const body = el("div", { class: "panel-body term-left-body" });
+    body.appendChild(el("div", { class: "term-compass-label", text: "Profile radar" }));
+    const radarHost = el("div", { class: "term-compass-host" });
+    radarHost.appendChild(renderRadar(profile));
+    body.appendChild(radarHost);
+    body.appendChild(renderProfileSliders(rerender));
+    body.appendChild(renderChipFilter("Tone filter", TONE_OPTIONS, termState.toneFilter, rerender));
+    body.appendChild(renderChipFilter("Dynamic filter", DYN_OPTIONS, termState.dynFilter, rerender));
+    // Reset filters affordance — only show when something is active.
+    const anyFilter = termState.toneFilter.size || termState.dynFilter.size || termState.subgenreFilter || termState.search;
+    if (anyFilter) {
+      const reset = el("button", {
+        type: "button",
+        class: "term-reset-filters",
+        onclick: () => {
+          termState.toneFilter.clear();
+          termState.dynFilter.clear();
+          termState.subgenreFilter = null;
+          termState.search = "";
+          rerender();
+        }
+      });
+      reset.textContent = "Clear all view filters";
+      body.appendChild(reset);
+    }
+    wrap.appendChild(body);
+    col.appendChild(wrap);
+    return col;
+  }
+
   // ================= main render =================
   function render() {
     const L = window.Lumen;
@@ -522,23 +724,11 @@
     wrap.appendChild(renderCommandBar(pool));
     wrap.appendChild(renderKpiStrip(pool, visible));
 
-    // Three-column dashboard. Left + right are placeholder shells in
-    // this slice — Slices B and C populate the compass + sliders +
-    // chips on the left and the inline detail + similar + editor's
-    // brief on the right.
     const dash = el("div", { class: "term-dashboard" });
-
-    const leftPlaceholder = el("aside", { class: "term-left" });
-    leftPlaceholder.appendChild(panel("Your compass",
-      "Slice B lands here",
-      el("div", { class: "panel-body" }, [
-        el("p", { class: "t-small t-subtle", text: "Taste compass · sliders · tone & dynamic chip filters arrive in the next slice." })
-      ])
-    ));
-    dash.appendChild(leftPlaceholder);
-
+    dash.appendChild(renderLeftColumn(rerender));
     dash.appendChild(renderCentreColumn(pool, visible, rerender));
 
+    // Right column — Slice C lands here next.
     const rightPlaceholder = el("aside", { class: "term-right" });
     rightPlaceholder.appendChild(panel("Selected title",
       "Slice C lands here",

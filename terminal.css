@@ -603,3 +603,193 @@
 .lumen-terminal .term-rate-h3 { background: color-mix(in srgb, var(--t-gold) 24%, transparent); color: var(--t-gold); }
 .lumen-terminal .term-rate-h4 { background: color-mix(in srgb, #c17c3c 24%, transparent); color: #c17c3c; }
 .lumen-terminal .term-rate-h5 { background: color-mix(in srgb, var(--accent) 26%, transparent); color: var(--accent-deep); }
+
+/* ============================================================
+   Left column — taste compass + sliders + chip filters
+   ============================================================ */
+.lumen-terminal .term-left { min-width: 0; }
+.lumen-terminal .term-left-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ----- Compass radar ----- */
+.lumen-terminal .term-compass-label {
+  text-align: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: -4px;
+}
+.lumen-terminal .term-compass-host {
+  display: block;
+  width: 100%;
+  padding: 4px;
+}
+.lumen-terminal .term-radar-svg {
+  width: 100%;
+  height: 220px;
+  display: block;
+}
+.lumen-terminal .term-radar-axis {
+  stroke: color-mix(in srgb, var(--border) 80%, transparent);
+  stroke-width: 1;
+  fill: none;
+}
+.lumen-terminal .term-radar-ring {
+  stroke: var(--t-border-faint);
+  stroke-width: 1;
+  fill: none;
+}
+.lumen-terminal .term-radar-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  fill: var(--text-mute);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.lumen-terminal .term-radar-shape {
+  fill: color-mix(in srgb, var(--accent) 14%, transparent);
+  stroke: var(--accent-deep);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.92;
+}
+.lumen-terminal .term-radar-shape.is-cmp {
+  fill: color-mix(in srgb, var(--t-gold) 14%, transparent);
+  stroke: var(--t-gold);
+  stroke-width: 1.2;
+  stroke-dasharray: 3 2;
+  opacity: 0.85;
+}
+.lumen-terminal .term-radar-point {
+  fill: var(--accent-deep);
+  stroke: var(--t-panel-bg);
+  stroke-width: 1.5;
+}
+
+/* ----- Profile sliders (mini) ----- */
+.lumen-terminal .term-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.lumen-terminal .term-slider-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 24px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+.lumen-terminal .term-slider-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+}
+.lumen-terminal .term-slider-row input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--t-bg-sunk), color-mix(in srgb, var(--accent) 28%, transparent));
+  border-radius: 3px;
+  outline: none;
+}
+.lumen-terminal .term-slider-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  background: var(--accent-deep);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--t-panel-bg);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--border-bold, var(--border)) 60%, transparent);
+}
+.lumen-terminal .term-slider-row input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px;
+  background: var(--accent-deep);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--t-panel-bg);
+}
+.lumen-terminal .term-slider-val {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--accent-deep);
+  font-weight: 500;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ----- Chip filters (Terminal-local view filters) ----- */
+.lumen-terminal .term-chip-section {
+  padding-top: 10px;
+  border-top: 1px dashed var(--t-border-faint);
+}
+.lumen-terminal .term-chip-section-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.lumen-terminal .term-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.lumen-terminal .term-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--t-bg-sunk);
+  border: 1px solid var(--t-border-faint);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+  user-select: none;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  line-height: 1.2;
+}
+.lumen-terminal .term-chip:hover {
+  border-color: var(--border-bold, var(--border));
+  color: var(--text);
+}
+.lumen-terminal .term-chip.is-active {
+  background: var(--accent-deep);
+  color: var(--accent-ink, #fff);
+  border-color: var(--accent-deep);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* Quiet "clear all view filters" button — only shown when at
+   least one filter is active. */
+.lumen-terminal .term-reset-filters {
+  align-self: flex-start;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  background: transparent;
+  border: 1px dashed var(--t-border-faint);
+  padding: 5px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease;
+}
+.lumen-terminal .term-reset-filters:hover {
+  border-color: var(--accent-deep);
+  color: var(--accent-deep);
+  border-style: solid;
+}
