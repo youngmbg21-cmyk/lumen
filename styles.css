@@ -4781,30 +4781,35 @@ body[data-sidenav="overlay"] .app-main {
   top: 50%;
   transform: translateY(-50%);
   z-index: 86;
-  width: 22px;
-  height: 56px;
-  border: 1px solid var(--border);
+  width: 36px;
+  height: 96px;
+  border: 1px solid var(--accent-deep);
   border-left: none;
-  border-radius: 0 var(--r-2) var(--r-2) 0;
-  background: var(--bg-raised);
-  color: var(--text-muted);
+  border-radius: 0 var(--r-3) var(--r-3) 0;
+  background: var(--accent-deep);
+  color: #fff;
   cursor: pointer;
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 32px;
+  font-weight: 600;
   line-height: 1;
-  display: none;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, width 160ms ease;
-  box-shadow: 0 6px 22px -10px rgba(60, 38, 22, 0.25);
+  padding: 0 4px 0 0;
+  transition: width 200ms var(--ease, ease), background 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45);
+  animation: sidenav-pulltab-pulse 2.6s ease-in-out infinite;
 }
 body[data-sidenav="hidden"] .sidenav-pulltab { display: inline-flex; }
 .sidenav-pulltab:hover {
-  width: 28px;
-  background: var(--accent-soft, var(--primary-soft));
-  color: var(--accent-deep);
-  box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.35);
+  width: 44px;
+  background: var(--accent);
+  box-shadow: 0 10px 32px -8px rgba(60, 38, 22, 0.55);
+  animation: none;
+}
+@keyframes sidenav-pulltab-pulse {
+  0%, 100% { box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45), 0 0 0 0 var(--accent-soft, rgba(184,74,98,0.35)); }
+  50%      { box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45), 0 0 0 10px transparent; }
 }
 
 /* Scrim — darkens the Terminal behind the sidebar overlay so
