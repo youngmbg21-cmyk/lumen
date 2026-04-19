@@ -1883,6 +1883,463 @@
 
   /* -------------------- transparency -------------------- */
   /* -------------------- settings -------------------- */
+  /* ==================================================================
+     Curated catalog importer — Settings card.
+
+     Three input modes:
+       1. "Titles list"  — one `Title — Author` per line. Claude fills
+          every field.
+       2. "CSV sparse"   — columns: title, author [, description].
+          Claude fills the rest.
+       3. "CSV full"     — full 26-column schema from data/CATALOG.md.
+          Used as-is with normalization.
+
+     Preview shows accepted / rejected rows and lets the user tweak
+     the 6 numeric fields inline before committing. Commit options:
+       • Apply to this device  — localStorage override picked up on
+         next boot by data/catalog.js.
+       • Download catalog.js   — a drop-in replacement for the repo
+         file so the curated catalog lives in version control.
+     ================================================================== */
+  const catalogImport = {
+    mode: "titles",          // "titles" | "csv-sparse" | "csv-full"
+    raw: "",                  // paste buffer
+    parsed: [],               // [{ input, status, book?, _source?, error? }]
+    enriching: false,
+    done: false
+  };
+
+  // Tiny CSV / TSV parser with quoted-field support. Auto-detects
+  // delimiter as the most common of `,`, `\t`, or `;` in the header
+  // line. Returns [headerRow, ...dataRows] with each row as an array
+  // of trimmed strings.
+  function parseDelimited(text) {
+    const clean = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+    if (!clean) return [];
+    // Determine delimiter from the first line.
+    const firstLine = clean.split("\n", 1)[0];
+    const counts = { ",": (firstLine.match(/,/g) || []).length,
+                     "\t": (firstLine.match(/\t/g) || []).length,
+                     ";": (firstLine.match(/;/g) || []).length };
+    const delim = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0] || ",";
+    const rows = [];
+    let row = [], field = "", inQ = false;
+    for (let i = 0; i < clean.length; i++) {
+      const ch = clean[i];
+      if (inQ) {
+        if (ch === '"') {
+          if (clean[i + 1] === '"') { field += '"'; i++; }
+          else inQ = false;
+        } else field += ch;
+      } else {
+        if (ch === '"') inQ = true;
+        else if (ch === delim) { row.push(field); field = ""; }
+        else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+        else field += ch;
+      }
+    }
+    if (field.length || row.length) { row.push(field); rows.push(row); }
+    return rows.map(r => r.map(x => String(x || "").trim()));
+  }
+
+  // Stable id generator for auto-filled rows.
+  function slugifyId(title, author) {
+    const s = String(title || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48);
+    // Short hash of the author so two books with same title dedupe
+    // correctly when they actually are different works.
+    let h = 0; const a = String(author || "");
+    for (let i = 0; i < a.length; i++) { h = ((h << 5) - h + a.charCodeAt(i)) | 0; }
+    const tag = ("00" + (h >>> 0).toString(36)).slice(-4);
+    return s ? `${s}-${tag}` : `book-${tag}`;
+  }
+
+  // Column-name normalization (spaces/case-insensitive matching).
+  const CATALOG_COLS = [
+    "id", "title", "author", "year", "category", "subgenre", "description",
+    "source", "source_url", "thumbnail",
+    "heat_level", "explicitness", "emotional_intensity",
+    "consent_clarity", "taboo_level", "plot_weight",
+    "tone", "pacing", "literary_style", "relationship_dynamic",
+    "trope_tags", "kink_tags", "gender_pairing", "orientation_tags",
+    "content_warnings"
+  ];
+  const LIST_COLS = new Set([
+    "tone", "pacing", "literary_style", "relationship_dynamic",
+    "trope_tags", "kink_tags", "gender_pairing", "orientation_tags",
+    "content_warnings"
+  ]);
+  const NUM_COLS = ["heat_level", "explicitness", "emotional_intensity",
+    "consent_clarity", "taboo_level", "plot_weight"];
+  const NUM_COLS_SET = new Set(NUM_COLS);
+
+  function normColumnName(s) {
+    return String(s || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  }
+
+  function splitListCell(v) {
+    if (!v) return [];
+    const parts = String(v).split(/[;|]+/);
+    const out = []; const seen = new Set();
+    for (const p of parts) {
+      const t = p.trim().toLowerCase().replace(/\s+/g, "-");
+      if (!t || seen.has(t)) continue;
+      seen.add(t); out.push(t);
+    }
+    return out;
+  }
+
+  function parseFullCsvRow(obj) {
+    const missing = [];
+    const requiredText = ["title", "author", "description"];
+    requiredText.forEach(k => { if (!obj[k]) missing.push(k); });
+    const book = {
+      id: obj.id || "",
+      title: obj.title || "",
+      author: obj.author || "",
+      year: obj.year ? (parseInt(obj.year, 10) || 0) : 0,
+      category: obj.category || "erotica-fiction",
+      subgenre: obj.subgenre || "",
+      description: obj.description || "",
+      source: obj.source || "Curated",
+      source_url: obj.source_url || null,
+      thumbnail: obj.thumbnail || null,
+      tone: splitListCell(obj.tone),
+      pacing: splitListCell(obj.pacing),
+      literary_style: splitListCell(obj.literary_style),
+      relationship_dynamic: splitListCell(obj.relationship_dynamic),
+      trope_tags: splitListCell(obj.trope_tags),
+      kink_tags: splitListCell(obj.kink_tags),
+      gender_pairing: splitListCell(obj.gender_pairing),
+      orientation_tags: splitListCell(obj.orientation_tags),
+      content_warnings: splitListCell(obj.content_warnings)
+    };
+    NUM_COLS.forEach(k => {
+      const v = Number(obj[k]);
+      if (!Number.isFinite(v)) missing.push(k);
+      else book[k] = Math.max(1, Math.min(5, Math.round(v)));
+    });
+    if (!book.id) book.id = slugifyId(book.title, book.author);
+    return { book, missing };
+  }
+
+  // Parse the raw buffer into an array of pending rows according to
+  // the chosen input mode. Shape: { input, status, book?, _source?,
+  // confidence?, error? }.
+  function parseImportBuffer() {
+    const mode = catalogImport.mode;
+    const text = String(catalogImport.raw || "").trim();
+    if (!text) { catalogImport.parsed = []; return; }
+
+    if (mode === "titles") {
+      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean);
+      catalogImport.parsed = lines.map((line, i) => {
+        // Separator can be em-dash, en-dash, hyphen, or " by ".
+        const m = line.match(/^(.+?)\s+(?:—|–|-|by)\s+(.+)$/i);
+        if (!m) return { input: { title: line, author: "" }, status: "pending", row: i + 1 };
+        return { input: { title: m[1].trim(), author: m[2].trim() }, status: "pending", row: i + 1 };
+      });
+      return;
+    }
+
+    const rows = parseDelimited(text);
+    if (!rows.length) { catalogImport.parsed = []; return; }
+    const header = rows[0].map(normColumnName);
+    const records = rows.slice(1).filter(r => r.some(c => c && c.length));
+    if (mode === "csv-sparse") {
+      const titleIdx = header.indexOf("title");
+      const authorIdx = header.indexOf("author");
+      const descIdx = header.indexOf("description");
+      if (titleIdx < 0) {
+        catalogImport.parsed = [{ status: "error", error: "CSV header must include a 'title' column.", row: 0, input: {} }];
+        return;
+      }
+      catalogImport.parsed = records.map((r, i) => ({
+        input: {
+          title: r[titleIdx] || "",
+          author: authorIdx >= 0 ? (r[authorIdx] || "") : "",
+          description: descIdx >= 0 ? (r[descIdx] || "") : ""
+        },
+        status: "pending",
+        row: i + 2
+      }));
+      return;
+    }
+
+    // Full CSV — everything in one pass, no enrichment needed.
+    catalogImport.parsed = records.map((r, i) => {
+      const obj = {}; header.forEach((h, idx) => { if (h) obj[h] = r[idx] || ""; });
+      const { book, missing } = parseFullCsvRow(obj);
+      if (missing.length) {
+        return { input: { title: obj.title, author: obj.author }, status: "error",
+                 error: `missing: ${missing.join(", ")}`, row: i + 2 };
+      }
+      const _source = {}; Object.keys(book).forEach(k => { _source[k] = "human"; });
+      return { input: { title: book.title, author: book.author }, status: "ready",
+               book, _source, row: i + 2 };
+    });
+  }
+
+  async function enrichPending() {
+    const Disco = window.LumenDiscovery;
+    if (!Disco || !Disco.getApiKey()) {
+      ui.toast("Add your Claude API key before enriching — Settings → Claude API key");
+      return;
+    }
+    catalogImport.enriching = true;
+    renderView();
+    const pending = catalogImport.parsed.filter(p => p.status === "pending");
+    for (const row of pending) {
+      try {
+        const { book, _source, confidence } = await Disco.enrichCatalogEntry(row.input);
+        book.id = slugifyId(book.title, book.author);
+        row.book = book;
+        row._source = _source;
+        row.confidence = confidence;
+        row.status = "ready";
+      } catch (err) {
+        row.status = "error";
+        row.error = (err && err.code === "not-fiction") ? "Claude flagged this as non-fiction"
+                  : (err && err.message) || "enrichment failed";
+      }
+      repaintImporter();
+    }
+    catalogImport.enriching = false;
+    catalogImport.done = true;
+    renderView();
+  }
+
+  function repaintImporter() {
+    const host = document.getElementById("catalog-importer-rows");
+    if (!host) return;
+    host.innerHTML = "";
+    host.appendChild(buildImporterPreview());
+  }
+
+  function buildImporterPreview() {
+    const wrap = util.el("div", { class: "stack-sm" });
+    const rows = catalogImport.parsed;
+    if (!rows.length) {
+      wrap.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing parsed yet. Paste your input and press Parse." }));
+      return wrap;
+    }
+    const counts = { ready: 0, pending: 0, error: 0 };
+    rows.forEach(r => { counts[r.status] = (counts[r.status] || 0) + 1; });
+    const summary = util.el("div", { class: "row-wrap t-small t-subtle" }, [
+      util.el("span", {}, `${rows.length} row${rows.length === 1 ? "" : "s"}`),
+      counts.ready   ? util.el("span", { class: "tag tag-good" },   `${counts.ready} ready`) : null,
+      counts.pending ? util.el("span", { class: "tag tag-accent" }, `${counts.pending} awaiting Claude`) : null,
+      counts.error   ? util.el("span", { class: "tag tag-warn" },   `${counts.error} error`) : null
+    ].filter(Boolean));
+    wrap.appendChild(summary);
+
+    rows.forEach((row, idx) => {
+      const line = util.el("div", { class: "catalog-import-row status-" + row.status });
+      const head = util.el("div", { class: "row", style: { justifyContent: "space-between", alignItems: "baseline" } }, [
+        util.el("div", { style: { minWidth: 0 } }, [
+          util.el("div", { class: "t-serif", style: { fontSize: "15px" }, text: (row.book && row.book.title) || row.input.title || "(no title)" }),
+          util.el("div", { class: "t-tiny t-subtle", text: ((row.book && row.book.author) || row.input.author || "unknown") + (row.confidence != null ? ` · AI conf ${row.confidence}` : "") })
+        ]),
+        util.el("span", { class: "t-tiny", style: { color: row.status === "error" ? "var(--danger)" : row.status === "ready" ? "var(--accent-deep)" : "var(--text-subtle)" }, text: row.status })
+      ]);
+      line.appendChild(head);
+      if (row.status === "error") {
+        line.appendChild(util.el("div", { class: "t-tiny", style: { color: "var(--danger)", marginTop: "4px" }, text: row.error || "error" }));
+      } else if (row.status === "ready" && row.book) {
+        const nums = util.el("div", { class: "catalog-import-nums" });
+        NUM_COLS.forEach(k => {
+          const cell = util.el("label", { class: "catalog-import-num" }, [
+            util.el("span", { class: "t-eyebrow", style: { fontSize: "9px" }, text: k.replace(/_/g, " ") }),
+            util.el("input", {
+              type: "number", min: "1", max: "5", step: "1",
+              value: String(row.book[k]),
+              oninput: (e) => {
+                const v = Math.max(1, Math.min(5, Math.round(Number(e.target.value) || row.book[k])));
+                row.book[k] = v;
+                if (row._source) row._source[k] = "human";
+                e.target.value = String(v);
+              }
+            })
+          ]);
+          nums.appendChild(cell);
+        });
+        line.appendChild(nums);
+        const tagLine = util.el("div", { class: "t-tiny t-subtle catalog-import-tags" }, [
+          (row.book.tone || []).length ? `tone: ${row.book.tone.join(", ")}` : null,
+          (row.book.trope_tags || []).length ? `tropes: ${row.book.trope_tags.join(", ")}` : null,
+          (row.book.content_warnings || []).length ? `warnings: ${row.book.content_warnings.join(", ")}` : null
+        ].filter(Boolean).map(t => util.el("div", { text: t })));
+        line.appendChild(tagLine);
+      }
+      wrap.appendChild(line);
+    });
+    return wrap;
+  }
+
+  function readyBooks() {
+    return catalogImport.parsed
+      .filter(r => r.status === "ready" && r.book)
+      .map(r => {
+        if (!r.book.id) r.book.id = slugifyId(r.book.title, r.book.author);
+        return Object.assign({}, r.book, { _source: r._source || null });
+      });
+  }
+
+  function applyCatalogOverride() {
+    const books = readyBooks();
+    if (!books.length) { ui.toast("Nothing ready to apply yet"); return; }
+    try {
+      localStorage.setItem("lumen:catalog-override",
+        JSON.stringify({ version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books }));
+      ui.toast(`Applied ${books.length} curated book${books.length === 1 ? "" : "s"} — reload to see them everywhere`, {
+        action: "Reload now",
+        onAction: () => location.reload(),
+        duration: 6000
+      });
+    } catch (e) {
+      ui.toast("Couldn't save to this device — storage full or blocked?");
+    }
+  }
+
+  function downloadCatalogJS() {
+    const books = readyBooks();
+    if (!books.length) { ui.toast("Nothing ready to download"); return; }
+    const header =
+      "/* Lumen curated catalog — generated via Settings → Import catalog. */\n" +
+      "/* Schema: data/CATALOG.md. Do not edit large sections by hand. */\n";
+    const body =
+      "(function () {\n" +
+      "  \"use strict\";\n" +
+      "  const CATALOG_BUILTIN = " + JSON.stringify(books, null, 2) + ";\n" +
+      "  const CATALOG_VERSION = 1;\n" +
+      "  function resolveCatalog() {\n" +
+      "    try {\n" +
+      "      const raw = localStorage.getItem(\"lumen:catalog-override\");\n" +
+      "      if (!raw) return CATALOG_BUILTIN;\n" +
+      "      const parsed = JSON.parse(raw);\n" +
+      "      if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;\n" +
+      "      return parsed.books;\n" +
+      "    } catch (e) { return CATALOG_BUILTIN; }\n" +
+      "  }\n" +
+      "  window.LumenData = window.LumenData || {};\n" +
+      "  window.LumenData.CATALOG = resolveCatalog();\n" +
+      "  window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;\n" +
+      "  window.LumenData.CATALOG_VERSION = CATALOG_VERSION;\n" +
+      "})();\n";
+    const blob = new Blob([header + body], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "catalog.js";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+  }
+
+  function renderCatalogImporter() {
+    const Disco = window.LumenDiscovery;
+    const overrideActive = !!localStorage.getItem("lumen:catalog-override");
+    const currentCount = (window.LumenData && window.LumenData.CATALOG || []).length;
+
+    const card = util.el("div", { class: "card settings-card stack" });
+    card.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Curated catalog" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Import your 100-book corpus. Paste a title list (Claude scores each), a sparse CSV (title + author), or the full CSV schema. See data/CATALOG.md for column definitions." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (currentCount ? "settings-badge-ok" : "settings-badge-missing"),
+        text: currentCount ? `${currentCount} loaded${overrideActive ? " · override" : ""}` : "Empty"
+      })
+    ]));
+
+    // Mode switcher
+    const modes = [
+      { id: "titles",      label: "Titles list",   hint: "One 'Title — Author' per line. Claude fills everything." },
+      { id: "csv-sparse",  label: "CSV sparse",    hint: "Columns: title, author [, description]. Claude fills the rest." },
+      { id: "csv-full",    label: "CSV full",      hint: "Full 26-column schema, applied as-is." }
+    ];
+    const modeBar = util.el("div", { class: "segmented", role: "group", "aria-label": "Input mode" });
+    modes.forEach(m => {
+      modeBar.appendChild(util.el("button", {
+        type: "button",
+        "aria-pressed": catalogImport.mode === m.id ? "true" : "false",
+        "data-mode": m.id,
+        onclick: () => { catalogImport.mode = m.id; catalogImport.parsed = []; catalogImport.done = false; renderView(); }
+      }, m.label));
+    });
+    card.appendChild(modeBar);
+    const activeMode = modes.find(m => m.id === catalogImport.mode) || modes[0];
+    card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: activeMode.hint }));
+
+    // Input area — file upload + paste textarea
+    const fileInput = util.el("input", { type: "file", accept: ".csv,.tsv,.txt", onchange: (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => { catalogImport.raw = String(reader.result || ""); ta.value = catalogImport.raw; };
+      reader.readAsText(f);
+    }});
+    const ta = util.el("textarea", {
+      class: "textarea",
+      rows: "8",
+      placeholder: catalogImport.mode === "titles"
+        ? "Memoirs of a Woman of Pleasure — John Cleland\nVenus in Furs — Leopold von Sacher-Masoch\n…"
+        : "title,author,description\n…",
+      oninput: (e) => { catalogImport.raw = e.target.value; }
+    });
+    ta.value = catalogImport.raw;
+    card.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)", alignItems: "center" } }, [
+      fileInput,
+      util.el("span", { class: "t-tiny t-subtle", text: "or paste below" })
+    ]));
+    card.appendChild(ta);
+
+    const btnRow = util.el("div", { class: "row", style: { gap: "var(--s-2)", flexWrap: "wrap" } });
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm",
+      onclick: () => { parseImportBuffer(); renderView(); }
+    }, "Parse"));
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm btn-primary",
+      disabled: (catalogImport.parsed.every(r => r.status !== "pending") || catalogImport.enriching) ? "disabled" : null,
+      onclick: () => enrichPending()
+    }, catalogImport.enriching ? "Enriching…" : "Enrich with Claude"));
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm",
+      disabled: !catalogImport.parsed.some(r => r.status === "ready") ? "disabled" : null,
+      onclick: () => applyCatalogOverride()
+    }, "Apply to this device"));
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm",
+      disabled: !catalogImport.parsed.some(r => r.status === "ready") ? "disabled" : null,
+      onclick: () => downloadCatalogJS()
+    }, "Download catalog.js"));
+    if (overrideActive) {
+      btnRow.appendChild(util.el("button", {
+        class: "btn btn-sm btn-ghost",
+        onclick: () => {
+          localStorage.removeItem("lumen:catalog-override");
+          ui.toast("Reverted to the committed catalog — reload to refresh", {
+            action: "Reload", onAction: () => location.reload(), duration: 5000
+          });
+        }
+      }, "Reset to committed catalog"));
+    }
+    card.appendChild(btnRow);
+
+    const status = window.LumenDiscovery ? window.LumenDiscovery.message : "";
+    if (catalogImport.enriching && status) {
+      card.appendChild(util.el("p", { class: "t-small t-accent", style: { marginTop: "var(--s-2)" }, text: status }));
+    }
+
+    const preview = util.el("div", { id: "catalog-importer-rows", class: "stack-sm" });
+    preview.appendChild(buildImporterPreview());
+    card.appendChild(preview);
+
+    if (!Disco || !Disco.getApiKey()) {
+      card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs your API key set above. CSV-full imports work without it." }));
+    }
+    return card;
+  }
+
   function renderSettings() {
     const Disco = window.LumenDiscovery;
     const wrap = util.el("div", { class: "page stack-lg" });
@@ -2065,6 +2522,9 @@
     ]));
     starterCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Starter titles are tagged internally as seed data and live alongside anything you add from Discovery. You can dismiss individual titles from the Library at any time." }));
     wrap.appendChild(starterCard);
+
+    // --- Curated catalog importer ----------------------------------------
+    wrap.appendChild(renderCatalogImporter());
 
     // --- Hidden books -----------------------------------------------------
     const hiddenIds = Object.keys(store.get().hidden || {});
