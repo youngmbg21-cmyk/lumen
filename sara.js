@@ -183,6 +183,29 @@
     return b;
   }
 
+  // First-contact greeting — references whatever's actively on the
+  // user's screen from the pushed context. If there's nothing
+  // concrete to reference, a calm generic opener stands in.
+  function firstContactGreeting() {
+    const focus = ctxState && ctxState.focus && ctxState.focus.book;
+    const picks = (ctxState && ctxState.dailyPicks) || [];
+    const route = (ctxState && ctxState.route) || "";
+    if (focus && focus.title) {
+      return `I see you're looking at _${focus.title}_ — is that the mood tonight, or are you still browsing?`;
+    }
+    if (route === "compare") {
+      const titles = ((ctxState.compare && ctxState.compare.slots) || []).filter(Boolean).map(x => x.title);
+      if (titles.length >= 2) return `Comparing _${titles.slice(0, 2).join("_ and _")}_, I see. Want me to say which leans which way for tonight?`;
+    }
+    if (route === "discovery" && ctxState.discovery && ctxState.discovery.lastQuery) {
+      return `I see you're searching for _${ctxState.discovery.lastQuery}_. Want me to weigh in on the results once they land?`;
+    }
+    if (picks.length) {
+      return `Hi — I'm Sara. Your three picks are up there; I can explain why any of them made the cut, or swap one if the mood isn't right. What are you in the mood for?`;
+    }
+    return `Hi — I'm Sara. Tell me what you're in the mood for tonight, and I'll read it with you.`;
+  }
+
   function ensureSeed() {
     const st = store();
     if (!st) return;
@@ -198,7 +221,7 @@
           id: "s_" + Math.random().toString(36).slice(2, 8),
           role: "sara",
           ts: Date.now(),
-          text: "Hi — I'm Sara. Tap a bookmark on any book card to share it with me, or tell me your mood below. Everything stays on your device."
+          text: firstContactGreeting()
         });
       });
     }
@@ -231,15 +254,72 @@
     return out.join("\n").replace(/\n{2,}/g, "<br><br>").replace(/\n/g, "<br>");
   }
 
+  // Matches [[ENHANCED_BOOK_CARD: <id>]] with flexible whitespace.
+  const ENHANCED_CARD_RE = /\[\[\s*ENHANCED_BOOK_CARD\s*:\s*([a-z0-9_\-]+)\s*\]\]/gi;
+
+  // Split a Sara reply into alternating text segments and enhanced-
+  // book-card markers so renderMessages can render each in its own
+  // DOM node. Returns [{ type: "text", text } | { type: "card", bookId }, …]
+  function splitReplyWithCards(raw) {
+    const out = [];
+    let lastIdx = 0;
+    let m;
+    const re = new RegExp(ENHANCED_CARD_RE.source, "gi");
+    while ((m = re.exec(raw || "")) !== null) {
+      if (m.index > lastIdx) out.push({ type: "text", text: raw.slice(lastIdx, m.index) });
+      out.push({ type: "card", bookId: m[1] });
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < (raw || "").length) out.push({ type: "text", text: raw.slice(lastIdx) });
+    return out.filter(p => p.type !== "text" || p.text.trim().length > 0);
+  }
+
+  // Renders the whole thread. The newest Sara message gets the
+  // typing-reveal effect (once per insert); previous messages render
+  // instantly so scroll-back stays snappy.
+  let lastTypedMessageId = null;
   function renderMessages() {
     const st = store();
     if (!st || !body) return;
     const msgs = st.get().chats.sara || [];
     body.innerHTML = "";
-    msgs.forEach(m => {
+    const latestSaraIdx = (() => {
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "sara") return i;
+      return -1;
+    })();
+
+    msgs.forEach((m, i) => {
       if (m.role === "book-card" && m.bookId) {
         const card = renderBookCardMessage(m);
         if (card) body.appendChild(card);
+        return;
+      }
+      if (m.role === "sara") {
+        const parts = splitReplyWithCards(m.text || "");
+        parts.forEach(p => {
+          if (p.type === "text") {
+            const node = document.createElement("div");
+            node.className = "chat-msg from-them";
+            const html = renderMarkdown(p.text);
+            // Reveal-typing only for the newest Sara bubble and only
+            // once per message id (so switching routes and coming
+            // back doesn't re-animate).
+            if (i === latestSaraIdx && m.id !== lastTypedMessageId) {
+              revealInto(node, html);
+            } else {
+              node.innerHTML = html;
+            }
+            body.appendChild(node);
+          } else if (p.type === "card") {
+            const card = renderBookCardMessage({ role: "book-card", bookId: p.bookId, sender: "sara" });
+            if (card) {
+              card.classList.add("sara-share-card-from-them");
+              card.classList.remove("from-me");
+              body.appendChild(card);
+            }
+          }
+        });
+        if (i === latestSaraIdx) lastTypedMessageId = m.id;
         return;
       }
       const node = document.createElement("div");
@@ -248,6 +328,50 @@
       body.appendChild(node);
     });
     setTimeout(() => { body.scrollTop = body.scrollHeight; }, 10);
+  }
+
+  // Types the supplied HTML into `target` character by character,
+  // with slight pauses at punctuation for a human reading pace.
+  // Users with prefers-reduced-motion skip the animation.
+  function revealInto(target, html) {
+    const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || !html || html.length > 2000) { target.innerHTML = html; return; }
+    // Parse the html so we can reveal by character while preserving
+    // markup. We walk text nodes only and rebuild each progressively.
+    const temp = document.createElement("div");
+    temp.innerHTML = html;
+    // Collect (node, fullText) pairs in order.
+    const textNodes = [];
+    const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null, false);
+    let tn;
+    while ((tn = walker.nextNode())) textNodes.push({ node: tn, full: tn.nodeValue, i: 0 });
+    // Clear each node's visible text and attach the stripped tree.
+    textNodes.forEach(x => { x.node.nodeValue = ""; });
+    target.innerHTML = "";
+    while (temp.firstChild) target.appendChild(temp.firstChild);
+
+    let idx = 0;
+    function step() {
+      if (!target.isConnected) return;
+      if (idx >= textNodes.length) return;
+      const cur = textNodes[idx];
+      if (cur.i >= cur.full.length) { idx += 1; step(); return; }
+      // Chunk characters in small bursts so we don't rAF every byte.
+      const burst = 2;
+      const nextI = Math.min(cur.i + burst, cur.full.length);
+      const addition = cur.full.slice(cur.i, nextI);
+      cur.node.nodeValue = cur.full.slice(0, nextI);
+      cur.i = nextI;
+      // Auto-scroll as text grows.
+      if (body) body.scrollTop = body.scrollHeight;
+      // Punctuation pause — feels like a breath at sentence boundaries.
+      const lastChar = addition.slice(-1);
+      const delay = ".?!".includes(lastChar) ? 180
+                  : ",;:—–".includes(lastChar) ? 80
+                  : 18;
+      setTimeout(step, delay);
+    }
+    step();
   }
 
   // Resolve a shared book from app.js. Defensive: if Lumen hasn't
@@ -445,7 +569,22 @@
     }
   }
 
-  function send(text) {
+  // Build the prior-turn array the LLM needs. We skip book-card
+  // messages (they're UI artifacts) and system-style entries.
+  function historyForLLM() {
+    const st = store();
+    if (!st) return [];
+    const msgs = st.get().chats.sara || [];
+    const out = [];
+    for (const m of msgs) {
+      if (!m || !m.text) continue;
+      if (m.role === "user") out.push({ role: "user", content: String(m.text) });
+      else if (m.role === "sara") out.push({ role: "assistant", content: String(m.text) });
+    }
+    return out;
+  }
+
+  async function send(text) {
     const st = store();
     if (!st) return;
     const expanded = expandSlashCommand(text) || text;
@@ -456,22 +595,83 @@
     });
     renderMessages();
     if (composeTA) { composeTA.value = ""; autosizeCompose(); }
-    setTimeout(() => {
-      const reply = (window.Lumen && window.Lumen.saraRespond) ? window.Lumen.saraRespond(expanded, ctxState) : fallbackResponder(expanded);
-      st.update(s => {
-        s.chats.sara.push({ id: "m_" + (Date.now() + 1), role: "sara", ts: Date.now(), text: reply });
-      });
-      renderMessages();
-    }, 240);
+
+    // Preferred path — LLM-backed Sara. Needs Claude API key and the
+    // discovery bridge. Falls back to the rule-based responder on any
+    // failure so the app never silently dies.
+    const Disco = window.LumenDiscovery;
+    const hasKey = Disco && typeof Disco.chatWithSara === "function" && Disco.getApiKey && Disco.getApiKey();
+    let reply = "";
+    if (hasKey) {
+      try {
+        const systemContext = (window.Lumen && typeof window.Lumen.buildSaraSystemContext === "function")
+          ? window.Lumen.buildSaraSystemContext(ctxState && ctxState.route) : "";
+        reply = await Disco.chatWithSara({
+          systemContext,
+          messages: historyForLLM()
+        });
+      } catch (err) {
+        console.warn("[Lumen Sara] LLM path failed, falling back:", err && err.message);
+        reply = "";
+      }
+    }
+    if (!reply) {
+      // Rule-based fallback — keeps the app functional without a key
+      // and when the API is unreachable. Kept as-is.
+      try {
+        reply = (window.Lumen && window.Lumen.saraRespond)
+          ? window.Lumen.saraRespond(expanded, ctxState)
+          : fallbackResponder(expanded);
+      } catch (e) { reply = fallbackResponder(); }
+    }
+    // If all else failed (empty string), use a graceful in-character
+    // apology rather than silence.
+    if (!reply) {
+      const persona = window.LumenSaraPersona;
+      reply = (persona && persona.randomFailsafe && persona.randomFailsafe())
+        || "I lost my place in the book for a moment. Could you ask me again?";
+    }
+
+    st.update(s => {
+      s.chats.sara.push({ id: "m_" + (Date.now() + 1), role: "sara", ts: Date.now(), text: reply });
+    });
+    renderMessages();
   }
 
   function fallbackResponder() {
-    return "I'm here. I'll have more to say once everything finishes loading — try again in a moment.";
+    const persona = window.LumenSaraPersona;
+    return (persona && persona.randomFailsafe && persona.randomFailsafe())
+      || "I lost my place in the book for a moment. Could you ask me again?";
+  }
+
+  // Inject a fresh first-contact greeting if the gap since the last
+  // Sara turn is long enough to count as a new session (2+ hours).
+  // Stays silent otherwise so the user isn't pestered on every tab
+  // flip.
+  function maybeStartNewSession() {
+    const st = store();
+    if (!st) return;
+    const s = st.get();
+    const msgs = s.chats.sara || [];
+    if (!msgs.length) return; // ensureSeed() already handled it.
+    const lastSaraTurn = [...msgs].reverse().find(m => m.role === "sara");
+    const since = lastSaraTurn ? (Date.now() - (lastSaraTurn.ts || 0)) : Infinity;
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    if (since < TWO_HOURS) return;
+    st.update(s2 => {
+      s2.chats.sara.push({
+        id: "s_" + Math.random().toString(36).slice(2, 8),
+        role: "sara",
+        ts: Date.now(),
+        text: firstContactGreeting()
+      });
+    });
   }
 
   function open() {
     if (!panel) mount();
     ensureSeed();
+    maybeStartNewSession();
     renderMessages();
     renderContext();
     renderMoods();

@@ -416,7 +416,13 @@
     heat: 3, explicit: 3, emotion: 3, consent: 5, taboo: 2, plot: 3,
     tone: [], pacing: [], style: [], dynamic: [], trope: [], kink: [],
     orientation: [], exclude: [],
-    warnStrict: "moderate"
+    warnStrict: "moderate",
+    // Conversational-companion preferences used by Sara to tailor
+    // tone and filtering. Hard constraints land in the system
+    // prompt; soft ones become hints.
+    readingLevel: "casual",         // "casual" | "literary" | "academic"
+    formatPreference: "any",         // "any" | "audiobook" | "ebook" | "hardcover" | "paperback"
+    spoilersEnabled: false
   };
 
   const READING_STATES = [

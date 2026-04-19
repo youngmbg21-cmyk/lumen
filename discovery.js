@@ -455,6 +455,80 @@
     };
   }
 
+  // ----------------------------------------------------------------
+  // chatWithSara — the LLM path for the persistent companion.
+  //   args = {
+  //     systemContext:   string (the "=== CONTEXT ===" block, built
+  //                       in app.js from the structured Sara ctx)
+  //     messages:        [{ role: "user" | "assistant", content: string }]
+  //   }
+  // Returns the assistant's text on success. On any failure (no
+  // key, network, parse, rate limit) throws an Error that the
+  // caller converts into Sara's graceful fail-safe line.
+  //
+  // Persona prompt comes from window.LumenSaraPersona.PERSONA_PROMPT
+  // (see sara-persona.js) and is prepended to the systemContext so
+  // both land in Claude's `system` field.
+  // ----------------------------------------------------------------
+  async function chatWithSara({ systemContext = "", messages = [] } = {}) {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("missing-api-key");
+    const persona = (window.LumenSaraPersona && window.LumenSaraPersona.PERSONA_PROMPT) || "";
+    const system = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
+    // Sanitize messages: must alternate user/assistant and start on
+    // user; Claude rejects other shapes. We filter out empty/non-
+    // text messages and coalesce consecutive same-role turns.
+    const clean = [];
+    for (const m of messages) {
+      if (!m || !m.content) continue;
+      const role = m.role === "assistant" || m.role === "user" ? m.role : null;
+      if (!role) continue;
+      const last = clean[clean.length - 1];
+      if (last && last.role === role) last.content += "\n\n" + String(m.content);
+      else clean.push({ role, content: String(m.content) });
+    }
+    // Drop leading assistant turn if present.
+    while (clean.length && clean[0].role !== "user") clean.shift();
+    if (!clean.length) throw new Error("empty-conversation");
+
+    setStatus("reading", "Sara is thinking…");
+    let res;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 600,
+          system,
+          messages: clean
+        })
+      });
+    } catch (err) {
+      setStatus("error", "Network call failed");
+      throw err;
+    }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      setStatus("error", `Claude returned ${res.status}`);
+      throw new Error(`claude-${res.status}: ${txt.slice(0, 200)}`);
+    }
+    const payload = await res.json();
+    const out = (payload.content || [])
+      .filter(b => b.type === "text")
+      .map(b => b.text)
+      .join("\n")
+      .trim();
+    if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
+    setStatus("online", "Sara is here");
+    return out;
+  }
+
   window.LumenDiscovery = {
     setApiKey,
     getApiKey,
@@ -466,6 +540,7 @@
     analyzeWithClaude,
     enrichCatalogEntry,
     lookupBookMetadata,
+    chatWithSara,
     onStatus,
     get status() { return state.status; },
     get message() { return state.lastMessage; }
