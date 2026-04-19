@@ -307,6 +307,7 @@
   /* -------------------- router -------------------- */
   const ROUTES = [
     { id: "discover",     label: "Home",          short: "Home",     group: "main",     render: () => views.discover() },
+    { id: "terminal",     label: "Terminal",      short: "Terminal", group: "main",     render: () => views.terminal() },
     { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
@@ -3707,8 +3708,35 @@
       ...(compareLines.length ? compareLines : ["(none)"]),
       ``,
       `--- library stats ---`,
-      ...libLines
+      ...libLines,
+      ``,
+      `--- terminal view ---`,
+      ...terminalContextLines()
     ].join("\n");
+  }
+
+  // Snapshot the Lumen Terminal's local view filters + selection so
+  // Sara can answer questions like "what am I filtering?" and "why
+  // is this title in front of me?" without re-querying the engine.
+  // Returns `(none)` lines when the Terminal module hasn't booted.
+  function terminalContextLines() {
+    const T = window.LumenTerminal;
+    if (!T || !T._state) return ["(terminal not initialised)"];
+    const st = T._state;
+    const lines = [];
+    lines.push(`sortKey: ${st.sortKey} ${st.sortDir}`);
+    if (st.search) lines.push(`search: "${st.search}"`);
+    if (st.subgenreFilter) lines.push(`subgenre filter: ${st.subgenreFilter}`);
+    if (st.toneFilter && st.toneFilter.size) lines.push(`tone filter: ${[...st.toneFilter].join(", ")}`);
+    if (st.dynFilter && st.dynFilter.size)   lines.push(`dynamic filter: ${[...st.dynFilter].join(", ")}`);
+    if (st.selectedId) {
+      try {
+        const b = findBook(st.selectedId);
+        if (b) lines.push(`selected: ${b.title} (id=${b.id})`);
+      } catch (e) { /* ignore */ }
+    }
+    if (lines.length === 1 && !st.selectedId) lines.push("(no view filters active)");
+    return lines;
   }
 
   function computeSaraContext(routeId) {
@@ -5091,6 +5119,22 @@
 
     settings() {
       return renderSettings();
+    },
+
+    terminal() {
+      // Terminal view lives in terminal.js so the analytics surface
+      // can evolve independently. Fall back to a notice if the
+      // module didn't load for any reason.
+      if (window.LumenTerminal && typeof window.LumenTerminal.render === "function") {
+        try { return window.LumenTerminal.render(); }
+        catch (e) { console.error("[Lumen Terminal] render failed:", e); }
+      }
+      const wrap = util.el("div", { class: "page stack-lg" });
+      wrap.appendChild(ui.empty({
+        title: "Terminal module unavailable",
+        message: "The Terminal view didn't load. Reload the page; if the problem persists, the terminal.js script may have failed to parse."
+      }));
+      return wrap;
     },
 
     transparency() {
