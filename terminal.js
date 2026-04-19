@@ -23,12 +23,24 @@
       dynamic: new Set()
     },
     subgenreFilter: null,
+    tropeFilter: new Set(),
+    eraFilter:   new Set(),
     search: "",
     sortKey: "fit",
     sortDir: "desc",
     selectedId: null,
     _seededFromLumen: false
   };
+
+  // Publication-era buckets shared by renderEraBar + filteredBooks.
+  const ERA_BUCKETS = [
+    { label: "Pre-1950",  test: y => y > 0 && y < 1950 },
+    { label: "1950-1999", test: y => y >= 1950 && y < 2000 },
+    { label: "2000-2009", test: y => y >= 2000 && y < 2010 },
+    { label: "2010-2014", test: y => y >= 2010 && y < 2015 },
+    { label: "2015-2019", test: y => y >= 2015 && y < 2020 },
+    { label: "2020+",     test: y => y >= 2020 }
+  ];
 
   // ============================================================
   // DATA ADAPTER — flatten Lumen's catalog books into the shape
@@ -138,8 +150,14 @@
   // Apply subgenre + search filter, score every survivor, then sort.
   function filteredBooks() {
     const q = termState.search.toLowerCase().trim();
+    const tropeF = termState.tropeFilter;
+    const eraF   = termState.eraFilter;
+    const activeEras = eraF.size ? ERA_BUCKETS.filter(e => eraF.has(e.label)) : null;
     let list = rawBooks().filter(b => {
       if (termState.subgenreFilter && b.subgenre !== termState.subgenreFilter) return false;
+      // Trope + era use OR within each dimension and AND across dimensions.
+      if (tropeF.size && !(b.trope || []).some(t => tropeF.has(t))) return false;
+      if (activeEras && !(b.year && activeEras.some(e => e.test(b.year)))) return false;
       if (q) {
         const hay = [b.title, b.author, b.subgenre, (b.trope || []).join(" "),
                      (b.tone || []).join(" "), b.short_summary || ""].join(" ").toLowerCase();
@@ -264,42 +282,61 @@
   }
 
   // ---------- Trope frequency bars ----------
-  function renderTropeBar(root) {
-    const list = filteredBooks();
+  function renderTropeBar(root, rerender) {
+    // Bars are drawn from the full catalog so rows stay clickable even
+    // when a trope filter is already active. Counts reflect the
+    // catalogue totals, not the filtered pool.
+    const all = rawBooks();
     const counts = {};
-    list.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+    all.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const max = Math.max(1, ...entries.map(e => e[1]));
-    const html = entries.map(([name, n], i) => {
+    const el = $(root, "#tropeBar");
+    el.innerHTML = entries.map(([name, n], i) => {
       const cls = i % 3 === 0 ? "" : i % 3 === 1 ? "sage" : "violet";
-      return `<div class="bar-row">
+      const sel = termState.tropeFilter.has(name) ? " selected" : "";
+      return `<div class="bar-row interactive${sel}" data-trope="${escapeHtml(name)}">
         <div class="bar-label" title="${escapeHtml(name)}">${escapeHtml(name.replace(/-/g, " "))}</div>
         <div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max)*100}%"></div></div>
         <div class="bar-val">${n}</div>
       </div>`;
-    }).join("");
-    $(root, "#tropeBar").innerHTML = html ||
-      `<div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);font-size:12px;text-align:center;padding:10px;">No data in current filter</div>`;
+    }).join("") ||
+      `<div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);font-size:12px;text-align:center;padding:10px;">No tropes in catalogue</div>`;
+    el.querySelectorAll(".bar-row[data-trope]").forEach(row => {
+      row.addEventListener("click", () => {
+        const t = row.dataset.trope;
+        if (termState.tropeFilter.has(t)) termState.tropeFilter.delete(t);
+        else termState.tropeFilter.add(t);
+        rerender();
+      });
+    });
   }
 
-  // ---------- Publication-era bars ----------
-  function renderEraBar(root) {
-    const list = filteredBooks();
-    const buckets = [
-      { label: "Pre-1950",  test: y => y > 0 && y < 1950 },
-      { label: "1950-1999", test: y => y >= 1950 && y < 2000 },
-      { label: "2000-2009", test: y => y >= 2000 && y < 2010 },
-      { label: "2010-2014", test: y => y >= 2010 && y < 2015 },
-      { label: "2015-2019", test: y => y >= 2015 && y < 2020 },
-      { label: "2020+",     test: y => y >= 2020 }
-    ];
-    const data = buckets.map(b => ({ label: b.label, n: list.filter(x => x.year && b.test(x.year)).length }));
+  // ---------- Publication-era bars (interactive filters) ----------
+  function renderEraBar(root, rerender) {
+    const all = rawBooks();
+    const data = ERA_BUCKETS.map(b => ({
+      label: b.label,
+      n: all.filter(x => x.year && b.test(x.year)).length
+    }));
     const max = Math.max(1, ...data.map(d => d.n));
-    $(root, "#eraBar").innerHTML = data.map(d => `<div class="bar-row">
-      <div class="bar-label">${escapeHtml(d.label)}</div>
-      <div class="bar-track"><div class="bar-fill blush" style="width:${(d.n/max)*100}%"></div></div>
-      <div class="bar-val">${d.n}</div>
-    </div>`).join("");
+    const el = $(root, "#eraBar");
+    el.innerHTML = data.map(d => {
+      const sel = termState.eraFilter.has(d.label) ? " selected" : "";
+      return `<div class="bar-row interactive${sel}" data-era="${escapeHtml(d.label)}">
+        <div class="bar-label">${escapeHtml(d.label)}</div>
+        <div class="bar-track"><div class="bar-fill blush" style="width:${(d.n/max)*100}%"></div></div>
+        <div class="bar-val">${d.n}</div>
+      </div>`;
+    }).join("");
+    el.querySelectorAll(".bar-row[data-era]").forEach(row => {
+      row.addEventListener("click", () => {
+        const e = row.dataset.era;
+        if (termState.eraFilter.has(e)) termState.eraFilter.delete(e);
+        else termState.eraFilter.add(e);
+        rerender();
+      });
+    });
   }
 
   // ---------- Radar SVG (compass + overlap) — verbatim ----------
@@ -790,8 +827,8 @@
     // Run populators
     renderRadar($(wrap, "#userRadar"), termState.profile);
     renderKPIs(wrap);
-    renderTropeBar(wrap);
-    renderEraBar(wrap);
+    renderTropeBar(wrap, rerender);
+    renderEraBar(wrap, rerender);
     renderTicker(wrap);
     renderChips(wrap, rerender);
     renderGrid(wrap, rerender);
@@ -817,7 +854,7 @@
     $(wrap, "#searchInput").addEventListener("input", e => {
       termState.search = e.target.value;
       renderKPIs(wrap); renderGrid(wrap, rerender); renderInsight(wrap);
-      renderTropeBar(wrap); renderEraBar(wrap);
+      renderTropeBar(wrap, rerender); renderEraBar(wrap, rerender);
     });
 
     // Sortable headers
