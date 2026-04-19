@@ -339,29 +339,29 @@
 
 /* ----- Centre column ----- */
 .lumen-terminal .term-centre { min-width: 0; }
-.lumen-terminal .term-charts-row {
+.lumen-terminal .charts-row {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
-  gap: 10px;
+  gap: 14px;
 }
 @media (max-width: 1400px) {
-  .lumen-terminal .term-charts-row { grid-template-columns: 1fr 1fr; }
-  .lumen-terminal .term-charts-row > :nth-child(3) { grid-column: 1 / -1; }
+  .lumen-terminal .charts-row { grid-template-columns: 1fr 1fr; }
+  .lumen-terminal .charts-row > :nth-child(3) { grid-column: 1 / -1; }
 }
 @media (max-width: 720px) {
-  .lumen-terminal .term-charts-row { grid-template-columns: 1fr; }
+  .lumen-terminal .charts-row { grid-template-columns: 1fr; }
 }
 
-/* ----- Heat × Explicit heatmap ----- */
-.lumen-terminal .term-heatmap { padding: 12px 14px 14px; }
-.lumen-terminal .term-heatmap-row {
+/* ----- Heat × Explicit heatmap (verbatim) ----- */
+.lumen-terminal .heatmap-wrap { padding: 12px 14px 14px; }
+.lumen-terminal .heatmap-row {
   display: grid;
-  grid-template-columns: 60px repeat(5, 1fr);
+  grid-template-columns: 90px repeat(5, 1fr);
   gap: 3px;
   align-items: center;
   margin-bottom: 3px;
 }
-.lumen-terminal .term-heatmap-hdr {
+.lumen-terminal .heatmap-row.hdr {
   margin-bottom: 6px;
   font-family: var(--font-mono);
   font-size: 9px;
@@ -370,16 +370,16 @@
   color: var(--text-mute);
   font-weight: 600;
 }
-.lumen-terminal .term-heatmap-hdr > div:not(:first-child) { text-align: center; }
-.lumen-terminal .term-heatmap-rowlabel {
+.lumen-terminal .heatmap-row.hdr > div:not(:first-child) { text-align: center; }
+.lumen-terminal .heatmap-row-label {
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--text-soft, var(--text-muted));
   font-weight: 600;
 }
-.lumen-terminal .term-heatmap-cell {
+.lumen-terminal .heatmap-cell {
   height: 24px;
   border-radius: 4px;
   display: flex;
@@ -388,52 +388,53 @@
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 600;
-  transition: transform 120ms ease, outline 120ms ease;
-  background: var(--t-bg-sunk);
-  color: var(--text-mute);
+  cursor: default;
+  transition: transform 0.12s;
 }
-.lumen-terminal .term-heatmap-cell:hover {
-  transform: scale(1.06);
-  outline: 1px solid var(--border-bold, var(--border));
+.lumen-terminal .heatmap-cell:hover {
+  transform: scale(1.08);
+  outline: 1px solid var(--border-strong, var(--border));
 }
-.lumen-terminal .term-heatmap-cell.is-empty { background: var(--t-bg-sunk); color: var(--text-mute); opacity: 0.6; }
+.lumen-terminal .heatmap-cell.empty { background: var(--bg-sunk, var(--t-bg-sunk)); color: var(--text-dim, var(--text-mute)); }
 
-/* ----- Bar charts (trope + era) ----- */
-.lumen-terminal .term-bars { padding: 12px 14px; }
-.lumen-terminal .term-bar-row {
+/* ----- Bar charts (verbatim) ----- */
+.lumen-terminal .barchart { padding: 12px 14px; }
+.lumen-terminal .bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 34px;
   align-items: center;
   gap: 8px;
   padding: 4px 0;
 }
-.lumen-terminal .term-bar-label {
+.lumen-terminal .bar-label {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-soft, var(--text-muted));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
 }
-.lumen-terminal .term-bar-track {
+.lumen-terminal .bar-track {
   height: 14px;
-  background: var(--t-bg-sunk);
+  background: var(--bg-sunk, var(--t-bg-sunk));
   border-radius: 3px;
   overflow: hidden;
+  position: relative;
 }
-.lumen-terminal .term-bar-fill {
+.lumen-terminal .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--t-gold), var(--accent));
+  background: linear-gradient(90deg, var(--gold, var(--t-gold)), var(--accent));
   border-radius: 3px;
-  transition: width 280ms ease;
+  position: relative;
+  transition: width 0.4s ease;
 }
-.lumen-terminal .term-bar-fill.tone-sage   { background: linear-gradient(90deg, color-mix(in srgb, var(--t-sage) 40%, transparent), var(--t-sage)); }
-.lumen-terminal .term-bar-fill.tone-violet { background: linear-gradient(90deg, color-mix(in srgb, #8e6a94 40%, transparent), #8e6a94); }
-.lumen-terminal .term-bar-fill.tone-blush  { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent), var(--t-blush)); }
-.lumen-terminal .term-bar-val {
+.lumen-terminal .bar-fill.sage   { background: linear-gradient(90deg, var(--sage-soft, rgba(122,140,111,0.12)), var(--sage, var(--t-sage))); }
+.lumen-terminal .bar-fill.violet { background: linear-gradient(90deg, var(--violet-soft, rgba(142,106,148,0.12)), var(--violet, #8e6a94)); }
+.lumen-terminal .bar-fill.blush  { background: linear-gradient(90deg, var(--accent-soft, rgba(184,74,98,0.10)), var(--blush, var(--t-blush))); }
+.lumen-terminal .bar-val {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-soft, var(--text-muted));
   font-weight: 600;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -1128,31 +1129,21 @@
   min-width: 0;
 }
 
-/* Chart row: three equal columns, all panels stretch to the
-   tallest sibling. The panel itself is flex-column so its body
-   fills the stretched height — aligns bottom edges across
+/* Chart row: three columns (1.2fr | 1fr | 1fr), all panels stretch
+   to the tallest sibling. The panel itself is flex-column so its
+   body fills the stretched height — aligns bottom edges across
    Heatmap / Trope / Publication regardless of row count. */
-.lumen-terminal .term-charts-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+.lumen-terminal .charts-row {
   align-items: stretch;
 }
-@media (max-width: 1400px) {
-  .lumen-terminal .term-charts-row { grid-template-columns: 1fr 1fr; }
-  .lumen-terminal .term-charts-row > :nth-child(3) { grid-column: 1 / -1; }
-}
-@media (max-width: 720px) {
-  .lumen-terminal .term-charts-row { grid-template-columns: 1fr; }
-}
-.lumen-terminal .term-charts-row .term-panel {
+.lumen-terminal .charts-row .term-panel {
   display: flex;
   flex-direction: column;
   height: 100%;
 }
-.lumen-terminal .term-charts-row .term-panel > .panel-head { flex: 0 0 auto; }
-.lumen-terminal .term-charts-row .term-panel > .term-heatmap,
-.lumen-terminal .term-charts-row .term-panel > .term-bars {
+.lumen-terminal .charts-row .term-panel > .panel-head { flex: 0 0 auto; }
+.lumen-terminal .charts-row .term-panel > .heatmap-wrap,
+.lumen-terminal .charts-row .term-panel > .barchart {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
@@ -1190,51 +1181,8 @@
 .lumen-terminal .term-kpi-spark.tone-gold polyline  { stroke: var(--t-gold); }
 .lumen-terminal .term-kpi-spark.tone-blush polyline { stroke: var(--t-blush); }
 
-/* Heatmap — restyle cells as generous rounded squares (closer to
-   the reference's squircle look). The empty cells read as a
-   subtle tinted rounded box rather than flat grey. */
-.lumen-terminal .term-heatmap {
-  padding: 14px 16px 16px;
-  gap: 6px;
-}
-.lumen-terminal .term-heatmap-row {
-  grid-template-columns: 56px repeat(5, 1fr);
-  gap: 6px;
-  margin-bottom: 0;
-}
-.lumen-terminal .term-heatmap-row + .term-heatmap-row { margin-top: 2px; }
-.lumen-terminal .term-heatmap-hdr {
-  margin-bottom: 8px;
-  font-size: 9px;
-}
-.lumen-terminal .term-heatmap-cell {
-  height: 34px;
-  border-radius: 8px;
-  font-size: 11px;
-  letter-spacing: 0.02em;
-  background: color-mix(in srgb, var(--t-bg-sunk) 60%, transparent);
-}
-.lumen-terminal .term-heatmap-cell.is-empty {
-  background: color-mix(in srgb, var(--t-bg-sunk) 55%, transparent);
-  color: transparent;
-  opacity: 0.7;
-}
-
-/* Bar charts: nudge the label column slightly wider and tighten
-   row padding so the three cards share vertical rhythm. */
-.lumen-terminal .term-bars {
-  padding: 14px 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.lumen-terminal .term-bar-row {
-  grid-template-columns: 130px 1fr 34px;
-  padding: 3px 0;
-}
-.lumen-terminal .term-bar-label { font-size: 11px; }
-.lumen-terminal .term-bar-track { height: 12px; border-radius: 6px; }
-.lumen-terminal .term-bar-fill { border-radius: 6px; }
+/* (Round-1 chart-density overrides removed — verbatim sizing
+   from the reference is now used in the base rules above.) */
 
 /* Panel head padding — slightly roomier in the reference. */
 .lumen-terminal .panel-head {
@@ -1261,74 +1209,6 @@
    Taller panels, more generous heatmap cells, softer bar tracks.
    ============================================================ */
 
-/* Give the three chart panels real vertical room so the rows
-   have the same breathing space as the reference. Panels are
-   still align-items:stretch in the grid, so the min-height
-   applies as a floor rather than a hard constraint. */
-.lumen-terminal .term-charts-row .term-panel {
-  min-height: 480px;
-}
-
-/* Heatmap cells — slightly taller + more rounded so they read
-   as pill-shaped squircles that match the reference. */
-.lumen-terminal .term-heatmap {
-  padding: 16px 18px 20px;
-}
-.lumen-terminal .term-heatmap-row {
-  grid-template-columns: 50px repeat(5, 1fr);
-  gap: 8px;
-  margin-bottom: 2px;
-}
-.lumen-terminal .term-heatmap-hdr { margin-bottom: 12px; }
-.lumen-terminal .term-heatmap-cell {
-  height: 46px;
-  border-radius: 14px;
-  font-size: 12px;
-}
-.lumen-terminal .term-heatmap-cell.is-empty {
-  background: color-mix(in srgb, var(--t-bg-sunk) 45%, transparent);
-  opacity: 0.85;
-}
-
-/* Bar rows — slightly taller track (softer), tighter internal
-   row padding so we fit more rows comfortably in the new
-   taller panel. Track stays full-width; fill only reaches 50%
-   at max per the renderer. */
-.lumen-terminal .term-bars {
-  padding: 16px 18px;
-  gap: 4px;
-}
-.lumen-terminal .term-bar-row {
-  grid-template-columns: 150px 1fr 40px;
-  padding: 5px 0;
-  gap: 10px;
-}
-.lumen-terminal .term-bar-label {
-  font-size: 12px;
-  color: var(--text-soft, var(--text-muted));
-}
-.lumen-terminal .term-bar-track {
-  height: 12px;
-  border-radius: 999px;
-  background: var(--t-bg-sunk);
-}
-.lumen-terminal .term-bar-fill {
-  border-radius: 999px;
-  min-width: 6px;
-}
-.lumen-terminal .term-bar-val {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text);
-  font-weight: 600;
-  text-align: right;
-}
-
-/* Panel-head in the chart panels — slightly larger and a bit
-   more padding so the titles read with the same editorial
-   weight as the reference. */
-.lumen-terminal .term-charts-row .panel-head {
-  padding: 14px 18px;
-}
-.lumen-terminal .term-charts-row .panel-title { font-size: 10.5px; }
-.lumen-terminal .term-charts-row .panel-sub  { font-size: 12.5px; }
+/* (Round-2 chart-density overrides removed — verbatim sizing
+   from the reference is now the source of truth for the chart
+   panels above.) */

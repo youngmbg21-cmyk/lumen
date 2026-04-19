@@ -292,78 +292,55 @@
   }
 
   // Heat × Explicitness — 5×5 grid showing how the catalogue is
-  // distributed across the two intensity axes. Density is rendered
-  // as accent tint; empty cells stay quiet.
+  // distributed across the two intensity axes.
   function renderHeatmap(pool) {
-    const wrap = el("div", { class: "term-heatmap" });
-    // grid[i][j] where i is heat row (5 → 1, top to bottom) and
-    // j is explicit column (1 → 5, left to right).
+    const wrap = el("div", { class: "heatmap-wrap" });
     const grid = [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
     pool.forEach(b => {
       const r = 5 - b.heat;
       const c = b.explicit - 1;
-      if (r >= 0 && r < 5 && c >= 0 && c < 5) grid[r][c] += 1;
+      if (r >= 0 && r < 5 && c >= 0 && c < 5) grid[r][c]++;
     });
     const max = Math.max(1, ...grid.flat());
-
-    // Header row.
-    const header = el("div", { class: "term-heatmap-row term-heatmap-hdr" });
-    header.appendChild(el("div", { text: "H ↓ / E →" }));
-    [1,2,3,4,5].forEach(n => header.appendChild(el("div", { text: String(n) })));
-    wrap.appendChild(header);
-
+    const rows = [];
+    rows.push(`<div class="heatmap-row hdr"><div>H ↓ / E →</div>${[1,2,3,4,5].map(n => `<div>${n}</div>`).join('')}</div>`);
     for (let i = 0; i < 5; i++) {
       const heatLvl = 5 - i;
-      const row = el("div", { class: "term-heatmap-row" });
-      row.appendChild(el("div", { class: "term-heatmap-rowlabel", text: "H" + heatLvl }));
+      const cells = [];
+      cells.push(`<div class="heatmap-row-label">H${heatLvl}</div>`);
       for (let j = 0; j < 5; j++) {
         const v = grid[i][j];
         if (v === 0) {
-          row.appendChild(el("div", { class: "term-heatmap-cell is-empty",
-            title: `Heat ${heatLvl} · Explicit ${j + 1}: no titles` }));
+          cells.push(`<div class="heatmap-cell empty" title="Heat ${heatLvl} · Explicit ${j+1}: no titles"></div>`);
         } else {
           const intensity = v / max;
-          const alpha = (0.18 + intensity * 0.7).toFixed(2);
-          const cell = el("div", { class: "term-heatmap-cell",
-            title: `Heat ${heatLvl} · Explicit ${j + 1}: ${v} title${v === 1 ? "" : "s"}`,
-            text: String(v)
-          });
-          cell.style.background = `color-mix(in srgb, var(--accent) ${(intensity * 70 + 18).toFixed(0)}%, transparent)`;
-          cell.style.color = intensity > 0.55 ? "var(--accent-ink, #fff)" : "var(--text)";
-          row.appendChild(cell);
+          const alpha = 0.18 + intensity * 0.7;
+          const color = `rgba(184,74,98,${alpha.toFixed(2)})`;
+          const textColor = intensity > 0.55 ? '#fff' : 'var(--text)';
+          cells.push(`<div class="heatmap-cell" style="background:${color};color:${textColor};" title="Heat ${heatLvl} · Explicit ${j+1}: ${v} titles">${v}</div>`);
         }
       }
-      wrap.appendChild(row);
+      rows.push(`<div class="heatmap-row">${cells.join('')}</div>`);
     }
+    wrap.innerHTML = rows.join('');
     return panel("Heat × Explicitness matrix", "catalogue distribution", wrap);
   }
 
-  // Top trope frequency bars. Reads trope_tags from each book.
+  // Top trope frequency bars.
   function renderTropeBar(pool) {
     const counts = {};
     pool.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const max = Math.max(1, ...entries.map(e => e[1]));
-    const wrap = el("div", { class: "term-bars" });
-    if (!entries.length) {
-      wrap.appendChild(el("p", { class: "t-small t-subtle", style: { padding: "var(--s-3)" }, text: "No trope tags in current pool." }));
-      return panel("Trope frequency", "top signals", wrap);
-    }
-    entries.forEach(([name, n], i) => {
-      const cls = i % 3 === 0 ? "" : i % 3 === 1 ? "tone-sage" : "tone-violet";
-      const row = el("div", { class: "term-bar-row" });
-      row.appendChild(el("div", { class: "term-bar-label", title: name, text: name.replace(/-/g, " ") }));
-      const track = el("div", { class: "term-bar-track" });
-      const fill = el("div", { class: "term-bar-fill " + cls });
-      // Scale to half-width at max — the reference panels give
-      // each bar lots of whitespace to the right of the value,
-      // so even the tallest bar fills only ~50% of the track.
-      fill.style.width = ((n / max) * 50).toFixed(1) + "%";
-      track.appendChild(fill);
-      row.appendChild(track);
-      row.appendChild(el("div", { class: "term-bar-val", text: String(n) }));
-      wrap.appendChild(row);
-    });
+    const wrap = el("div", { class: "barchart" });
+    wrap.innerHTML = entries.map(([name, n], i) => {
+      const cls = i % 3 === 0 ? '' : i % 3 === 1 ? 'sage' : 'violet';
+      return `<div class="bar-row">
+        <div class="bar-label" title="${escapeHtml(name)}">${escapeHtml(name.replace(/-/g, ' '))}</div>
+        <div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max)*100}%"></div></div>
+        <div class="bar-val">${n}</div>
+      </div>`;
+    }).join('') || '<div style="font-family:\'Cormorant Garamond\',serif;font-style:italic;color:var(--text-mute);font-size:12px;text-align:center;padding:10px;">No data in current filter</div>';
     return panel("Trope frequency", "top signals", wrap);
   }
 
@@ -377,21 +354,14 @@
       { label: "2015-2019", test: y => y >= 2015 && y < 2020 },
       { label: "2020+",     test: y => y >= 2020 }
     ];
-    const data = buckets.map(b => ({ label: b.label, n: pool.filter(x => b.test(x.year)).length }));
+    const data = buckets.map(b => ({ label: b.label, n: pool.filter(x => x.year && b.test(x.year)).length }));
     const max = Math.max(1, ...data.map(d => d.n));
-    const wrap = el("div", { class: "term-bars" });
-    data.forEach(d => {
-      const row = el("div", { class: "term-bar-row" });
-      row.appendChild(el("div", { class: "term-bar-label", text: d.label }));
-      const track = el("div", { class: "term-bar-track" });
-      const fill = el("div", { class: "term-bar-fill tone-blush" });
-      // Same half-width scaling as the trope bars for rhythm parity.
-      fill.style.width = ((d.n / max) * 50).toFixed(1) + "%";
-      track.appendChild(fill);
-      row.appendChild(track);
-      row.appendChild(el("div", { class: "term-bar-val", text: String(d.n) }));
-      wrap.appendChild(row);
-    });
+    const wrap = el("div", { class: "barchart" });
+    wrap.innerHTML = data.map(d => `<div class="bar-row">
+      <div class="bar-label">${escapeHtml(d.label)}</div>
+      <div class="bar-track"><div class="bar-fill blush" style="width:${(d.n/max)*100}%"></div></div>
+      <div class="bar-val">${d.n}</div>
+    </div>`).join('');
     return panel("Publication era", "across time", wrap);
   }
 
@@ -548,7 +518,7 @@
     // Title (right) start at the top of the dashboard and the
     // KPIs sit above the charts only.
     col.appendChild(renderKpiStrip(pool, visible));
-    const charts = el("div", { class: "term-charts-row" });
+    const charts = el("div", { class: "charts-row" });
     charts.appendChild(renderHeatmap(pool));
     charts.appendChild(renderTropeBar(pool));
     charts.appendChild(renderEraBar(pool));
