@@ -124,6 +124,84 @@
       setTimeout(() => { node.classList.remove("in"); setTimeout(() => node.remove(), 220); }, duration);
     },
 
+    // Reusable premium detail sheet — wider, sticky chrome, three-
+    // slot header (cover · meta · aside), scrollable middle. Used for
+    // book detail, vault entry detail, and anywhere the old 520px
+    // modal was too narrow for a real reading surface.
+    detailSheet({ eyebrow, title, subtitle, cover, headerAside, sections = [], actions = [] }) {
+      let host = document.getElementById("modal-host");
+      if (!host) {
+        host = util.el("div", { id: "modal-host", class: "modal-host", role: "dialog", "aria-modal": "true" });
+        document.body.appendChild(host);
+      }
+      host.innerHTML = "";
+      const close = () => { host.classList.remove("open"); setTimeout(() => (host.innerHTML = ""), 220); };
+
+      const sheet = util.el("div", { class: "detail-sheet" });
+
+      // Sticky header — cover + meta + aside (e.g. fit/confidence rings).
+      const head = util.el("div", { class: "detail-sheet-head" });
+      if (cover) {
+        const coverWrap = util.el("div", { class: "detail-sheet-cover" }, [cover]);
+        head.appendChild(coverWrap);
+      }
+      const meta = util.el("div", { class: "detail-sheet-meta" });
+      if (eyebrow) meta.appendChild(util.el("div", { class: "detail-sheet-eyebrow", text: eyebrow }));
+      if (title)   meta.appendChild(util.el("h2", { class: "detail-sheet-title", text: title }));
+      if (subtitle) meta.appendChild(util.el("div", { class: "detail-sheet-subtitle", text: subtitle }));
+      head.appendChild(meta);
+      if (headerAside) {
+        const aside = util.el("div", { class: "detail-sheet-aside" }, [headerAside]);
+        head.appendChild(aside);
+      }
+      // Close button pinned to the top-right; doesn't push content.
+      head.appendChild(util.el("button", {
+        class: "detail-sheet-close", "aria-label": "Close", onclick: close
+      }, "×"));
+      sheet.appendChild(head);
+
+      // Scrollable body — each section is title + content block.
+      const bodyScroll = util.el("div", { class: "detail-sheet-scroll" });
+      sections.forEach(sec => {
+        if (!sec) return;
+        const block = util.el("section", { class: "detail-sheet-section" + (sec.tone ? ` tone-${sec.tone}` : "") });
+        if (sec.label) block.appendChild(util.el("div", { class: "detail-sheet-section-label", text: sec.label }));
+        if (sec.content instanceof Node) block.appendChild(sec.content);
+        else if (typeof sec.content === "string") block.appendChild(util.el("p", { class: "detail-sheet-prose", text: sec.content }));
+        bodyScroll.appendChild(block);
+      });
+      sheet.appendChild(bodyScroll);
+
+      // Sticky footer — primary/secondary actions stay in view while
+      // the body scrolls.
+      if (actions.length) {
+        const foot = util.el("div", { class: "detail-sheet-foot" });
+        actions.forEach(a => {
+          if (!a) return;
+          if (a.href) {
+            foot.appendChild(util.el("a", {
+              class: "btn btn-sm" + (a.variant ? ` ${a.variant}` : " btn-ghost"),
+              href: a.href, target: a.target || "_blank", rel: "noopener noreferrer"
+            }, a.label));
+          } else {
+            foot.appendChild(util.el("button", {
+              class: "btn btn-sm" + (a.variant ? ` ${a.variant}` : ""),
+              onclick: () => { a.onClick && a.onClick(); if (a.closeOnClick !== false) close(); }
+            }, a.label));
+          }
+        });
+        sheet.appendChild(foot);
+      }
+
+      host.appendChild(sheet);
+      host.classList.add("open");
+      host.addEventListener("click", (e) => { if (e.target === host) close(); }, { once: true });
+      // Escape key closes.
+      const esc = (e) => { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); } };
+      document.addEventListener("keydown", esc);
+      return { close };
+    },
+
     modal({ title, body, primary, secondary }) {
       let host = document.getElementById("modal-host");
       if (!host) {
@@ -286,12 +364,12 @@
   // opens the richer detail modal.
   function dailyPickCard(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
-    const card = util.el("a", {
+    const card = util.el("div", {
       class: "daily-pick-card",
-      href: "#",
       role: "button",
+      tabindex: "0",
       "aria-label": `Open details for ${book.title}`,
-      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); },
+      onclick: () => { onClick && onClick(scored); },
       onkeydown: (e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -331,11 +409,15 @@
 
   function bookCardMini(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
-    const card = util.el("a", {
+    const card = util.el("div", {
       class: "book-card",
-      href: "#",
-      style: { textDecoration: "none", color: "inherit" },
-      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); }
+      role: "button",
+      tabindex: "0",
+      "aria-label": `Open ${book.title}`,
+      onclick: () => { onClick && onClick(scored); },
+      onkeydown: (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(scored); }
+      }
     });
     // Steam Engine
     card.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
@@ -862,96 +944,38 @@
     const book = findBook(bookId);
     if (!book) return;
     const s = store.get();
-    // Score the book against the user's profile, pulling book data
-    // exclusively from user state (no hard-coded catalogue).
     const pool = listAllBooks();
     const scored = pool.some(b => b.id === bookId)
       ? Engine.compareBooks([bookId], s.profile, s.weights, pool)[0]
       : null;
     const userTags = s.tags[bookId] || [];
 
-    const body = util.el("div", { class: "stack book-detail-body" });
-
-    // Header — large cover on the left, meta + score rings on the right.
-    // The cover uses the same buildCoverBlock helper as Daily Picks so
-    // both surfaces stay visually consistent.
-    const header = util.el("div", { class: "book-detail-head" });
-    header.appendChild(buildCoverBlock(book, { size: "lg", showHeat: true }));
-
-    const meta = util.el("div", { class: "book-detail-meta" });
-    meta.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
-    meta.appendChild(util.el("h3", { class: "book-detail-title", text: book.title }));
-    meta.appendChild(util.el("div", { class: "book-detail-author", text: `${book.author} · ${util.fmtYear(book.year)} · ${book.source}` }));
-
+    // Header aside — fit + confidence rings stacked, premium feel.
+    let headerAside = null;
     if (scored) {
-      const ringsRow = util.el("div", { class: "book-detail-rings" });
+      const aside = util.el("div", { class: "detail-rings" });
       const fitFill = Math.max(0, Math.min(1, scored.fitScore / 100));
       const confFill = Math.max(0, Math.min(1, scored.confidence / 100));
-      const fitCell = util.el("div", { class: "book-detail-ring-cell" });
-      fitCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(fitFill, String(scored.fitScore), kpiToneFromFraction(fitFill))]));
-      fitCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Fit score" }));
-      fitCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: kpiDescriptorFit(scored.fitScore) }));
-      ringsRow.appendChild(fitCell);
-      const confCell = util.el("div", { class: "book-detail-ring-cell" });
-      confCell.appendChild(util.el("div", { class: "book-detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
-      confCell.appendChild(util.el("div", { class: "book-detail-ring-label", text: "Confidence" }));
-      confCell.appendChild(util.el("div", { class: "book-detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
-      ringsRow.appendChild(confCell);
-      meta.appendChild(ringsRow);
-    }
-    header.appendChild(meta);
-    body.appendChild(header);
-
-    // Full, un-truncated description.
-    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Full summary" }));
-    body.appendChild(util.el("p", {
-      class: "t-muted book-detail-desc",
-      style: { whiteSpace: "pre-wrap", lineHeight: "1.65" },
-      text: book.description || "No description available for this title."
-    }));
-
-    // Reasons / partials / penalties — full breakdown, not just the top
-    // two. Daily Picks collapsed cards showed 2 reasons; the expanded
-    // view shows everything the engine produced so the user can read
-    // the whole "why it fits" story without truncation.
-    if (scored && (scored.why.reasons.length || (scored.why.partials || []).length || (scored.why.penalties || []).length)) {
-      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Why this fits your profile" }));
-      const reasonsBox = util.el("ul", { class: "book-detail-reasons" });
-      scored.why.reasons.forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-strong", text: r })));
-      (scored.why.partials || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-partial", text: r })));
-      (scored.why.penalties || []).forEach(r => reasonsBox.appendChild(util.el("li", { class: "reason-penalty", text: r })));
-      body.appendChild(reasonsBox);
+      const fitCell = util.el("div", { class: "detail-ring-cell" });
+      fitCell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(fitFill, String(scored.fitScore), kpiToneFromFraction(fitFill))]));
+      fitCell.appendChild(util.el("div", { class: "detail-ring-label", text: "Fit" }));
+      fitCell.appendChild(util.el("div", { class: "detail-ring-sub", text: kpiDescriptorFit(scored.fitScore) }));
+      aside.appendChild(fitCell);
+      const confCell = util.el("div", { class: "detail-ring-cell" });
+      confCell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
+      confCell.appendChild(util.el("div", { class: "detail-ring-label", text: "Confidence" }));
+      confCell.appendChild(util.el("div", { class: "detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
+      aside.appendChild(confCell);
+      headerAside = aside;
     }
 
-    // Reading state
-    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Reading state" }));
-    body.appendChild(readingStateSelect(bookId));
+    const sections = [];
 
-    // Custom tags
-    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Your tags" }));
-    const tagRow = util.el("div", { class: "row-wrap" });
-    userTags.forEach(t => {
-      tagRow.appendChild(util.el("span", { class: "tag tag-outline" }, [
-        t.replace(/-/g, " "),
-        util.el("button", { class: "t-tiny", style: { marginLeft: "6px", color: "var(--text-subtle)" }, onclick: () => { removeCustomTag(bookId, t); openBookDetail(bookId); } }, "×")
-      ]));
-    });
-    const input = util.el("input", { class: "input", placeholder: "Add a tag and press Enter", style: { maxWidth: "240px" }, onkeydown: (e) => {
-      if (e.key === "Enter" && input.value.trim()) { addCustomTag(bookId, input.value); input.value = ""; openBookDetail(bookId); }
-    } });
-    tagRow.appendChild(input);
-    body.appendChild(tagRow);
-
-    // Content warnings
-    if (book.content_warnings.length) {
-      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Content warnings" }));
-      const warns = util.el("div", { class: "row-wrap" });
-      book.content_warnings.forEach(w => warns.appendChild(ui.tag(w, "warn")));
-      body.appendChild(warns);
-    }
-
-    // Metadata pills — the engine-relevant numeric scores.
-    const metaPills = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } });
+    // Meta pill strip — heat/explicit/emotion/consent/taboo/plot.
+    // Shown once at the top of the body so the numeric profile-fit
+    // signal sits with the narrative instead of being dumped at the
+    // bottom like before.
+    const pills = util.el("div", { class: "detail-pills" });
     [
       ["Heat", book.heat_level],
       ["Explicit", book.explicitness],
@@ -959,47 +983,131 @@
       ["Consent", book.consent_clarity],
       ["Taboo", book.taboo_level],
       ["Plot", book.plot_weight]
-    ].forEach(([l, v]) => metaPills.appendChild(util.el("span", { class: "tag tag-outline t-mono" }, `${l} · ${v}/5`)));
-    body.appendChild(metaPills);
+    ].forEach(([l, v]) => {
+      pills.appendChild(util.el("span", { class: "detail-pill" }, [
+        util.el("span", { class: "detail-pill-k", text: l }),
+        util.el("span", { class: "detail-pill-v", text: `${v}/5` })
+      ]));
+    });
+    sections.push({ content: pills });
 
-    // Extra actions row. Pin goes to Vault; a "View source" link is
-    // surfaced whenever the book has a source URL (Project Gutenberg,
-    // Google Books, Internet Archive, etc.) so the expanded view also
-    // points at the original text.
-    const actions = util.el("div", { class: "row", style: { marginTop: "var(--s-4)", flexWrap: "wrap", gap: "var(--s-2)" } });
-    actions.appendChild(util.el("button", { class: "btn btn-sm", onclick: () => {
-      pinBook(bookId);
-      openBookDetail(bookId);
-    } }, "Pin to Vault"));
-    {
-      const Sara = window.LumenSara;
-      const isPinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
-      actions.appendChild(util.el("button", {
-        class: "btn btn-sm" + (isPinned ? " btn-primary" : ""),
-        onclick: () => {
+    // Summary — unconstrained width, generous line-height.
+    sections.push({
+      label: "Summary",
+      content: util.el("p", {
+        class: "detail-sheet-prose detail-sheet-prose-hero",
+        style: { whiteSpace: "pre-wrap" },
+        text: book.description || "No description available for this title."
+      })
+    });
+
+    // Why this fits — strong reasons on the left, partials/penalties
+    // on the right at ≥720px. Removes the narrow-bubble treatment.
+    if (scored && (scored.why.reasons.length || (scored.why.partials || []).length || (scored.why.penalties || []).length)) {
+      const grid = util.el("div", { class: "detail-reasons-grid" });
+      const strongCol = util.el("div", { class: "detail-reasons-col" });
+      strongCol.appendChild(util.el("div", { class: "detail-reasons-col-title", text: "Strong matches" }));
+      const strongUl = util.el("ul", { class: "detail-reasons-list tone-strong" });
+      if (scored.why.reasons.length) {
+        scored.why.reasons.forEach(r => strongUl.appendChild(util.el("li", { text: r })));
+      } else {
+        strongUl.appendChild(util.el("li", { class: "is-empty", text: "No dimension scored as a strong match." }));
+      }
+      strongCol.appendChild(strongUl);
+      grid.appendChild(strongCol);
+
+      const otherCol = util.el("div", { class: "detail-reasons-col" });
+      otherCol.appendChild(util.el("div", { class: "detail-reasons-col-title", text: "Partial · caveats" }));
+      const otherUl = util.el("ul", { class: "detail-reasons-list tone-partial" });
+      const partials = scored.why.partials || [];
+      const penalties = scored.why.penalties || [];
+      if (partials.length || penalties.length) {
+        partials.forEach(r => otherUl.appendChild(util.el("li", { class: "tone-partial", text: r })));
+        penalties.forEach(r => otherUl.appendChild(util.el("li", { class: "tone-penalty", text: r })));
+      } else {
+        otherUl.appendChild(util.el("li", { class: "is-empty", text: "No caveats." }));
+      }
+      otherCol.appendChild(otherUl);
+      grid.appendChild(otherCol);
+
+      sections.push({ label: "Why this fits", content: grid });
+    }
+
+    // Your notes — single section combining reading-state, custom
+    // tags, and warnings. Drops three redundant field-label banners.
+    const notes = util.el("div", { class: "detail-notes-grid" });
+
+    const noteState = util.el("div", { class: "detail-note" });
+    noteState.appendChild(util.el("div", { class: "detail-note-label", text: "Reading state" }));
+    noteState.appendChild(readingStateSelect(bookId));
+    notes.appendChild(noteState);
+
+    const noteTags = util.el("div", { class: "detail-note" });
+    noteTags.appendChild(util.el("div", { class: "detail-note-label", text: "Your tags" }));
+    const tagRow = util.el("div", { class: "row-wrap detail-note-tags" });
+    userTags.forEach(t => {
+      tagRow.appendChild(util.el("span", { class: "tag tag-outline" }, [
+        t.replace(/-/g, " "),
+        util.el("button", { class: "t-tiny", style: { marginLeft: "6px", color: "var(--text-subtle)" }, onclick: () => { removeCustomTag(bookId, t); openBookDetail(bookId); } }, "×")
+      ]));
+    });
+    const input = util.el("input", { class: "input detail-note-input", placeholder: "Add a tag and press Enter", onkeydown: (e) => {
+      if (e.key === "Enter" && input.value.trim()) { addCustomTag(bookId, input.value); input.value = ""; openBookDetail(bookId); }
+    } });
+    tagRow.appendChild(input);
+    noteTags.appendChild(tagRow);
+    notes.appendChild(noteTags);
+
+    if ((book.content_warnings || []).length) {
+      const noteWarn = util.el("div", { class: "detail-note" });
+      noteWarn.appendChild(util.el("div", { class: "detail-note-label", text: "Content warnings" }));
+      const warns = util.el("div", { class: "row-wrap" });
+      book.content_warnings.forEach(w => warns.appendChild(ui.tag(w, "warn")));
+      noteWarn.appendChild(warns);
+      notes.appendChild(noteWarn);
+    }
+
+    sections.push({ label: "Your notes", content: notes });
+
+    // Actions — consolidated into the sticky footer of the detail sheet.
+    const Sara = window.LumenSara;
+    const saraPinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const actions = [
+      {
+        label: "Pin to Vault",
+        onClick: () => { pinBook(bookId); openBookDetail(bookId); },
+        variant: "btn-ghost",
+        closeOnClick: false
+      },
+      {
+        label: saraPinned ? "Unpin from Sara" : "Share with Sara",
+        onClick: () => {
           if (!Sara) return;
-          if (Sara.isPinned(bookId)) Sara.unpinBook(bookId);
-          else Sara.pinBook(bookId);
+          if (Sara.isPinned(bookId)) Sara.unpinBook(bookId); else Sara.pinBook(bookId);
           openBookDetail(bookId);
+        },
+        variant: saraPinned ? "btn-primary" : "btn-ghost",
+        closeOnClick: false
+      },
+      book.source_url ? { label: "View source", href: book.source_url } : null,
+      {
+        label: "Compare with…",
+        variant: "btn-primary",
+        onClick: () => {
+          sessionStorage.setItem("lumen:compare-seed", bookId);
+          router.go("compare");
         }
-      }, isPinned ? "Unpin from Sara" : "Share with Sara"));
-    }
-    if (book.source_url) {
-      actions.appendChild(util.el("a", {
-        class: "btn btn-sm btn-ghost",
-        href: book.source_url, target: "_blank", rel: "noopener noreferrer"
-      }, "View source"));
-    }
-    body.appendChild(actions);
+      }
+    ].filter(Boolean);
 
-    ui.modal({
-      title: "",
-      body,
-      primary: { label: "Compare with…", onClick: () => {
-        sessionStorage.setItem("lumen:compare-seed", bookId);
-        router.go("compare");
-      } },
-      secondary: { label: "Close" }
+    ui.detailSheet({
+      eyebrow: util.humanise(book.category || "").toUpperCase(),
+      title: book.title,
+      subtitle: `${book.author || ""}${book.year ? " · " + util.fmtYear(book.year) : ""}${book.source ? " · " + book.source : ""}`,
+      cover: buildCoverBlock(book, { size: "lg", showHeat: true }),
+      headerAside,
+      sections,
+      actions
     });
   }
 
@@ -1525,59 +1633,69 @@
       }));
       card.appendChild(cover);
 
-      // Body
+      // Body — compact row layout. Title, author, 2-line blurb, then
+      // a thin metadata row (heat dot + up to 3 tropes). The full AI
+      // insight lives in the detail sheet opened on click, so the
+      // card itself stays short and dense.
       const body = util.el("div", { class: "disco-card-body" });
 
-      // In Tailored mode, mark low-fit results so the user can see
-      // why a card is down-weighted. In Broad mode, no tagging.
+      const head = util.el("div", { class: "disco-card-head" });
+      head.appendChild(util.el("h4", { class: "disco-card-title", text: book.title }));
+
+      // Fit badge — in Tailored mode, show a tiny chip indicating
+      // alignment. Inline with the title rather than full-width banner.
       if (discoveryState.mode === "tailored" && enrich && !enrich.error) {
         const fresh = store.get();
         const fit = tailoredScore(enrich, fresh.profile);
         if (fit < 45) {
-          body.appendChild(util.el("div", { class: "tag tag-warn", style: { alignSelf: "flex-start", marginBottom: "6px" } },
-            "Lower fit for your profile"));
+          head.appendChild(util.el("span", { class: "disco-fit-chip tone-low", text: "low fit" }));
         } else if (fit >= 75) {
-          body.appendChild(util.el("div", { class: "tag tag-good", style: { alignSelf: "flex-start", marginBottom: "6px" } },
-            "Strong fit"));
+          head.appendChild(util.el("span", { class: "disco-fit-chip tone-high", text: "strong fit" }));
         }
       }
+      body.appendChild(head);
 
-      body.appendChild(util.el("h4", { text: book.title }));
-      body.appendChild(util.el("div", { class: "author", text: book.author + (book.year ? ` · ${book.year}` : "") }));
-      body.appendChild(util.el("p", { class: "blurb", text: book.description }));
+      body.appendChild(util.el("div", { class: "disco-card-author",
+        text: book.author + (book.year ? ` · ${book.year}` : "") }));
+      body.appendChild(util.el("p", { class: "disco-card-blurb", text: book.description }));
 
+      // Status strip — heat dot + 1-3 tropes inline. Insight moves to
+      // the detail sheet so the card never balloons past ~150px tall.
+      const status = util.el("div", { class: "disco-card-status" });
       if (enrich && !enrich.error) {
-        if (enrich.tropes && enrich.tropes.length) {
-          const tr = util.el("div", { class: "tropes" });
-          enrich.tropes.forEach(t => tr.appendChild(util.el("span", { class: "tag" }, t)));
-          body.appendChild(tr);
+        if (enrich.heat != null) {
+          status.appendChild(util.el("span", {
+            class: "disco-heat-dot " + steamClass(enrich.heat),
+            title: `Heat ${enrich.heat}/5`,
+            "aria-label": `Heat ${enrich.heat} of 5`
+          }));
         }
-        body.appendChild(util.el("div", { class: "insight" }, [
-          util.el("strong", { text: `AI Insight · heat ${enrich.heat}/5` }),
-          util.el("div", { text: enrich.insight || "No insight returned." })
-        ]));
+        (enrich.tropes || []).slice(0, 3).forEach(t => {
+          status.appendChild(util.el("span", { class: "disco-card-trope" }, t));
+        });
       } else if (enrich && enrich.error) {
-        body.appendChild(util.el("div", { class: "insight", style: { background: "var(--primary-soft)", borderLeftColor: "var(--accent)" } }, [
-          util.el("strong", { text: "Analysis failed" }),
-          util.el("div", { text: "Claude couldn't be reached for this title. The rest of the result stands." })
-        ]));
+        status.appendChild(util.el("span", { class: "disco-card-status-note", text: "analysis unavailable" }));
       } else {
-        body.appendChild(util.el("div", { class: "insight", style: { opacity: 0.7 } }, [
-          util.el("strong", { text: "Claude is reading…" }),
-          util.el("div", { text: "Analysis will appear here in a moment." })
-        ]));
+        status.appendChild(util.el("span", { class: "disco-card-status-note pulse", text: "Claude is reading…" }));
       }
+      body.appendChild(status);
 
-      const actions = util.el("div", { class: "card-actions" });
-      actions.appendChild(util.el("button", { class: "btn btn-sm btn-primary", onclick: (e) => {
-        e.stopPropagation();
-        addDiscoveryToLibrary(book, enrich);
-      }}, "Add to library"));
+      // Icon-only action row — primary is "Add to library", source
+      // link tucked behind a second icon. Labels exposed via tooltips
+      // so the card stays visually quiet at rest.
+      const actions = util.el("div", { class: "disco-card-actions" });
+      actions.appendChild(util.el("button", {
+        class: "disco-card-iconbtn disco-card-iconbtn-primary",
+        title: "Add to library", "aria-label": "Add to library",
+        onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book, enrich); }
+      }, "+"));
       if (book.sourceUrl) {
         actions.appendChild(util.el("a", {
-          class: "btn btn-sm btn-ghost",
-          href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer"
-        }, "View source"));
+          class: "disco-card-iconbtn",
+          title: "View source", "aria-label": "View source",
+          href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer",
+          onclick: (e) => e.stopPropagation()
+        }, "↗"));
       }
       body.appendChild(actions);
       card.appendChild(body);
@@ -1592,75 +1710,84 @@
     const enrich = discoveryState.enrichments[book.id];
     const inLibrary = (store.get().discovered || []).some(d => d.id === book.id);
 
-    const body = util.el("div", { class: "stack" });
+    // Cover block — reuse the shared buildCoverBlock. Discovery
+    // search results store heat inside the enrichment, so we mirror
+    // that onto a lightweight book shape the cover helper expects.
+    const coverBookShape = Object.assign({}, book, {
+      heat_level: enrich && !enrich.error && enrich.heat ? enrich.heat : null
+    });
+    const cover = buildCoverBlock(coverBookShape, { size: "lg", showHeat: !!coverBookShape.heat_level });
 
-    // Cover + meta header
-    const header = util.el("div", { class: "disco-detail-head" });
-    const cover = util.el("div", { class: "disco-detail-cover" });
-    if (book.thumbnail) {
-      const url = book.thumbnail.replace(/^http:/, "https:");
-      const img = util.el("img", {
-        src: url, alt: `Cover of ${book.title}`,
-        onerror: function () { this.remove(); cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() })); }
+    // Header aside — heat ring when Claude has finished analyzing.
+    let headerAside = null;
+    if (enrich && !enrich.error && enrich.heat != null) {
+      const aside = util.el("div", { class: "detail-rings" });
+      const fill = Math.max(0, Math.min(1, enrich.heat / 5));
+      const cell = util.el("div", { class: "detail-ring-cell" });
+      cell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(fill, String(enrich.heat), kpiToneFromFraction(fill))]));
+      cell.appendChild(util.el("div", { class: "detail-ring-label", text: "Heat" }));
+      cell.appendChild(util.el("div", { class: "detail-ring-sub", text: `${enrich.heat} / 5` }));
+      aside.appendChild(cell);
+      headerAside = aside;
+    }
+
+    const sections = [];
+
+    // Tropes chip strip
+    if (enrich && !enrich.error && (enrich.tropes || []).length) {
+      const pills = util.el("div", { class: "detail-pills" });
+      enrich.tropes.forEach(t => {
+        pills.appendChild(util.el("span", { class: "detail-pill" }, [
+          util.el("span", { class: "detail-pill-v", text: t })
+        ]));
       });
-      cover.appendChild(img);
-    } else {
-      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      sections.push({ content: pills });
     }
-    if (enrich && !enrich.error && enrich.heat) {
-      cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(enrich.heat) }));
-    }
-    header.appendChild(cover);
-
-    const meta = util.el("div", { class: "disco-detail-meta" });
-    meta.appendChild(util.el("div", { class: "t-eyebrow", text: (book.source || "Google Books") + (book.year ? " · " + book.year : "") }));
-    meta.appendChild(util.el("h3", { class: "t-serif", style: { fontSize: "24px", marginTop: "4px" }, text: book.title }));
-    meta.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "2px" }, text: book.author || "Unknown author" }));
-
-    if (enrich && !enrich.error) {
-      const metaRow = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)", gap: "6px" } });
-      metaRow.appendChild(util.el("span", { class: "tag tag-accent" }, `Heat ${enrich.heat}/5`));
-      (enrich.tropes || []).forEach(t => metaRow.appendChild(util.el("span", { class: "tag" }, t)));
-      meta.appendChild(metaRow);
-    } else if (!enrich) {
-      meta.appendChild(util.el("div", { class: "t-small t-subtle", style: { marginTop: "var(--s-3)" }, text: "Claude is still reading this title…" }));
-    }
-
-    header.appendChild(meta);
-    body.appendChild(header);
 
     // Full description — no line clamping
-    body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "Description" }));
-    body.appendChild(util.el("p", {
-      class: "t-small t-muted",
-      style: { whiteSpace: "pre-wrap", lineHeight: "1.6" },
-      text: book.description || "No description available for this title."
-    }));
+    sections.push({
+      label: "Description",
+      content: util.el("p", {
+        class: "detail-sheet-prose detail-sheet-prose-hero",
+        style: { whiteSpace: "pre-wrap" },
+        text: book.description || "No description available for this title."
+      })
+    });
 
+    // AI insight / advisory
     if (enrich && !enrich.error) {
-      body.appendChild(util.el("div", { class: "field-label", style: { marginTop: "var(--s-4)" }, text: "AI Insight · advisory" }));
-      body.appendChild(util.el("div", { class: "advisory" }, enrich.insight || "No insight returned."));
+      sections.push({
+        label: "AI insight",
+        content: util.el("p", { class: "detail-sheet-prose", text: enrich.insight || "No insight returned." })
+      });
     } else if (enrich && enrich.error) {
-      body.appendChild(util.el("div", { class: "advisory", style: { marginTop: "var(--s-4)" } }, [
-        util.el("strong", { text: "Analysis failed · " }),
-        "Claude couldn't be reached for this title. The description and source link above are still valid."
-      ]));
+      sections.push({
+        label: "AI insight",
+        content: util.el("p", { class: "detail-sheet-prose",
+          text: "Analysis failed — Claude couldn't be reached for this title. The description and source link are still valid." })
+      });
+    } else {
+      sections.push({
+        label: "AI insight",
+        content: util.el("p", { class: "detail-sheet-prose", text: "Claude is still reading this title…" })
+      });
     }
 
-    if (book.sourceUrl) {
-      body.appendChild(util.el("div", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" } }, [
-        "Source: ",
-        util.el("a", { href: book.sourceUrl, target: "_blank", rel: "noopener noreferrer" }, book.sourceUrl)
-      ]));
-    }
+    const actions = [
+      book.sourceUrl ? { label: "View source", href: book.sourceUrl } : null,
+      inLibrary
+        ? { label: "Open in Library", variant: "btn-primary", onClick: () => router.go("library") }
+        : { label: "Add to library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book, enrich) }
+    ].filter(Boolean);
 
-    ui.modal({
-      title: "",
-      body,
-      primary: inLibrary
-        ? { label: "Open in Library", onClick: () => router.go("library") }
-        : { label: "Add to library", onClick: () => addDiscoveryToLibrary(book, enrich) },
-      secondary: { label: "Close" }
+    ui.detailSheet({
+      eyebrow: (book.source || "Google Books").toUpperCase() + (book.year ? " · " + book.year : ""),
+      title: book.title,
+      subtitle: book.author || "Unknown author",
+      cover,
+      headerAside,
+      sections,
+      actions
     });
   }
 
@@ -3507,19 +3634,89 @@
     summSection.appendChild(summGrid);
     card.appendChild(summSection);
 
-    // Category winners
-    const winSection = util.el("div");
-    winSection.appendChild(util.el("div", { class: "deep-section-title", text: "Category winners" }));
-    winSection.appendChild(util.el("p", { class: "t-small t-subtle", style: { marginBottom: "var(--s-3)" }, text: "Who leads each scored dimension, and by how much. Decisive wins shape the overall fit most." }));
-    const winTable = util.el("div");
-    payload.categoryWinners.forEach(w => {
-      winTable.appendChild(util.el("div", { class: "deep-win-row" }, [
-        util.el("div", { class: "t-small t-muted", text: w.category }),
-        util.el("div", { class: "t-small", text: w.winner }),
-        util.el("div", { class: `tier ${w.tier}`, text: w.tier })
-      ]));
+    // Category winners — compact 2-column grid with inline tier dots.
+    // A summary chip up top replaces the two-line descriptive intro.
+    // A segmented filter (All / Decisive / Numeric / Tags) collapses
+    // the 13-row data dump into the rows that actually matter.
+    const winSection = util.el("div", { class: "deep-winners" });
+    const winHead = util.el("div", { class: "deep-winners-head" });
+    winHead.appendChild(util.el("div", { class: "deep-section-title", text: "Category winners" }));
+
+    // Group categories by tier + by type (numeric vs tag).
+    // `deep-win-row` keeps the same data shape the analysis module
+    // emits: { category, winner, tier, group? }. We classify group
+    // here based on the known CMP_CATEGORIES table.
+    const numericKeys = new Set(CMP_CATEGORIES.filter(c => c.group === "numeric").map(c => c.label));
+    const rowsWithGroup = payload.categoryWinners.map(w => ({
+      ...w,
+      group: numericKeys.has(w.category) ? "numeric" : "tag"
+    }));
+    const decisiveCount = rowsWithGroup.filter(r => r.tier === "decisive").length;
+    const clearCount = rowsWithGroup.filter(r => r.tier === "clear").length;
+    const tightCount = rowsWithGroup.filter(r => r.tier === "tight").length;
+
+    // Summary chip — one sentence beats two lines of explanatory copy.
+    winHead.appendChild(util.el("span", { class: "deep-winners-summary" }, [
+      util.el("strong", { text: `${decisiveCount}` }),
+      util.el("span", { text: " decisive · " }),
+      util.el("strong", { text: `${clearCount}` }),
+      util.el("span", { text: " clear · " }),
+      util.el("strong", { text: `${tightCount}` }),
+      util.el("span", { text: " close" })
+    ]));
+    winSection.appendChild(winHead);
+
+    // Segmented filter — defaults to "All" but user can isolate
+    // numeric-only or tag-only wins, or focus on decisive ones.
+    const winFilter = { mode: "all" };
+    const FILTERS = [
+      { id: "all",      label: "All" },
+      { id: "decisive", label: "Decisive" },
+      { id: "numeric",  label: "Numeric" },
+      { id: "tag",      label: "Tags" }
+    ];
+    const filterEl = util.el("div", { class: "segmented deep-winners-filter", role: "group", "aria-label": "Filter category winners" });
+    FILTERS.forEach(f => {
+      const btn = util.el("button", {
+        type: "button",
+        "aria-pressed": winFilter.mode === f.id ? "true" : "false",
+        "data-filter": f.id,
+        onclick: () => {
+          winFilter.mode = f.id;
+          filterEl.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.dataset.filter === f.id ? "true" : "false"));
+          repaintWinners();
+        }
+      }, f.label);
+      filterEl.appendChild(btn);
     });
-    winSection.appendChild(winTable);
+    winSection.appendChild(filterEl);
+
+    const winGrid = util.el("div", { class: "deep-winners-grid" });
+    winSection.appendChild(winGrid);
+
+    function repaintWinners() {
+      winGrid.innerHTML = "";
+      const rows = rowsWithGroup.filter(r => {
+        if (winFilter.mode === "decisive") return r.tier === "decisive";
+        if (winFilter.mode === "numeric")  return r.group === "numeric";
+        if (winFilter.mode === "tag")      return r.group === "tag";
+        return true;
+      });
+      if (!rows.length) {
+        winGrid.appendChild(util.el("div", { class: "deep-winners-empty t-small t-subtle", text: "No categories match this filter." }));
+        return;
+      }
+      rows.forEach(r => {
+        const tierLabel = r.tier === "decisive" ? "Decisive win" : r.tier === "clear" ? "Clear lead" : "Close call";
+        winGrid.appendChild(util.el("div", { class: `deep-win-pill tier-${r.tier}`, title: tierLabel }, [
+          util.el("span", { class: "deep-win-pill-tier", "aria-label": tierLabel }),
+          util.el("span", { class: "deep-win-pill-cat", text: r.category }),
+          util.el("span", { class: "deep-win-pill-winner", text: r.winner })
+        ]));
+      });
+    }
+    repaintWinners();
+
     card.appendChild(winSection);
 
     // Thematic takeaway
@@ -3897,10 +4094,15 @@
 
   function rankCardBig(scored, rank, onClick) {
     const { book, fitScore, confidence, why } = scored;
-    const card = util.el("a", {
+    const card = util.el("div", {
       class: "rank-card",
-      href: "#",
-      onclick: (e) => { e.preventDefault(); onClick && onClick(scored); }
+      role: "button",
+      tabindex: "0",
+      "aria-label": `Open ${book.title}`,
+      onclick: () => { onClick && onClick(scored); },
+      onkeydown: (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick && onClick(scored); }
+      }
     });
 
     card.appendChild(util.el("div", { class: "rank-numeral", text: toRoman(rank) }));
