@@ -535,6 +535,52 @@
   }
 
   // ----------------------------------------------------------------
+  // Lightweight metadata lookup for a known title/author pair. Used by
+  // the catalog enrichment pipeline to attach a cover thumbnail, a
+  // publication year, and (optionally) a richer description the AI
+  // can reason against. Returns `null` if Google Books has no good
+  // match — the enrichment continues without the cover.
+  // ----------------------------------------------------------------
+  async function lookupBookMetadata(input) {
+    if (!input || !input.title) return null;
+    const gkey = getGoogleKey();
+    const parts = [`intitle:"${input.title.replace(/"/g, "")}"`];
+    if (input.author) parts.push(`inauthor:"${String(input.author).replace(/"/g, "")}"`);
+    const q = parts.join(" ");
+    const url = "https://www.googleapis.com/books/v1/volumes"
+      + "?q=" + encodeURIComponent(q)
+      + "&maxResults=5"
+      + "&printType=books"
+      + "&orderBy=relevance"
+      + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
+    let res;
+    try { res = await fetch(url); }
+    catch (e) { return null; }
+    if (!res.ok) return null;
+    let data;
+    try { data = await res.json(); } catch (e) { return null; }
+    const items = (data.items || []).map(it => it.volumeInfo || {});
+    if (!items.length) return null;
+    // Prefer the first result that has both a thumbnail and a
+    // reasonably close title. Falls back to the top result.
+    const titleLc = input.title.toLowerCase();
+    const scored = items.map(v => {
+      const hasThumb = !!(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
+      const t = String(v.title || "").toLowerCase();
+      const titleHit = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+      return { v, score: titleHit + (hasThumb ? 1 : 0) };
+    }).sort((a, b) => b.score - a.score);
+    const v = scored[0].v;
+    const thumb = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
+    return {
+      thumbnail: thumb ? String(thumb).replace(/^http:/, "https:") : null,
+      year: (v.publishedDate || "").slice(0, 4) ? parseInt(v.publishedDate.slice(0, 4), 10) : null,
+      description: v.description || null,
+      categories: v.categories || []
+    };
+  }
+
+  // ----------------------------------------------------------------
   // Catalog enrichment — takes a minimal input (title + author,
   // optional description) and returns a fully scored catalog entry
   // matching the schema in data/CATALOG.md. Used by the in-app
@@ -548,7 +594,17 @@
     if (!apiKey) throw new Error("missing-api-key");
     if (!input || !input.title) throw new Error("missing-title");
 
+    // 1) Look up cover + year + description on Google Books.
+    // This runs first so we can pass any richer description to
+    // Claude for better scoring, and so the thumbnail URL is
+    // attached even if Claude scoring fails later.
+    setStatus("reading", `Finding cover · ${input.title}`);
+    let gb = null;
+    try { gb = await lookupBookMetadata(input); } catch (e) { gb = null; }
+
     setStatus("reading", `Claude is scoring · ${input.title}`);
+
+    const effectiveDescription = input.description || (gb && gb.description) || "";
 
     const schemaHint = [
       '{',
@@ -596,7 +652,7 @@
       "",
       `Title: ${input.title}`,
       `Author: ${input.author || "Unknown"}`,
-      input.description ? `Description: ${String(input.description).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
+      effectiveDescription ? `Description: ${String(effectiveDescription).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
     ].join("\n");
 
     let res;
@@ -667,12 +723,14 @@
     const enriched = {
       title: input.title,
       author: input.author || "Unknown",
-      year: Number.isFinite(Number(obj.year)) ? parseInt(obj.year, 10) || 0 : 0,
+      year: (gb && gb.year) || (Number.isFinite(Number(obj.year)) ? parseInt(obj.year, 10) || 0 : 0),
       category: (typeof obj.category === "string" && obj.category.trim()) || "erotica-fiction",
       subgenre: (typeof obj.subgenre === "string" && obj.subgenre.trim()) || "",
       description: (typeof obj.description === "string" && obj.description.trim())
+        || effectiveDescription
         || input.description
         || "No description available.",
+      thumbnail: (gb && gb.thumbnail) || null,
       heat_level: requireNumeric("heat_level"),
       explicitness: requireNumeric("explicitness"),
       emotional_intensity: requireNumeric("emotional_intensity"),
@@ -692,9 +750,14 @@
 
     // Provenance: every field that came from the model is marked
     // "ai" so a later human edit can flip a single field to
-    // "human" and re-enrichment won't overwrite it.
+    // "human" and re-enrichment won't overwrite it. Fields we
+    // pulled from Google Books (thumbnail, year) are marked
+    // "google-books" so a future refresh knows they can be re-
+    // resolved from the same source without touching the AI scores.
     const _source = {};
     Object.keys(enriched).forEach(k => { _source[k] = "ai"; });
+    if (gb && gb.thumbnail) _source.thumbnail = "google-books";
+    if (gb && gb.year) _source.year = "google-books";
 
     setStatus("online", `Scored · ${input.title}`);
     return {
@@ -714,6 +777,7 @@
     searchBooks,
     analyzeWithClaude,
     enrichCatalogEntry,
+    lookupBookMetadata,
     isEroticaResult,
     onStatus,
     get status() { return state.status; },

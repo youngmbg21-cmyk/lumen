@@ -2225,6 +2225,53 @@
       });
   }
 
+  // Walk the currently-loaded catalog, look up any books that are
+  // missing a thumbnail on Google Books, and persist the result back
+  // to localStorage so the Library shows covers on next render.
+  async function refreshCatalogCovers() {
+    const Disco = window.LumenDiscovery;
+    if (!Disco || typeof Disco.lookupBookMetadata !== "function") {
+      ui.toast("Discovery module unavailable");
+      return;
+    }
+    const catalog = (window.LumenData && window.LumenData.CATALOG) || [];
+    if (!catalog.length) { ui.toast("No catalog loaded to refresh"); return; }
+    const missing = catalog.filter(b => !b.thumbnail);
+    if (!missing.length) { ui.toast("Every book already has a cover"); return; }
+
+    ui.toast(`Fetching ${missing.length} cover${missing.length === 1 ? "" : "s"} from Google Books…`, { duration: 2200 });
+    let hits = 0, fails = 0;
+    for (const b of missing) {
+      try {
+        const gb = await Disco.lookupBookMetadata({ title: b.title, author: b.author });
+        if (gb && gb.thumbnail) {
+          b.thumbnail = gb.thumbnail;
+          if (gb.year && (!b.year || b.year === 0)) b.year = gb.year;
+          b._source = b._source || {};
+          b._source.thumbnail = "google-books";
+          if (gb.year && (!b._source.year || b._source.year === "ai")) b._source.year = "google-books";
+          hits += 1;
+        } else {
+          fails += 1;
+        }
+      } catch (e) { fails += 1; }
+    }
+
+    // Persist: whether the catalog came from the committed file or an
+    // existing override, the refreshed version goes into the override
+    // slot so reloads see the new covers.
+    try {
+      const payload = { version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books: catalog };
+      localStorage.setItem("lumen:catalog-override", JSON.stringify(payload));
+    } catch (e) { /* quota */ }
+
+    ui.toast(`Added ${hits} cover${hits === 1 ? "" : "s"}${fails ? ` · ${fails} not found` : ""} — reload to see them`, {
+      action: "Reload now",
+      onAction: () => location.reload(),
+      duration: 6000
+    });
+  }
+
   function applyCatalogOverride() {
     const books = readyBooks();
     if (!books.length) { ui.toast("Nothing ready to apply yet"); return; }
@@ -2359,6 +2406,16 @@
       disabled: !catalogImport.parsed.some(r => r.status === "ready") ? "disabled" : null,
       onclick: () => downloadCatalogJS()
     }, "Download catalog.js"));
+    // "Refresh covers" — for catalogs that were imported before
+    // the Google Books lookup was wired in (or whose thumbnails
+    // 404'd). Hits Google Books for every book in the currently-
+    // loaded catalog that is missing a thumbnail, and re-saves.
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm btn-ghost",
+      disabled: !((window.LumenData && window.LumenData.CATALOG || []).length) ? "disabled" : null,
+      onclick: () => refreshCatalogCovers()
+    }, "Refresh covers from Google Books"));
+
     if (overrideActive) {
       btnRow.appendChild(util.el("button", {
         class: "btn btn-sm btn-ghost",
