@@ -1255,3 +1255,80 @@
    the dashboard, so each column is its own stack. */
 .lumen-terminal .term-left .term-panel,
 .lumen-terminal .term-right .term-panel { width: 100%; }
+
+/* ============================================================
+   Chart-panel density pass (reference parity, round 2)
+   Taller panels, more generous heatmap cells, softer bar tracks.
+   ============================================================ */
+
+/* Give the three chart panels real vertical room so the rows
+   have the same breathing space as the reference. Panels are
+   still align-items:stretch in the grid, so the min-height
+   applies as a floor rather than a hard constraint. */
+.lumen-terminal .term-charts-row .term-panel {
+  min-height: 480px;
+}
+
+/* Heatmap cells — slightly taller + more rounded so they read
+   as pill-shaped squircles that match the reference. */
+.lumen-terminal .term-heatmap {
+  padding: 16px 18px 20px;
+}
+.lumen-terminal .term-heatmap-row {
+  grid-template-columns: 50px repeat(5, 1fr);
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.lumen-terminal .term-heatmap-hdr { margin-bottom: 12px; }
+.lumen-terminal .term-heatmap-cell {
+  height: 46px;
+  border-radius: 14px;
+  font-size: 12px;
+}
+.lumen-terminal .term-heatmap-cell.is-empty {
+  background: color-mix(in srgb, var(--t-bg-sunk) 45%, transparent);
+  opacity: 0.85;
+}
+
+/* Bar rows — slightly taller track (softer), tighter internal
+   row padding so we fit more rows comfortably in the new
+   taller panel. Track stays full-width; fill only reaches 50%
+   at max per the renderer. */
+.lumen-terminal .term-bars {
+  padding: 16px 18px;
+  gap: 4px;
+}
+.lumen-terminal .term-bar-row {
+  grid-template-columns: 150px 1fr 40px;
+  padding: 5px 0;
+  gap: 10px;
+}
+.lumen-terminal .term-bar-label {
+  font-size: 12px;
+  color: var(--text-soft, var(--text-muted));
+}
+.lumen-terminal .term-bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--t-bg-sunk);
+}
+.lumen-terminal .term-bar-fill {
+  border-radius: 999px;
+  min-width: 6px;
+}
+.lumen-terminal .term-bar-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Panel-head in the chart panels — slightly larger and a bit
+   more padding so the titles read with the same editorial
+   weight as the reference. */
+.lumen-terminal .term-charts-row .panel-head {
+  padding: 14px 18px;
+}
+.lumen-terminal .term-charts-row .panel-title { font-size: 10.5px; }
+.lumen-terminal .term-charts-row .panel-sub  { font-size: 12.5px; }
