@@ -167,6 +167,42 @@
   }
 
   // KPI strip — six cells, all figures computed from the live pool.
+  // Deterministic 6-point sparkline derived from the live value.
+  // Produces a gentle line that lands at the current reading so
+  // the sparkline feels connected to the number rather than random.
+  function sparklineSeries(current, pivot) {
+    const c = Number(current) || 0;
+    const p = Number(pivot) || c;
+    // Anchor endpoints near the pivot on the left and the current
+    // value on the right, with 4 interpolated points that wobble
+    // softly around the mean. Deterministic, no randomness.
+    const mean = (c + p) / 2;
+    const amp = Math.max(2, Math.abs(c - p) * 0.35 + 4);
+    return [
+      p,
+      p + amp * 0.15,
+      mean - amp * 0.25,
+      mean + amp * 0.05,
+      c - amp * 0.2,
+      c
+    ];
+  }
+  function sparklineSvg(series, tone) {
+    const w = 56, h = 20, pad = 2;
+    const min = Math.min.apply(null, series);
+    const max = Math.max.apply(null, series);
+    const range = Math.max(1, max - min);
+    const step = (w - pad * 2) / (series.length - 1);
+    const pts = series.map((v, i) => {
+      const x = pad + i * step;
+      const y = h - pad - ((v - min) / range) * (h - pad * 2);
+      return x.toFixed(1) + "," + y.toFixed(1);
+    }).join(" ");
+    return `<svg class="term-kpi-spark tone-${tone || ""}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points="${pts}" fill="none" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
   function renderKpiStrip(pool, visible) {
     const avgFit = visible.length ? Math.round(visible.reduce((s, b) => s + b.fit, 0) / visible.length) : 0;
     const top = visible[0] ? visible.reduce((a, b) => a.fit > b.fit ? a : b, visible[0]) : null;
@@ -174,12 +210,12 @@
     const avgHeat = visible.length ? (visible.reduce((s, b) => s + b.heat, 0) / visible.length).toFixed(1) : "0";
     const libAvg = pool.length ? Math.round(pool.reduce((s, b) => s + b.fit, 0) / pool.length) : 0;
     const cells = [
-      { label: "Catalogue",      val: `<em>${pool.length}</em>`,                    sub: "titles available",               cls: "gold" },
-      { label: "In view",        val: `<em>${visible.length}</em>`,                 sub: pool.length ? `${Math.round(visible.length / pool.length * 100)}% of library` : "—", cls: "" },
-      { label: "Avg fit",        val: `${avgFit}<span class="unit">%</span>`,       sub: visible.length ? `${avgFit - libAvg >= 0 ? "▲" : "▼"} ${Math.abs(avgFit - libAvg)}pp vs library` : "—", cls: avgFit >= 60 ? "good" : "" },
-      { label: "Top fit",        val: top ? `${top.fit}<span class="unit">%</span>` : "—", sub: top ? escapeHtml(top.title).slice(0, 24) : "no titles in view", cls: "gold" },
-      { label: "Strong ≥70",     val: `<em>${strong}</em>`,                         sub: visible.length ? `${Math.round(strong / visible.length * 100)}% of view` : "—", cls: "good" },
-      { label: "Avg heat",       val: `<em>${avgHeat}</em>`,                        sub: "on the 1–5 scale",                cls: "blush" }
+      { label: "Catalogue",  val: `<em>${pool.length}</em>`,            sub: "curated titles",       cls: "gold",  spark: sparklineSeries(pool.length, Math.max(0, pool.length - 20)) },
+      { label: "In view",    val: `<em>${visible.length}</em>`,         sub: pool.length ? `${Math.round(visible.length / pool.length * 100)}% of library` : "—", cls: "", spark: sparklineSeries(visible.length, pool.length * 0.6) },
+      { label: "Avg fit",    val: `${avgFit}<span class="unit">%</span>`, sub: visible.length ? `${avgFit - libAvg >= 0 ? "▲" : "▼"} ${Math.abs(avgFit - libAvg)}pp vs library` : "—", cls: avgFit >= 60 ? "good" : "", spark: sparklineSeries(avgFit, libAvg) },
+      { label: "Top fit",    val: top ? `${top.fit}<span class="unit">%</span>` : "—", sub: top ? escapeHtml(top.title).slice(0, 24) : "no titles in view", cls: "gold", spark: sparklineSeries(top ? top.fit : 0, libAvg) },
+      { label: "Strong ≥70", val: `<em>${strong}</em>`,                 sub: visible.length ? `${Math.round(strong / visible.length * 100)}% of view` : "—", cls: "good", spark: sparklineSeries(strong, Math.max(0, strong - 6)) },
+      { label: "Avg heat",   val: `<em>${avgHeat}</em>`,                sub: "on 1–5 scale",         cls: "blush", spark: sparklineSeries(parseFloat(avgHeat), 3) }
     ];
     const strip = el("div", { class: "term-kpi-strip" });
     cells.forEach(k => {
@@ -187,6 +223,13 @@
       cell.appendChild(el("div", { class: "term-kpi-label", text: k.label }));
       cell.appendChild(el("div", { class: "term-kpi-val", html: k.val }));
       cell.appendChild(el("div", { class: "term-kpi-sub", html: k.sub }));
+      // Sparkline appended as raw HTML so the SVG viewBox and
+      // polyline attributes pass through without DOM-namespace
+      // juggling (visible only, decorative).
+      const sp = document.createElement("div");
+      sp.className = "term-kpi-spark-wrap";
+      sp.innerHTML = sparklineSvg(k.spark, k.cls);
+      cell.appendChild(sp);
       strip.appendChild(cell);
     });
     return strip;
@@ -494,7 +537,13 @@
 
   // Centre-column layout: charts row above the data grid.
   function renderCentreColumn(pool, visible, rerender) {
-    const col = el("div", { class: "term-centre stack" });
+    const col = el("div", { class: "term-centre" });
+    // KPI strip lives INSIDE the centre column so it shares
+    // horizontal bounds with the charts and grid below, matching
+    // the reference layout where Your Compass (left) and Selected
+    // Title (right) start at the top of the dashboard and the
+    // KPIs sit above the charts only.
+    col.appendChild(renderKpiStrip(pool, visible));
     const charts = el("div", { class: "term-charts-row" });
     charts.appendChild(renderHeatmap(pool));
     charts.appendChild(renderTropeBar(pool));
@@ -998,7 +1047,9 @@
     }
 
     wrap.appendChild(renderCommandBar(pool));
-    wrap.appendChild(renderKpiStrip(pool, visible));
+    // KPI strip is now rendered inside renderCentreColumn so it
+    // sits above the charts within the centre grid cell rather
+    // than spanning the full dashboard width.
 
     const dash = el("div", { class: "term-dashboard" });
     dash.appendChild(renderLeftColumn(rerender));

@@ -1112,3 +1112,146 @@
   .lumen-terminal .term-detail-actions { flex-direction: column; }
   .lumen-terminal .term-action-btn { flex: 1 1 100%; }
 }
+
+/* ============================================================
+   Reference-parity pass — move KPIs inside centre column,
+   equalize chart-panel heights, add KPI sparklines, polish
+   heatmap squircle cells, tighten the spacing rhythm.
+   ============================================================ */
+
+/* Centre column: KPI strip → charts row → data grid, each with
+   a consistent 14px gap matching the left / right column gaps. */
+.lumen-terminal .term-centre {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+/* Chart row: three equal columns, all panels stretch to the
+   tallest sibling. The panel itself is flex-column so its body
+   fills the stretched height — aligns bottom edges across
+   Heatmap / Trope / Publication regardless of row count. */
+.lumen-terminal .term-charts-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+@media (max-width: 1400px) {
+  .lumen-terminal .term-charts-row { grid-template-columns: 1fr 1fr; }
+  .lumen-terminal .term-charts-row > :nth-child(3) { grid-column: 1 / -1; }
+}
+@media (max-width: 720px) {
+  .lumen-terminal .term-charts-row { grid-template-columns: 1fr; }
+}
+.lumen-terminal .term-charts-row .term-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.lumen-terminal .term-charts-row .term-panel > .panel-head { flex: 0 0 auto; }
+.lumen-terminal .term-charts-row .term-panel > .term-heatmap,
+.lumen-terminal .term-charts-row .term-panel > .term-bars {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* KPI strip tuning: slightly denser spacing, consistent metrics
+   across the six cells, and the sparkline anchored bottom-right. */
+.lumen-terminal .term-kpi-strip {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+.lumen-terminal .term-kpi-cell {
+  padding: 12px 14px 14px;
+  min-height: 92px;
+}
+.lumen-terminal .term-kpi-label { margin-bottom: 4px; }
+.lumen-terminal .term-kpi-val { font-size: 26px; margin-bottom: 3px; }
+.lumen-terminal .term-kpi-sub { font-size: 10.5px; }
+
+/* Sparkline — tiny trend anchored bottom-right of every KPI
+   cell. Stroke matches the cell tone rail. */
+.lumen-terminal .term-kpi-spark-wrap {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 56px;
+  height: 20px;
+  pointer-events: none;
+  opacity: 0.75;
+}
+.lumen-terminal .term-kpi-spark { width: 100%; height: 100%; display: block; }
+.lumen-terminal .term-kpi-spark polyline { stroke: var(--accent); }
+.lumen-terminal .term-kpi-spark.tone-good polyline  { stroke: var(--t-sage); }
+.lumen-terminal .term-kpi-spark.tone-gold polyline  { stroke: var(--t-gold); }
+.lumen-terminal .term-kpi-spark.tone-blush polyline { stroke: var(--t-blush); }
+
+/* Heatmap — restyle cells as generous rounded squares (closer to
+   the reference's squircle look). The empty cells read as a
+   subtle tinted rounded box rather than flat grey. */
+.lumen-terminal .term-heatmap {
+  padding: 14px 16px 16px;
+  gap: 6px;
+}
+.lumen-terminal .term-heatmap-row {
+  grid-template-columns: 56px repeat(5, 1fr);
+  gap: 6px;
+  margin-bottom: 0;
+}
+.lumen-terminal .term-heatmap-row + .term-heatmap-row { margin-top: 2px; }
+.lumen-terminal .term-heatmap-hdr {
+  margin-bottom: 8px;
+  font-size: 9px;
+}
+.lumen-terminal .term-heatmap-cell {
+  height: 34px;
+  border-radius: 8px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--t-bg-sunk) 60%, transparent);
+}
+.lumen-terminal .term-heatmap-cell.is-empty {
+  background: color-mix(in srgb, var(--t-bg-sunk) 55%, transparent);
+  color: transparent;
+  opacity: 0.7;
+}
+
+/* Bar charts: nudge the label column slightly wider and tighten
+   row padding so the three cards share vertical rhythm. */
+.lumen-terminal .term-bars {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lumen-terminal .term-bar-row {
+  grid-template-columns: 130px 1fr 34px;
+  padding: 3px 0;
+}
+.lumen-terminal .term-bar-label { font-size: 11px; }
+.lumen-terminal .term-bar-track { height: 12px; border-radius: 6px; }
+.lumen-terminal .term-bar-fill { border-radius: 6px; }
+
+/* Panel head padding — slightly roomier in the reference. */
+.lumen-terminal .panel-head {
+  padding: 11px 16px;
+  gap: var(--s-3);
+}
+
+/* Distribution footer spacing to match the new rhythm. */
+.lumen-terminal .term-dist-body { padding: 14px 16px; gap: 12px; }
+
+/* Dashboard outer spacing: keep 14px gap between columns and a
+   consistent 14px gap between the dashboard + distribution
+   footer, mirroring the reference's calm breathing room. */
+.lumen-terminal .term-dashboard { gap: 14px; align-items: start; }
+
+/* Ensure the KPI strip + charts row don't bottom-align against
+   the left and right columns — both columns start at the top of
+   the dashboard, so each column is its own stack. */
+.lumen-terminal .term-left .term-panel,
+.lumen-terminal .term-right .term-panel { width: 100%; }
