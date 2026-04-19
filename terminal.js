@@ -822,16 +822,6 @@
     </aside>
   </div>
 
-  <div class="footer-strip">
-    <div class="distribution-panel">
-      <div class="distribution-head">
-        <span class="panel-title">Subgenre distribution</span>
-        <span class="panel-sub" id="distSub">${termState.subgenreFilter ? `filtered: ${escapeHtml(termState.subgenreFilter)}` : "click to filter"}</span>
-      </div>
-      <div class="distribution-body" id="distributionBody"></div>
-    </div>
-  </div>
-
   <div id="toast"></div>
 </div>`;
   }
@@ -863,7 +853,6 @@
     renderTicker(wrap);
     renderChips(wrap, rerender);
     renderGrid(wrap, rerender);
-    renderDistribution(wrap, rerender);
     renderDetail(wrap);
     renderSimilar(wrap, rerender);
     renderInsight(wrap);
