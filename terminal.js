@@ -635,6 +635,38 @@
     }, 1000);
   }
 
+  // ---------- Catalogue grid ↔ Selected Title height sync ----------
+  // Pegs the grid-scroll's bottom to the detail panel's bottom so
+  // the two cards align visually. The grid's scroll area grows or
+  // shrinks to whatever space is between its own top and the detail
+  // card's bottom. Tears down when the terminal wrap leaves the DOM.
+  function syncGridToDetail(root) {
+    const detail = $(root, ".detail-panel");
+    const scroll = $(root, ".grid-scroll");
+    if (!detail || !scroll) return;
+    if (syncGridToDetail._ro) syncGridToDetail._ro.disconnect();
+    if (syncGridToDetail._onResize) window.removeEventListener("resize", syncGridToDetail._onResize);
+    const sync = () => {
+      if (!document.body.contains(scroll)) {
+        if (syncGridToDetail._ro) { syncGridToDetail._ro.disconnect(); syncGridToDetail._ro = null; }
+        if (syncGridToDetail._onResize) { window.removeEventListener("resize", syncGridToDetail._onResize); syncGridToDetail._onResize = null; }
+        return;
+      }
+      const detailBottom = detail.getBoundingClientRect().bottom;
+      const scrollTop = scroll.getBoundingClientRect().top;
+      const available = Math.max(0, Math.round(detailBottom - scrollTop));
+      scroll.style.maxHeight = available + "px";
+    };
+    sync();
+    if (typeof ResizeObserver !== "undefined") {
+      const ro = new ResizeObserver(sync);
+      ro.observe(detail);
+      syncGridToDetail._ro = ro;
+    }
+    syncGridToDetail._onResize = sync;
+    window.addEventListener("resize", sync);
+  }
+
   // ---------- Init: seed termState.profile from Lumen on first mount ----------
   function initFromLumen() {
     if (termState._seededFromLumen) return;
@@ -790,16 +822,6 @@
     </aside>
   </div>
 
-  <div class="footer-strip">
-    <div class="distribution-panel">
-      <div class="distribution-head">
-        <span class="panel-title">Subgenre distribution</span>
-        <span class="panel-sub" id="distSub">${termState.subgenreFilter ? `filtered: ${escapeHtml(termState.subgenreFilter)}` : "click to filter"}</span>
-      </div>
-      <div class="distribution-body" id="distributionBody"></div>
-    </div>
-  </div>
-
   <div id="toast"></div>
 </div>`;
   }
@@ -831,7 +853,6 @@
     renderTicker(wrap);
     renderChips(wrap, rerender);
     renderGrid(wrap, rerender);
-    renderDistribution(wrap, rerender);
     renderDetail(wrap);
     renderSimilar(wrap, rerender);
     renderInsight(wrap);
@@ -878,6 +899,12 @@
 
     // Clock — start once the wrap is in the document.
     setTimeout(() => { startClock(wrap); $(wrap, "#sysTime").textContent = clockText(); }, 0);
+
+    // Peg the Catalogue Grid's bottom to the Selected Title card's
+    // bottom so the two cards align. Run after the wrap is in the
+    // DOM, observe the detail panel for resize, and re-run on viewport
+    // resize. Self-cleans when the wrap leaves the document.
+    setTimeout(() => syncGridToDetail(wrap), 0);
 
     return wrap;
   }
