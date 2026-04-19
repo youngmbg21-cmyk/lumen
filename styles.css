@@ -4292,10 +4292,10 @@ body[data-privacy-blur="on"] .app-main::after {
    ============================================================ */
 .daily-picks-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  gap: var(--s-4);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--s-3);
 }
-@media (max-width: 820px) {
+@media (max-width: 960px) {
   .daily-picks-grid { grid-template-columns: 1fr; }
 }
 
@@ -4555,3 +4555,100 @@ body[data-privacy-blur="on"] .app-main::after {
   box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft));
 }
 .catalog-import-tags { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+
+/* Daily-Pick "Not for me" button — top-right corner, mirrors the
+   .card-pin on the left. Visible on hover, latched when rejected. */
+.card-reject {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease),
+              background var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+  z-index: 2;
+}
+.daily-pick-card:hover .card-reject,
+.card-reject:focus-visible { opacity: 1; }
+.card-reject:hover {
+  background: color-mix(in srgb, var(--danger, #b55a3b) 14%, transparent);
+  color: var(--danger, #b55a3b);
+  border-color: var(--danger, #b55a3b);
+}
+@media (hover: none) { .card-reject { opacity: 0.7; } }
+
+/* Sara focus line — visible when a book detail sheet is open.
+   Sits just under the head so Sara feels like she is watching
+   the user's current screen. */
+.sara-focus-line {
+  padding: 6px var(--s-4);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--primary-soft) 35%, var(--bg-raised));
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--accent-deep);
+  letter-spacing: 0.01em;
+}
+
+/* Route-aware quick replies — a slim row just under the mood chips.
+   Adapts with the context so the user can see what Sara knows about
+   the current screen and jump straight to a relevant question. */
+.sara-quick-replies {
+  display: flex;
+  gap: 6px;
+  padding: 2px var(--s-4) 6px;
+  background: var(--bg-raised);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sara-quick-reply-chip {
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.sara-quick-reply-chip:hover {
+  border-style: solid;
+  border-color: var(--primary);
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent-deep);
+}
+
+/* ============================================================
+   Settings page — two-column responsive layout.
+   Cards flow into two columns on wide screens and collapse to one
+   below 1024px. The page head spans both columns. The 640px max-
+   width clamp is dropped inside this container so cards fill their
+   column; gaps tighten for a denser feel.
+   ============================================================ */
+.settings-page {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+.settings-page > .settings-page-head,
+.settings-page > .page-head { grid-column: 1 / -1; }
+.settings-page > .settings-card { max-width: none; }
+@media (max-width: 1024px) {
+  .settings-page { grid-template-columns: 1fr; }
+}
