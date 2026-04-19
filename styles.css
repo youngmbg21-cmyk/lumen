@@ -4652,3 +4652,82 @@ body[data-privacy-blur="on"] .app-main::after {
 @media (max-width: 1024px) {
   .settings-page { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Sara appearance menu — preset swatches + upload.
+   Pops under the "✦" icon in the Sara head. Tight popover, not
+   a full modal.
+   ============================================================ */
+.sara-appearance-menu {
+  position: absolute;
+  top: 44px;
+  right: 8px;
+  z-index: 5;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  box-shadow: var(--shadow-3);
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 6px;
+  min-width: 140px;
+}
+.sara-appearance-swatch {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-subtle);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.sara-appearance-swatch:hover { transform: scale(1.08); border-color: var(--primary); }
+.sara-appearance-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft)); }
+.sara-appearance-upload,
+.sara-appearance-clear {
+  grid-column: 1 / -1;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  background: transparent;
+  border-radius: var(--r-2);
+  padding: 6px 8px;
+  cursor: pointer;
+  text-align: center;
+}
+.sara-appearance-upload:hover,
+.sara-appearance-clear:hover {
+  border-style: solid;
+  color: var(--accent-deep);
+  border-color: var(--primary);
+}
+.sara-appearance-upload input { display: none; }
+
+/* Dark-background preset support — flip text/body colors so the
+   conversation stays readable on a dark chat backdrop. */
+.sara-panel.is-dark-bg .sara-body,
+.sara-panel.is-dark-bg .sara-pinned-tray,
+.sara-panel.is-dark-bg .sara-moods,
+.sara-panel.is-dark-bg .sara-quick-replies,
+.sara-panel.is-dark-bg .sara-compose {
+  background: transparent;
+}
+.sara-panel.is-dark-bg .chat-msg.from-them,
+.sara-panel.is-dark-bg .sara-share-card {
+  background: rgba(255,255,255,0.08);
+  color: #f2ecdf;
+  border-color: rgba(255,255,255,0.18);
+}
+.sara-panel.is-dark-bg .chat-msg.from-me {
+  background: rgba(255,255,255,0.14);
+  color: #f2ecdf;
+}

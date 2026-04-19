@@ -53,6 +53,9 @@
       discreetBtn.setAttribute("aria-pressed", panel.classList.contains("discreet") ? "true" : "false");
     }, "◉");
     discreetBtn.setAttribute("aria-pressed", "false");
+    // Appearance — open the panel-background picker (presets +
+    // upload). Sits to the left of the width control.
+    const appearBtn = iconBtn("Background appearance", () => toggleAppearanceMenu(appearBtn), "✦");
     // Width cycle — dock → wide → focus → dock. Matches the icons
     // progressively: single bar → two bars → expanded bracket.
     const widthBtn = iconBtn("Panel width", () => cycleWidth(), widthIcon());
@@ -66,6 +69,7 @@
     }, "↺");
     const closeBtn = iconBtn("Close", () => close(), "×");
     actions.appendChild(discreetBtn);
+    actions.appendChild(appearBtn);
     actions.appendChild(widthBtn);
     actions.appendChild(resetBtn);
     actions.appendChild(closeBtn);
@@ -171,6 +175,135 @@
     composeTA.style.height = "auto";
     const max = 140; // ≈ 5 rows of compose text
     composeTA.style.height = Math.min(composeTA.scrollHeight, max) + "px";
+  }
+
+  // -------- Panel background appearance --------
+  // Stored at state.ui.saraAppearance = { kind, color?, image? }.
+  // `kind` is one of "auto" | "cream" | "rose" | "slate" | "night" |
+  // "custom" (custom uses `image` as a data URL). Applied on boot
+  // via applyAppearance() and re-applied whenever the user picks a
+  // new preset or uploads an image.
+  const APPEARANCE_PRESETS = [
+    { id: "auto",  label: "Default",  bg: "" },
+    { id: "cream", label: "Cream",    bg: "linear-gradient(180deg, #fbf5ec, #f4e7d3)" },
+    { id: "rose",  label: "Rose",     bg: "linear-gradient(180deg, #f9ecec, #f2d3d6)" },
+    { id: "sage",  label: "Sage",     bg: "linear-gradient(180deg, #eef1e5, #dde4cf)" },
+    { id: "slate", label: "Slate",    bg: "linear-gradient(180deg, #ecedef, #d4d7db)" },
+    { id: "night", label: "Night",    bg: "linear-gradient(180deg, #2a2430, #1a1620)", dark: true }
+  ];
+
+  function readAppearance() {
+    const st = store();
+    const s = st && st.get();
+    return (s && s.ui && s.ui.saraAppearance) || { kind: "auto" };
+  }
+
+  function applyAppearance() {
+    if (!panel) return;
+    const a = readAppearance();
+    // Clear any prior inline background + dark flag.
+    panel.style.background = "";
+    panel.style.backgroundImage = "";
+    panel.style.backgroundSize = "";
+    panel.style.backgroundPosition = "";
+    panel.classList.remove("is-dark-bg");
+    if (a.kind === "custom" && a.image) {
+      panel.style.backgroundImage = `url(${JSON.stringify(a.image)})`;
+      panel.style.backgroundSize = "cover";
+      panel.style.backgroundPosition = "center";
+      if (a.dark) panel.classList.add("is-dark-bg");
+      return;
+    }
+    const preset = APPEARANCE_PRESETS.find(p => p.id === a.kind);
+    if (preset && preset.bg) {
+      panel.style.background = preset.bg;
+      if (preset.dark) panel.classList.add("is-dark-bg");
+    }
+  }
+
+  function saveAppearance(patch) {
+    const st = store();
+    if (!st) return;
+    st.update(s => {
+      s.ui = s.ui || {};
+      const next = Object.assign({}, s.ui.saraAppearance || { kind: "auto" }, patch);
+      // When switching away from "custom", drop the image blob to
+      // free localStorage room.
+      if (next.kind && next.kind !== "custom") delete next.image;
+      s.ui.saraAppearance = next;
+    });
+    applyAppearance();
+  }
+
+  let appearanceMenu = null;
+  function toggleAppearanceMenu(anchor) {
+    if (appearanceMenu && appearanceMenu.isConnected) {
+      appearanceMenu.remove();
+      appearanceMenu = null;
+      return;
+    }
+    const menu = document.createElement("div");
+    menu.className = "sara-appearance-menu";
+    const current = readAppearance();
+    APPEARANCE_PRESETS.forEach(p => {
+      const sw = document.createElement("button");
+      sw.type = "button";
+      sw.className = "sara-appearance-swatch" + (current.kind === p.id ? " is-active" : "");
+      sw.title = p.label;
+      sw.setAttribute("aria-label", p.label);
+      sw.style.background = p.bg || "var(--bg-raised)";
+      if (!p.bg) sw.textContent = "A"; // visible marker for Default
+      sw.addEventListener("click", () => {
+        saveAppearance({ kind: p.id, dark: !!p.dark });
+        menu.remove(); appearanceMenu = null;
+      });
+      menu.appendChild(sw);
+    });
+    // Upload custom image as a data URL (persisted in localStorage —
+    // keep it modest; images over ~1 MB will blow past quota).
+    const upload = document.createElement("label");
+    upload.className = "sara-appearance-upload";
+    upload.textContent = "Upload image";
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        saveAppearance({ kind: "custom", image: String(reader.result), dark: false });
+        menu.remove(); appearanceMenu = null;
+      };
+      reader.readAsDataURL(f);
+    });
+    upload.appendChild(fileInput);
+    menu.appendChild(upload);
+    // Clear / revert to default.
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "sara-appearance-clear";
+    clearBtn.textContent = "Default";
+    clearBtn.addEventListener("click", () => {
+      saveAppearance({ kind: "auto", image: null, dark: false });
+      menu.remove(); appearanceMenu = null;
+    });
+    menu.appendChild(clearBtn);
+    // Position: anchor it below the appearance icon button in the
+    // Sara head. position: absolute inside the panel.
+    panel.appendChild(menu);
+    appearanceMenu = menu;
+    // Click-outside-closes.
+    setTimeout(() => {
+      document.addEventListener("click", onDocClick, true);
+      function onDocClick(e) {
+        if (!appearanceMenu) return;
+        if (!appearanceMenu.contains(e.target) && e.target !== anchor && !anchor.contains(e.target)) {
+          appearanceMenu.remove(); appearanceMenu = null;
+          document.removeEventListener("click", onDocClick, true);
+        }
+      }
+    }, 0);
   }
 
   function iconBtn(label, onClick, char) {
@@ -301,15 +434,17 @@
             const node = document.createElement("div");
             node.className = "chat-msg from-them";
             const html = renderMarkdown(p.text);
-            // Reveal-typing only for the newest Sara bubble and only
-            // once per message id (so switching routes and coming
-            // back doesn't re-animate).
+            // IMPORTANT: append BEFORE starting the typing reveal so
+            // revealInto's isConnected guard passes on the first
+            // step() tick. Calling revealInto on a detached node
+            // caused the bubble to stay empty until the next
+            // renderMessages() pass bumped it out of "latest" status.
+            body.appendChild(node);
             if (i === latestSaraIdx && m.id !== lastTypedMessageId) {
               revealInto(node, html);
             } else {
               node.innerHTML = html;
             }
-            body.appendChild(node);
           } else if (p.type === "card") {
             const card = renderBookCardMessage({ role: "book-card", bookId: p.bookId, sender: "sara" });
             if (card) {
@@ -351,9 +486,14 @@
     while (temp.firstChild) target.appendChild(temp.firstChild);
 
     let idx = 0;
+    // Fail-safe: if the animation stalls for any reason, drop in
+    // the final text as a fallback after 20 s so the reply is
+    // never "lost" to the user.
+    const fallback = setTimeout(() => {
+      textNodes.forEach(x => { x.node.nodeValue = x.full; });
+    }, 20000);
     function step() {
-      if (!target.isConnected) return;
-      if (idx >= textNodes.length) return;
+      if (idx >= textNodes.length) { clearTimeout(fallback); return; }
       const cur = textNodes[idx];
       if (cur.i >= cur.full.length) { idx += 1; step(); return; }
       // Chunk characters in small bursts so we don't rAF every byte.
@@ -371,7 +511,11 @@
                   : 18;
       setTimeout(step, delay);
     }
-    step();
+    // Defer the first step to the next tick so the caller's
+    // appendChild / layout has a chance to run before we begin
+    // mutating the text nodes. Also means revealInto itself is
+    // non-blocking.
+    setTimeout(step, 0);
   }
 
   // Resolve a shared book from app.js. Defensive: if Lumen hasn't
@@ -670,6 +814,7 @@
 
   function open() {
     if (!panel) mount();
+    applyAppearance();
     ensureSeed();
     maybeStartNewSession();
     renderMessages();
@@ -862,6 +1007,7 @@
 
   function boot() {
     mount();
+    applyAppearance();
     const st = store();
     const s = st && st.get();
     if (s && s.ui && s.ui.saraOpen) open();
