@@ -478,14 +478,6 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   gap: 14px;
   min-width: 0;
 }
-.lumen-terminal .centre-col > .grid-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.lumen-terminal .centre-col > .grid-panel > .grid-scroll {
-  flex: 1 1 auto;
-}
 
 /* ---- KPI strip — six cells, sparkline anchored bottom-right ---- */
 .lumen-terminal .kpi-strip {
