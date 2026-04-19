@@ -60,6 +60,10 @@
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
       chats: { sara: [], saraPinned: [], friends: [] },
+      // Daily Picks the user has rejected via "Not for me". These are
+      // excluded from the Home top-3 but stay in the Library — a
+      // pick-only signal, not a dismissal. { [bookId]: { rejectedAt } }.
+      dailyPicksRejected: {},
       ui: {
         theme: "rose",
         discreet: false,
@@ -135,7 +139,19 @@
         document.body.appendChild(host);
       }
       host.innerHTML = "";
-      const close = () => { host.classList.remove("open"); setTimeout(() => (host.innerHTML = ""), 220); };
+      const close = () => {
+        host.classList.remove("open");
+        setTimeout(() => (host.innerHTML = ""), 220);
+        // Clear Sara's focus-on-book so the head status line stops
+        // saying "Reading <title> with you" once the sheet is gone.
+        try {
+          if (typeof libState !== "undefined" && libState) libState.focusBookId = null;
+          if (window.LumenSara && window.LumenSara.setContext) {
+            const r = router.current();
+            window.LumenSara.setContext(computeSaraContext(r.id));
+          }
+        } catch (e) { /* ignore */ }
+      };
 
       const sheet = util.el("div", { class: "detail-sheet" });
 
@@ -379,6 +395,29 @@
     });
 
     card.appendChild(pinShareBtn(book.id));
+    // "Not for me" — pick-only rejection. Keeps the book in Library
+    // but replaces this slot with the next eligible match.
+    card.appendChild(util.el("button", {
+      class: "card-reject",
+      "aria-label": `Not for me — remove from Daily Picks`,
+      title: "Not for me — keep in Library but stop suggesting",
+      onclick: (e) => {
+        e.stopPropagation();
+        rejectDailyPick(book.id);
+        ui.toast(`Noted — I won't surface ${book.title} in picks`, {
+          action: "Undo",
+          onAction: () => { restoreDailyPick(book.id); renderView(); },
+          duration: 5500
+        });
+        // Let Sara acknowledge in the chat thread.
+        try {
+          if (window.LumenSara && window.LumenSara.post) {
+            window.LumenSara.post(`Noted — I won't surface **${book.title}** in picks again. Restore it any time from Settings → Rejected Daily Picks.`);
+          }
+        } catch (e2) { /* ignore */ }
+        renderView();
+      }
+    }, "×"));
     card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
 
     const body = util.el("div", { class: "daily-pick-body" });
@@ -855,6 +894,31 @@
     return (store.get().discovered || []).some(d => d.source === "seed");
   }
 
+  // Daily-Pick-only rejection. Unlike dismissFromLibrary, the book
+  // stays in the library — it just won't be chosen for the Home
+  // top-3 until restored. State lives at s.dailyPicksRejected so
+  // the Home view's ranker consumer can filter it cheaply.
+  function rejectDailyPick(bookId) {
+    if (!bookId) return;
+    store.update(st => {
+      st.dailyPicksRejected = st.dailyPicksRejected || {};
+      st.dailyPicksRejected[bookId] = { rejectedAt: Date.now() };
+    });
+  }
+
+  function restoreDailyPick(bookId) {
+    if (!bookId) return;
+    store.update(st => {
+      st.dailyPicksRejected = st.dailyPicksRejected || {};
+      delete st.dailyPicksRejected[bookId];
+    });
+  }
+
+  function isDailyPickRejected(bookId) {
+    const m = store.get().dailyPicksRejected || {};
+    return !!m[bookId];
+  }
+
   function dismissFromLibrary(bookId) {
     const s = store.get();
     const isDiscovered = (s.discovered || []).some(d => d.id === bookId);
@@ -979,6 +1043,18 @@
   function openBookDetail(bookId) {
     const book = findBook(bookId);
     if (!book) return;
+    // Signal focus to Sara so the panel's head reads "Reading <title>
+    // with you" while the sheet is open. libState.focusBookId is
+    // consumed by buildSaraContext; the direct setContext push is a
+    // fast path so Sara updates immediately without waiting for the
+    // store-subscription round trip.
+    try {
+      if (typeof libState !== "undefined" && libState) libState.focusBookId = bookId;
+      if (window.LumenSara && window.LumenSara.setContext) {
+        const r = router.current();
+        window.LumenSara.setContext(computeSaraContext(r.id));
+      }
+    } catch (e) { /* ignore */ }
     const s = store.get();
     const pool = listAllBooks();
     const scored = pool.some(b => b.id === bookId)
@@ -2446,9 +2522,9 @@
 
   function renderSettings() {
     const Disco = window.LumenDiscovery;
-    const wrap = util.el("div", { class: "page stack-lg" });
+    const wrap = util.el("div", { class: "page settings-page" });
 
-    wrap.appendChild(util.el("div", { class: "page-head" }, [
+    wrap.appendChild(util.el("div", { class: "page-head settings-page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Settings" }),
         util.el("h1", { html: "<em>Settings</em>" }),
@@ -2686,6 +2762,48 @@
       }
     }
     wrap.appendChild(hiddenCard);
+
+    // --- Rejected Daily Picks -------------------------------------------
+    // Books the user said "Not for me" to on Home. They stay in the
+    // library but are suppressed from the top-3 until restored here.
+    const rejectedPickIds = Object.keys(store.get().dailyPicksRejected || {});
+    const rejectCard = util.el("div", { class: "card settings-card stack" });
+    rejectCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Rejected Daily Picks" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Books you marked \u201CNot for me\u201D on Home. They're still in your Library and Compare, just hidden from the Daily Picks top-3 until you restore them here." })
+      ]),
+      util.el("span", { class: "settings-badge " + (rejectedPickIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: rejectedPickIds.length ? `${rejectedPickIds.length} rejected` : "None" })
+    ]));
+    if (!rejectedPickIds.length) {
+      rejectCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing rejected. Use the × on any Daily Pick card to send it here." }));
+    } else {
+      const list = util.el("div", { class: "stack-sm" });
+      rejectedPickIds.forEach(id => {
+        const book = findBook(id);
+        const row = util.el("div", { class: "settings-hidden-row" }, [
+          util.el("div", {}, [
+            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book ? book.title : "Untracked title" }),
+            util.el("div", { class: "t-tiny t-subtle", text: book ? (book.author + (book._catalog ? " · curated" : book._discovered ? " · from Discovery" : "")) : `id: ${id}` })
+          ]),
+          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
+            restoreDailyPick(id);
+            ui.toast(book ? `${book.title} is eligible for picks again` : "Restored");
+            renderView();
+          } }, "Restore")
+        ]);
+        list.appendChild(row);
+      });
+      rejectCard.appendChild(list);
+      if (rejectedPickIds.length > 1) {
+        rejectCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
+          store.update(st => { st.dailyPicksRejected = {}; });
+          ui.toast("All rejected picks restored");
+          renderView();
+        } }, "Restore all"));
+      }
+    }
+    wrap.appendChild(rejectCard);
 
     // --- Quick links ------------------------------------------------------
     const links = util.el("div", { class: "card settings-card stack" });
@@ -4634,7 +4752,13 @@
       const greeting = s.ui.onboardingDone ? "Welcome back." : "Welcome to Lumen.";
       const pool = listAllBooks();
       const result = Engine.rankRecommendations(s.profile, s.weights, pool);
-      const picks = result.scored.slice(0, 3);
+      // Filter out books the user marked "Not for me" as picks —
+      // they stay in Library but never bubble to the Home top-3.
+      // The next-best eligible book takes the freed slot.
+      const rejected = s.dailyPicksRejected || {};
+      const eligible = result.scored.filter(x => !rejected[x.book.id]);
+      const picks = eligible.slice(0, 3);
+      const rejectedIds = Object.keys(rejected);
 
       const currentReadingIds = Object.entries(s.bookStates).filter(([, v]) => v === "reading").map(([k]) => k);
       const currentReading = currentReadingIds.map(id => findBook(id)).filter(Boolean);

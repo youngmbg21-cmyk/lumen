@@ -101,7 +101,7 @@
     const compose = document.createElement("form");
     compose.className = "sara-compose";
     composeTA = document.createElement("textarea");
-    composeTA.placeholder = "Message Sara… try /compare, /why, /heat, /save, /journal";
+    composeTA.placeholder = "Message Sara… try /picks, /swap, /why, /compare, /library, /profile";
     composeTA.rows = 1;
     // Auto-grow up to 5 rows so longer messages don't feel cramped.
     composeTA.addEventListener("input", autosizeCompose);
@@ -435,6 +435,12 @@
       case "/heat":    return arg ? `What's the heat level of ${arg}?` : "What's the heat level of my pinned titles?";
       case "/save":    return "Save this conversation to my Vault.";
       case "/journal": return "Give me a reflection prompt.";
+      case "/picks":   return "Why did you pick these?";
+      case "/swap":    return "How do I swap a pick?";
+      case "/dismiss": return arg ? `How do I dismiss ${arg}?` : "How do I say 'not for me'?";
+      case "/library": return "How many books are in my library?";
+      case "/profile": return "Explain my profile.";
+      case "/catalog": return "What's in the catalog right now?";
       default: return null;
     }
   }
@@ -551,8 +557,97 @@
 
   function setContext(patch) {
     Object.assign(ctxState, patch || {});
-    if (panel) { renderContext(); }
+    if (panel) { renderContext(); renderFocusStatus(); renderQuickReplies(); }
     ctxSubs.forEach(fn => fn(ctxState));
+  }
+
+  // Focus status line — when the user opens a book detail sheet, the
+  // structured context carries focus.book. Show a one-liner in the
+  // Sara head ("Reading *Venus in Furs* with you") so the chat feels
+  // like it is tracking what's actively on screen.
+  function renderFocusStatus() {
+    if (!panel) return;
+    const existing = panel.querySelector(".sara-focus-line");
+    const focus = (ctxState.focus && ctxState.focus.book) || null;
+    if (!focus) {
+      if (existing) existing.remove();
+      return;
+    }
+    const msg = `Reading ${focus.title} with you`;
+    if (existing) { existing.textContent = msg; return; }
+    const line = document.createElement("div");
+    line.className = "sara-focus-line";
+    line.textContent = msg;
+    // Insert after the head, before the context chip strip so it
+    // doesn't fight the chips for space.
+    const head = panel.querySelector(".sara-head");
+    if (head && head.nextSibling) panel.insertBefore(line, head.nextSibling);
+    else panel.appendChild(line);
+  }
+
+  // Route-aware quick-reply chips that morph with real state. These
+  // sit alongside the existing mood chip row so the primary entry
+  // points remain mood-first but context prompts are one tap away.
+  function renderQuickReplies() {
+    if (!moodRow) return;
+    // Remove any prior quick-reply row — we re-render in place.
+    const prior = panel && panel.querySelector(".sara-quick-replies");
+    if (prior) prior.remove();
+    const chips = contextualQuickReplies(ctxState);
+    if (!chips.length) return;
+    const row = document.createElement("div");
+    row.className = "sara-quick-replies";
+    chips.forEach(c => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "sara-quick-reply-chip";
+      b.textContent = c.label;
+      b.addEventListener("click", () => send(c.send));
+      row.appendChild(b);
+    });
+    moodRow.insertAdjacentElement("afterend", row);
+  }
+
+  function contextualQuickReplies(ctx) {
+    const list = [];
+    const route = ctx.route || "discover";
+    // Home / Discover
+    if (route === "discover") {
+      if ((ctx.dailyPicks || []).length) {
+        list.push({ label: "Why these picks?", send: "Why did you pick these?" });
+        list.push({ label: "Swap one", send: "How do I swap a pick?" });
+      } else {
+        list.push({ label: "Why nothing?", send: "Why is there nothing to pick?" });
+      }
+    }
+    // Library
+    if (route === "library") {
+      list.push({ label: "How big is my library?", send: "How many books are in my library?" });
+      list.push({ label: "What's best for tonight?", send: "What should I read tonight?" });
+    }
+    // Compare
+    if (route === "compare") {
+      const filled = ((ctx.compare && ctx.compare.slots) || []).filter(Boolean).length;
+      if (filled >= 2) list.push({ label: "What's the biggest difference?", send: "What's the biggest difference between these?" });
+      else list.push({ label: "What should I compare?", send: "What should I compare?" });
+    }
+    // Discovery
+    if (route === "discovery") {
+      if (ctx.discovery && ctx.discovery.resultCount) {
+        list.push({ label: "Any strong fits here?", send: "Any strong fits in these results?" });
+      }
+    }
+    // Profile
+    if (route === "profile") {
+      list.push({ label: "Explain my profile", send: "Explain my profile." });
+      list.push({ label: "What changes help?", send: "What would I change for more fits?" });
+    }
+    // Focused book — always offered when something is in focus.
+    if (ctx.focus && ctx.focus.book) {
+      list.unshift({ label: `Why ${ctx.focus.book.title.length > 20 ? ctx.focus.book.title.slice(0, 18) + "…" : ctx.focus.book.title}?`,
+                     send: `Why does ${ctx.focus.book.title} score the way it does?` });
+    }
+    return list.slice(0, 4);
   }
 
   function post(text) {
