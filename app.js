@@ -5513,11 +5513,16 @@
   // fixed positioning with a scrim). Toggling handled by the
   // pull-tab; routing out of the Terminal resets to normal.
   function applySidenavMode(routeId) {
-    // Keep the standard sidebar visible on every route, including the
-    // Terminal — the prior auto-hide left users without a discoverable
-    // way back to the rest of the app (the 22px pull-tab proved too
-    // easy to miss). The Terminal still spans the full main column.
-    delete document.body.dataset.sidenav;
+    // Terminal: collapse the sidebar so the dashboard gets every pixel.
+    // A pull-tab (chevron) docks at the left edge so the user can
+    // re-open the nav at any time. Routing away clears the state.
+    const b = document.body;
+    if (routeId === "terminal") {
+      if (b.dataset.sidenav !== "overlay") b.dataset.sidenav = "hidden";
+      mountSidenavPullTab();
+    } else {
+      delete b.dataset.sidenav;
+    }
   }
 
   function mountSidenavPullTab() {

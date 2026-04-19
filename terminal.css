@@ -298,7 +298,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 14px;
+  padding: 5px 7px;
   background: var(--panel-alt);
   border-bottom: 1px solid var(--border-faint);
 }
@@ -322,8 +322,8 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   font-size: 12px;
   color: var(--accent-deep);
 }
-.lumen-terminal .panel-body { padding: 12px 14px; }
-.lumen-terminal .panel-body.compact { padding: 8px 10px; }
+.lumen-terminal .panel-body { padding: 6px 7px; }
+.lumen-terminal .panel-body.compact { padding: 4px 5px; }
 .lumen-terminal .panel-body.flush   { padding: 0; }
 
 /* ============================================================
@@ -334,7 +334,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .profile-panel .panel-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 7px;
 }
 .lumen-terminal .taste-compass {
   position: relative;
@@ -489,7 +489,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 7px 12px 8px;
   position: relative;
   overflow: hidden;
   transition: transform 0.18s, box-shadow 0.18s;
@@ -519,16 +519,16 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   text-transform: uppercase;
   color: var(--text-mute);
   font-weight: 600;
-  margin-bottom: 5px;
+  margin-bottom: 2px;
 }
 .lumen-terminal .kpi-cell-val {
   font-family: 'Cormorant Garamond', serif;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 500;
   letter-spacing: -0.02em;
   line-height: 1;
   color: var(--text);
-  margin-bottom: 3px;
+  margin-bottom: 1px;
 }
 .lumen-terminal .kpi-cell-val em { font-style: italic; color: var(--accent-deep); }
 .lumen-terminal .kpi-cell-val .unit {
@@ -553,8 +553,8 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .kpi-delta.down { color: var(--warn); }
 .lumen-terminal .kpi-spark {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
+  bottom: 6px;
+  right: 8px;
   width: 44px;
   height: 18px;
   opacity: 0.55;
@@ -574,7 +574,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* Heat × Explicit matrix */
-.lumen-terminal .heatmap-wrap { padding: 12px 14px 14px; }
+.lumen-terminal .heatmap-wrap { padding: 6px 7px 7px; }
 .lumen-terminal .heatmap-row {
   display: grid;
   grid-template-columns: 90px repeat(5, 1fr);
@@ -622,7 +622,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* Bar charts — trope + era */
-.lumen-terminal .barchart { padding: 12px 14px; }
+.lumen-terminal .barchart { padding: 6px 7px; }
 .lumen-terminal .bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 34px;
@@ -792,7 +792,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 4px 6px;
   background: var(--panel-alt);
   border-bottom: 1px solid var(--border-faint);
 }
@@ -882,7 +882,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   font-size: 13px;
   color: var(--text-soft);
 }
-.lumen-terminal .detail-content { padding: 14px; }
+.lumen-terminal .detail-content { padding: 7px; }
 
 .lumen-terminal .detail-fit-strip {
   display: grid;
@@ -893,7 +893,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .detail-fit-cell {
   background: var(--bg-sunk);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 5px 6px;
   text-align: center;
 }
 .lumen-terminal .detail-fit-label {
@@ -921,7 +921,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   color: var(--text-soft);
   line-height: 1.65;
   margin-bottom: 12px;
-  padding: 12px;
+  padding: 6px;
   background: var(--bg-sunk);
   border-radius: 8px;
   border-left: 2px solid var(--gold);
@@ -990,7 +990,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .detail-radar-wrap {
   background: var(--bg-sunk);
   border-radius: 8px;
-  padding: 10px;
+  padding: 5px;
   margin-bottom: 12px;
 }
 .lumen-terminal .detail-radar-title {
@@ -1066,7 +1066,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 6px 7px;
   box-shadow: var(--shadow-soft);
   position: relative;
   overflow: hidden;
@@ -1119,7 +1119,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   box-shadow: var(--shadow-soft);
 }
 .lumen-terminal .distribution-head {
-  padding: 10px 16px;
+  padding: 5px 8px;
   background: var(--panel-alt);
   border-bottom: 1px solid var(--border-faint);
   display: flex;
@@ -1127,7 +1127,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   align-items: center;
 }
 .lumen-terminal .distribution-body {
-  padding: 14px 16px;
+  padding: 7px 8px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px;
@@ -1135,7 +1135,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .genre-tile {
   background: var(--bg-sunk);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 5px 6px;
   position: relative;
   overflow: hidden;
   cursor: pointer;
