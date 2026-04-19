@@ -1175,6 +1175,36 @@ body {
 }
 .detail-sheet-prose-hero { font-size: 16px; color: var(--text); }
 
+/* ---------- KPI ring (shared primitive) ----------
+   Base styles for the SVG emitted by kpiRing() in app.js. Used by the
+   detail sheet header, the Daily Picks fit-score indicator, and any
+   other surface that wants a compact radial progress ring. Without
+   these rules the circles inherit the SVG default fill of black,
+   which is what caused the "solid black disc" regression. */
+.kpi-ring-svg { display: block; }
+.kpi-ring-svg circle { fill: none; }
+.kpi-ring-svg .track {
+  stroke: var(--border);
+  stroke-width: 3.5;
+}
+.kpi-ring-svg .fill {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 280ms ease, stroke 160ms ease;
+}
+.kpi-ring-svg.low  .fill { stroke: var(--accent-soft, var(--accent)); opacity: 0.75; }
+.kpi-ring-svg.mid  .fill { stroke: var(--accent); }
+.kpi-ring-svg.high .fill { stroke: var(--accent-deep); }
+.kpi-ring-svg text {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 15px;
+  fill: var(--accent-deep);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
 /* Inline fit + confidence rings in the header aside */
 .detail-rings {
   display: flex;
