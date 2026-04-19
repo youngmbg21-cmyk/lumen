@@ -561,12 +561,16 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* ============================================================
-   CHARTS ROW — heatmap + two bar charts
+   CHARTS ROW — bar charts (heatmap removed; .charts-row-2col
+   variant collapses the row to two equal columns)
    ============================================================ */
 .lumen-terminal .charts-row {
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
   gap: 14px;
+}
+.lumen-terminal .charts-row.charts-row-2col {
+  grid-template-columns: 1fr 1fr;
 }
 
 /* Heat × Explicit matrix */
