@@ -5499,6 +5499,59 @@
     if (window.LumenSara) {
       window.LumenSara.setContext(computeSaraContext(r.id));
     }
+    // Auto-collapse the left nav when on the Terminal — the
+    // dashboard needs every pixel to breathe. A pull-tab on the
+    // left edge slides the nav back in as an overlay so the user
+    // can route away without losing the dashboard width.
+    applySidenavMode(r.id);
+  }
+
+  // Three states for the left nav: "normal" (default, grid
+  // column visible), "hidden" (Terminal mode — column collapsed
+  // to 0, sidebar translated off-screen, pull-tab visible),
+  // "overlay" (sidebar slid back in on top of the Terminal via
+  // fixed positioning with a scrim). Toggling handled by the
+  // pull-tab; routing out of the Terminal resets to normal.
+  function applySidenavMode(routeId) {
+    const b = document.body;
+    if (routeId === "terminal") {
+      if (b.dataset.sidenav !== "overlay") b.dataset.sidenav = "hidden";
+      mountSidenavPullTab();
+    } else {
+      delete b.dataset.sidenav;
+    }
+  }
+
+  function mountSidenavPullTab() {
+    if (document.getElementById("sidenav-pulltab")) return;
+    const tab = document.createElement("button");
+    tab.id = "sidenav-pulltab";
+    tab.className = "sidenav-pulltab";
+    tab.type = "button";
+    tab.setAttribute("aria-label", "Show navigation");
+    tab.title = "Show navigation";
+    tab.innerHTML = '<span aria-hidden="true">›</span>';
+    tab.addEventListener("click", () => {
+      document.body.dataset.sidenav = document.body.dataset.sidenav === "overlay" ? "hidden" : "overlay";
+    });
+    document.body.appendChild(tab);
+    // Click-outside on a scrim also collapses back to hidden.
+    const scrim = document.createElement("div");
+    scrim.id = "sidenav-scrim";
+    scrim.className = "sidenav-scrim";
+    scrim.addEventListener("click", () => {
+      if (document.body.dataset.sidenav === "overlay") document.body.dataset.sidenav = "hidden";
+    });
+    document.body.appendChild(scrim);
+    // Any nav-link click also collapses the overlay — routing
+    // already removes the attribute but snapping it back on the
+    // same frame avoids a flash of the sidebar on top of the new
+    // view.
+    document.addEventListener("click", (e) => {
+      if (document.body.dataset.sidenav !== "overlay") return;
+      const link = e.target.closest(".nav-link, .app-side a[href^='#']");
+      if (link) document.body.dataset.sidenav = "hidden";
+    }, true);
   }
 
   // computeSaraContext is now defined alongside buildSaraContext
