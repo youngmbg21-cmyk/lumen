@@ -3347,118 +3347,341 @@
     };
   }
 
-  function saraRespond(userText, saraCtx) {
-    const text = userText.toLowerCase();
-    const ctx = saraContextSummary();
+  // ============================================================
+  // Sara context model — single source of truth for what Sara
+  // knows about the app. Rebuilt on renderView() and on every
+  // store update, then pushed to LumenSara.setContext(). Shape
+  // is documented in the batch plan; intent handlers below
+  // depend on these fields being stable.
+  // ============================================================
+  function buildSaraContext(routeId) {
     const s = store.get();
+    const hidden = s.hidden || {};
+    const rejectedPicks = s.dailyPicksRejected || {};
+    const catalogBooks = (window.LumenData && window.LumenData.CATALOG) || [];
     const pool = listAllBooks();
-    const ranked = Engine.rankRecommendations(s.profile, s.weights, pool);
-    saraCtx = saraCtx || (window.LumenSara && window.LumenSara.context) || {};
+    const visible = pool.filter(b => !hidden[b.id]);
+    const ranked = Engine.rankRecommendations(s.profile, s.weights, visible);
 
-    // Resolve referential phrases via live context
-    let bookMentioned = pool.find(b =>
-      text.includes(b.title.toLowerCase()) ||
-      text.includes(b.title.toLowerCase().split(" ").slice(0, 2).join(" ").toLowerCase())
-    );
-    const referential = /\b(this book|this title|it|that one)\b/.test(text);
-    if (!bookMentioned && referential) {
-      if (saraCtx.route === "compare" && (saraCtx.compareSlots || []).length) {
-        bookMentioned = pool.find(b => saraCtx.compareSlots.includes(b.title));
-      } else if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
-        const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
-        if (entry && entry.bookId) bookMentioned = findBook(entry.bookId);
+    // Daily picks = top 3 of ranked-and-not-rejected (mirror of
+    // views.discover()'s logic so Sara sees the same list).
+    const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
+    const picks = eligible.slice(0, 3).map(x => ({
+      id: x.book.id, title: x.book.title, author: x.book.author,
+      fitScore: x.fitScore, confidence: x.confidence,
+      reasons: (x.why && x.why.reasons) || [],
+      warnings: x.book.content_warnings || [],
+      heat: x.book.heat_level
+    }));
+
+    const dismissedPicksDetail = Object.keys(rejectedPicks).map(id => {
+      const b = pool.find(x => x.id === id);
+      return { id, title: b ? b.title : id, rejectedAt: rejectedPicks[id].rejectedAt };
+    });
+
+    const byCategory = {};
+    visible.forEach(b => {
+      const k = b.category || "uncategorised";
+      byCategory[k] = (byCategory[k] || 0) + 1;
+    });
+    const scoredVisible = ranked.scored;
+    const avgFit = scoredVisible.length
+      ? Math.round(scoredVisible.reduce((a, x) => a + x.fitScore, 0) / scoredVisible.length)
+      : 0;
+
+    const focus = { book: null, journalEntryId: null, vaultPinId: null };
+    if (libState && libState.focusBookId) {
+      const b = findBook(libState.focusBookId);
+      if (b) {
+        const scored = ranked.scored.find(x => x.book.id === b.id);
+        focus.book = {
+          id: b.id, title: b.title, author: b.author,
+          fitScore: scored ? scored.fitScore : null,
+          readingState: (s.bookStates || {})[b.id] || "none",
+          heat: b.heat_level,
+          warnings: b.content_warnings || [],
+          tags: (s.tags || {})[b.id] || [],
+          isInLibrary: !hidden[b.id]
+        };
       }
     }
-
-    const replies = [];
-
-    if (/\b(hi|hello|hey|good (morning|evening))\b/.test(text)) {
-      replies.push(`Hi. I'm here whenever. No pressure to share anything you don't want to.`);
+    if (typeof journalState !== "undefined" && journalState && journalState.selectedId) {
+      focus.journalEntryId = journalState.selectedId;
     }
 
-    if (/\b(recommend|suggest|what should|pick|mood|tonight)\b/.test(text)) {
-      const top = ranked.scored.slice(0, 3);
-      if (top.length) {
-        replies.push(`Based on your profile, my top three right now are: ${top.map(x => `**${x.book.title}** (${x.fitScore})`).join(", ")}.`);
-        replies.push(`Tell me more about your mood — reflective? charged? just want something to hold your attention? — and I can narrow further.`);
-      } else {
-        replies.push(`Your current filters exclude everything in the catalogue. Want me to walk you through loosening one?`);
+    const compareSlotsDetail = (cmpState && cmpState.slots ? cmpState.slots : [])
+      .map(id => {
+        if (!id) return null;
+        const b = findBook(id);
+        if (!b) return null;
+        const scored = Engine.compareBooks([id], s.profile, s.weights, pool)[0];
+        return {
+          id: b.id, title: b.title,
+          fit: scored ? scored.fitScore : null,
+          confidence: scored ? scored.confidence : null
+        };
+      });
+
+    const saraPinnedDetail = ((s.chats && s.chats.saraPinned) || [])
+      .map(p => { const b = findBook(p.bookId); return b ? { id: b.id, title: b.title } : null; })
+      .filter(Boolean);
+
+    return {
+      route: routeId,
+      user: {
+        profile: { ...s.profile },
+        weights: { ...s.weights },
+        theme: (s.ui && s.ui.theme) || "rose",
+        discreet: !!(s.ui && s.ui.discreet),
+        adultConfirmed: !!(s.ui && s.ui.adultConfirmed)
+      },
+      library: {
+        total: pool.length,
+        visibleTotal: visible.length,
+        curatedCount: catalogBooks.length,
+        discoveredCount: (s.discovered || []).filter(d => d.source !== "seed").length,
+        seedCount: (s.discovered || []).filter(d => d.source === "seed").length,
+        hiddenCount: Object.keys(hidden).length,
+        byCategory,
+        averageFit: avgFit,
+        topThreeIds: picks.map(p => p.id)
+      },
+      dailyPicks: picks,
+      dailyPicksRejected: dismissedPicksDetail,
+      discovery: {
+        lastQuery: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.lastQuery) || "",
+        mode: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.mode) || null,
+        resultCount: (typeof discoveryState !== "undefined" && discoveryState && (discoveryState.raw || []).length) || 0,
+        hasApiKey: !!(window.LumenDiscovery && window.LumenDiscovery.getApiKey && window.LumenDiscovery.getApiKey())
+      },
+      compare: {
+        slots: compareSlotsDetail,
+        hasDeepAnalysis: !!(cmpState && cmpState.lastDeepAnalysis)
+      },
+      focus,
+      saraPinned: saraPinnedDetail,
+      vault: {
+        pinnedCount: ((s.vault || {}).pinned || []).length,
+        analysesCount: ((s.vault || {}).analyses || []).length,
+        locked: !!(s.vault && s.vault.locked)
+      },
+      journal: {
+        entriesCount: (s.journal || []).length,
+        lastTitle: (s.journal && s.journal[0] && s.journal[0].title) || ""
+      },
+      catalog: {
+        loaded: catalogBooks.length > 0,
+        count: catalogBooks.length,
+        overrideActive: !!localStorage.getItem("lumen:catalog-override"),
+        version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1
+      },
+      contentControls: {
+        warnStrict: s.profile.warnStrict,
+        exclusionsCount: (s.profile.exclude || []).length,
+        hardExclusions: (s.profile.exclude || []).slice()
+      }
+    };
+  }
+
+  // Back-compat — old callers of computeSaraContext(routeId) get
+  // the same shape, but we discard everything except route/chips.
+  // The richer data lives on the context object now.
+  function computeSaraContext(routeId) {
+    const ctx = buildSaraContext(routeId);
+    // Chips preserved for the top strip.
+    const chips = [];
+    const routeLabel = {
+      discover: "Home", library: "Library", discovery: "Discovery",
+      compare: "Compare", chat: "Connections", journal: "Journal",
+      vault: "Vault", profile: "Profile", settings: "Settings",
+      transparency: "Transparency"
+    }[routeId] || routeId;
+    chips.push({ label: routeLabel });
+    if (ctx.focus.book) chips.push({ label: ctx.focus.book.title });
+    if (ctx.discovery.lastQuery) chips.push({ label: `Search: "${ctx.discovery.lastQuery}"` });
+    if (routeId === "profile") {
+      chips.push({ label: `Heat ${ctx.user.profile.heat}/5` });
+      chips.push({ label: `Consent ${ctx.user.profile.consent}/5` });
+    }
+    if (routeId === "compare" && ctx.compare.slots.some(Boolean)) {
+      ctx.compare.slots.filter(Boolean).forEach(s2 => chips.push({ label: s2.title }));
+    }
+    ctx.chips = chips;
+    // Legacy fields preserved.
+    ctx.book = ctx.focus.book ? ctx.focus.book.id : null;
+    ctx.compareSlots = ctx.compare.slots.filter(Boolean).map(x => x.title);
+    ctx.journalEntryId = ctx.focus.journalEntryId;
+    return ctx;
+  }
+
+  // ============================================================
+  // Sara intent registry — replaces the old regex-chain
+  // responder. Each intent has a match predicate and a handler
+  // that composes a reply from the structured context. The
+  // first intent that wants the message handles it; a default
+  // fallback is always last.
+  // ============================================================
+  const SARA_INTENTS = [
+    {
+      id: "greeting",
+      match: (t) => /^\s*(hi|hello|hey|good\s*(morning|evening|afternoon))\b/i.test(t),
+      handler: () => `Hi. I'm here — ask what to read tonight, why a book landed where it did, or how to compare two titles.`
+    },
+    {
+      id: "library-count",
+      match: (t) => /how many (books|titles|things)/i.test(t) || /\b(size of|count of) (my )?library\b/i.test(t),
+      handler: (ctx) => {
+        const { library } = ctx;
+        const parts = [`You have **${library.visibleTotal}** book${library.visibleTotal === 1 ? "" : "s"} in your Library.`];
+        if (library.curatedCount) parts.push(`${library.curatedCount} come from the curated catalog`);
+        if (library.discoveredCount) parts.push(`${library.discoveredCount} you added from Discovery`);
+        if (library.seedCount) parts.push(`${library.seedCount} are from the starter library`);
+        if (library.hiddenCount) parts.push(`${library.hiddenCount} are currently hidden`);
+        return parts.join(library.visibleTotal ? " · " : "") + ".";
+      }
+    },
+    {
+      id: "daily-picks-explain",
+      match: (t) => /\b(daily pick|picks? for today|top 3|top three|why.*picked?|why.*recommended)\b/i.test(t),
+      handler: (ctx) => {
+        const picks = ctx.dailyPicks || [];
+        if (!picks.length) return `There's nothing to pick from — your filters are excluding everything, or the library is empty. Load a catalog or loosen your exclusions in Profile.`;
+        const list = picks.map((p, i) => `${i + 1}. **${p.title}** by ${p.author} · fit ${p.fitScore}${p.confidence ? ` · ${p.confidence}% conf` : ""}${p.warnings.length ? ` · ${p.warnings.length} warning${p.warnings.length === 1 ? "" : "s"}` : ""}`).join("\n");
+        const rejected = ctx.dailyPicksRejected || [];
+        const footer = rejected.length ? `\n\n(${rejected.length} pick${rejected.length === 1 ? "" : "s"} hidden because you said "not for me" — manage those in Settings.)` : "";
+        return `Your current picks:\n\n${list}\n\nThey're the top three eligible matches against your profile, in descending fit order.${footer}`;
+      }
+    },
+    {
+      id: "swap-pick",
+      match: (t) => /\b(swap|replace|another)\b.*(pick|one|book)|\bnext eligible\b/i.test(t),
+      handler: (ctx) => {
+        if (!ctx.dailyPicks.length) return `No picks to swap — nothing matches right now.`;
+        const target = ctx.focus.book && ctx.dailyPicks.find(p => p.id === ctx.focus.book.id);
+        const hint = target ? target.title : ctx.dailyPicks[ctx.dailyPicks.length - 1].title;
+        return `Hit **Not for me** on the card you want gone — I'll swap in the next best eligible book and remember not to show *${hint}* again unless you restore it from Settings.`;
+      }
+    },
+    {
+      id: "why-focus-book",
+      match: (t, ctx) => ctx.focus.book && /\bwhy (this|that|it)|fit|score\b/i.test(t),
+      handler: (ctx) => {
+        const f = ctx.focus.book;
+        return `**${f.title}** lands at fit ${f.fitScore}. Heat ${f.heat}/5, reading state: ${f.readingState}. ${f.warnings.length ? `Flagged with: ${f.warnings.slice(0, 3).map(w => w.replace(/-/g, " ")).join(", ")}.` : "No content warnings."}`;
+      }
+    },
+    {
+      id: "recommend",
+      match: (t) => /\b(recommend|suggest|what should|mood|tonight|pick something)\b/i.test(t),
+      handler: (ctx) => {
+        const picks = ctx.dailyPicks || [];
+        if (!picks.length) return `I can't recommend against an empty pool — loosen exclusions or load the catalog.`;
+        const top = picks[0];
+        return `Tonight I'd reach for **${top.title}** — fit ${top.fitScore}${top.confidence ? `, ${top.confidence}% confidence` : ""}${(top.reasons[0] ? `. ${top.reasons[0]}` : "")}. Tell me your mood and I'll narrow further.`;
+      }
+    },
+    {
+      id: "compare",
+      match: (t) => /\b(compare|difference|differs|versus|vs\.?|tradeoff)\b/i.test(t),
+      handler: (ctx) => {
+        const filled = (ctx.compare.slots || []).filter(Boolean);
+        if (filled.length >= 2) return `You have ${filled.length} title${filled.length === 1 ? "" : "s"} in Compare: ${filled.map(x => `**${x.title}** (fit ${x.fit})`).join(" · ")}. Hit **Run analysis** for the full tradeoff matrix.`;
+        return `Open Compare and pick two or three titles — I'll lay out scores, category bars, and a plain-language verdict.`;
+      }
+    },
+    {
+      id: "warnings",
+      match: (t) => /\b(warning|trigger|content|safe|safety)\b/i.test(t),
+      handler: (ctx) => {
+        const cc = ctx.contentControls;
+        const parts = [`Warning strictness is set to **${cc.warnStrict}** on your profile.`];
+        if (cc.exclusionsCount) parts.push(`${cc.exclusionsCount} hard exclusion${cc.exclusionsCount === 1 ? "" : "s"} are active: ${cc.hardExclusions.slice(0, 4).map(w => w.replace(/-/g, " ")).join(", ")}${cc.exclusionsCount > 4 ? "…" : ""}`);
+        parts.push(`Books carrying your hard-excluded warnings are removed from every ranking — absolute, not weighted.`);
+        return parts.join(" ");
+      }
+    },
+    {
+      id: "profile-explain",
+      match: (t) => /\bmy (profile|settings|sliders|preferences)\b/i.test(t),
+      handler: (ctx) => {
+        const p = ctx.user.profile;
+        return `Your profile: heat **${p.heat}/5**, explicit **${p.explicit}/5**, emotion **${p.emotion}/5**, consent floor **${p.consent}/5**, taboo **${p.taboo}/5**, plot weight **${p.plot}/5**. Strictness: **${ctx.contentControls.warnStrict}**. Catalog has ${ctx.library.curatedCount} curated titles + ${ctx.library.discoveredCount} you added, for ${ctx.library.visibleTotal} visible in total. Average fit across your library: ${ctx.library.averageFit}.`;
+      }
+    },
+    {
+      id: "catalog-state",
+      match: (t) => /\b(catalog|corpus|import|100 books?)\b/i.test(t),
+      handler: (ctx) => {
+        const c = ctx.catalog;
+        if (!c.loaded) return `No catalog is loaded yet. Settings → Curated catalog has the importer — paste a title list, or upload a CSV, and Claude fills the rest.`;
+        return `Catalog: **${c.count}** book${c.count === 1 ? "" : "s"} loaded${c.overrideActive ? " (device-local override active)" : " from the committed file"}. Schema version ${c.version}.`;
+      }
+    },
+    {
+      id: "save-focus",
+      match: (t, ctx) => ctx.focus.book && /\b(save|add|want|pin)\b/i.test(t),
+      handler: (ctx) => `**${ctx.focus.book.title}** is already in your library. Use **Pin to Vault** on the detail sheet to keep it for quick access, or **Share with Sara** to pin it here.`
+    },
+    {
+      id: "dismiss-focus",
+      match: (t, ctx) => ctx.focus.book && /\b(dismiss|not for me|hide|remove)\b/i.test(t),
+      handler: (ctx) => `Use **× Not for me** on a Daily Pick to skip it just from picks, or the × on a Library card to dismiss the book entirely. Either is reversible from Settings.`
+    },
+    {
+      id: "vault",
+      match: (t) => /\b(vault|pinned|pins?)\b/i.test(t),
+      handler: (ctx) => `Vault has **${ctx.vault.pinnedCount}** pinned book${ctx.vault.pinnedCount === 1 ? "" : "s"} and **${ctx.vault.analysesCount}** saved analys${ctx.vault.analysesCount === 1 ? "is" : "es"}. ${ctx.vault.locked ? "It's currently locked by passcode." : "It's unlocked."}`
+    },
+    {
+      id: "privacy",
+      match: (t) => /\b(private|privacy|leave|server|cloud|sync)\b/i.test(t),
+      handler: () => `Nothing you enter leaves this device. No server, no account, no telemetry. Discreet mode in the top bar blurs covers and titles if someone might be watching.`
+    },
+    {
+      id: "how-scored",
+      match: (t) => /\b(how .* score|why .* score|explain .* score|scoring|algorithm)\b/i.test(t),
+      handler: () => `Each book is scored across six numeric dimensions (heat, explicit, emotion, consent, taboo, plot) and seven tag overlaps (tone, pacing, style, dynamic, tropes, kink, orientation), each with an adjustable weight. Result is 0–100 fit plus a confidence score based on metadata coverage.`
+    },
+    {
+      id: "journal",
+      match: (t) => /\b(journal|reflect|prompt|entry)\b/i.test(t),
+      handler: (ctx) => ctx.journal.entriesCount
+        ? `You have ${ctx.journal.entriesCount} journal ${ctx.journal.entriesCount === 1 ? "entry" : "entries"}${ctx.journal.lastTitle ? `, most recent "${ctx.journal.lastTitle}"` : ""}. Want a reflection prompt for tonight's read?`
+        : `No journal entries yet. Open Journal and I can suggest a reflection prompt for whatever you're reading.`
+    },
+    {
+      id: "navigate",
+      match: (t) => /\b(open|go to|take me to|show me) (library|discover|discovery|compare|journal|vault|profile|settings|transparency)\b/i.test(t),
+      handler: (ctx, text) => {
+        const m = text.match(/(library|discover|discovery|compare|journal|vault|profile|settings|transparency)/i);
+        if (m) {
+          const route = m[1].toLowerCase();
+          setTimeout(() => router.go(route), 200);
+          return `Heading to ${route}.`;
+        }
+        return "";
       }
     }
+  ];
 
-    if (/\bcompare\b/.test(text) || /\b(difference|differ|versus|vs)\b/.test(text)) {
-      if (saraCtx.route === "compare" && (saraCtx.compareSlots || []).length >= 2) {
-        const titles = saraCtx.compareSlots;
-        replies.push(`Looking at your current lineup (${titles.join(", ")}): the sharpest differences usually show on heat, emotional intensity, and consent clarity. Hit **Run analysis** for the full tradeoff matrix.`);
-      } else {
-        replies.push(`Open the Compare tab and pick up to three titles — I'll lay out scores, a radar, category bars, and a plain-language verdict.`);
-      }
+  function saraRespond(userText, saraCtx) {
+    const text = String(userText || "");
+    const ctx = saraCtx && saraCtx.library ? saraCtx : buildSaraContext(saraCtx && saraCtx.route);
+    for (const intent of SARA_INTENTS) {
+      try {
+        const hit = intent.match(text, ctx);
+        if (hit) {
+          const reply = intent.handler(ctx, text);
+          if (reply && reply.length) return reply;
+        }
+      } catch (e) { /* intent errors should not break the chain */ }
     }
-
-    if (/\b(summari[sz]e|summary|lineup|pick one)\b/.test(text) && saraCtx.route === "compare" && (saraCtx.compareSlots || []).length) {
-      replies.push(`Your comparison has ${saraCtx.compareSlots.length} title${saraCtx.compareSlots.length === 1 ? "" : "s"}: ${saraCtx.compareSlots.join(", ")}. Want me to call out the biggest tradeoff, or a safest choice?`);
-    }
-
-    // Deep-analysis aware replies
-    if (cmpState && cmpState.lastDeepAnalysis) {
-      const deep = cmpState.lastDeepAnalysis;
-      if (/\b(tradeoff|tradeoffs|difference|differs|versus|vs)\b/.test(text)) {
-        const best = deep.tradeoffs[0];
-        if (best) replies.push(`The sharpest tradeoff I see: **${best.a} vs ${best.b}** — ${best.differences.map(d => `${d.leader} wins ${d.category.toLowerCase()} (+${d.magnitude})`).join("; ") || "no dimension separates them by much."}`);
-      }
-      if (/\b(mood|tonight|feel|right for)\b/.test(text)) {
-        const sample = deep.moods[0];
-        if (sample) replies.push(`Mood map: for **${sample.mood.toLowerCase()}**, I'd lean to ${sample.winner}. Ask about other moods if that isn't what you're after.`);
-      }
-      if (/\b(order|sequence|first|start)\b/.test(text) && deep.readingOrder) {
-        replies.push(`Reading order I'd suggest: ${deep.readingOrder.order.map((t, i) => `${i + 1}. ${t}`).join(" — ")}. ${deep.readingOrder.note}`);
-      }
-      if (/\b(confiden|trust|how sure)\b/.test(text)) {
-        replies.push(`Confidence across the lineup: ${deep.confidence.entries.map(e => `${e.title} ${e.confidence}%`).join(", ")}. ${deep.confidence.flags[0] || ""}`.trim());
-      }
-    }
-
-    if (/\b(reflect|journal|feel|felt|thought|prompt)\b/.test(text)) {
-      if (saraCtx.route === "journal" && saraCtx.journalEntryId) {
-        const entry = s.journal.find(e => e.id === saraCtx.journalEntryId);
-        const book = entry && entry.bookId ? findBook(entry.bookId) : null;
-        if (book) replies.push(`For your entry on **${book.title}**, try: "Where in the book did you lose your footing, and what caught you there?"`);
-        else       replies.push(`A prompt for this entry: "What did you want more of, and what was on the page already?"`);
-      } else {
-        replies.push(`The Journal is the right place for that — freeform or prompted entries, all private. Want me to suggest a reflection prompt?`);
-      }
-    }
-
-    if (/\b(safe|private|who|see|share|upload)\b/.test(text)) {
-      replies.push(`Nothing you enter leaves this device. No server, no account, no tracking. If you're on a shared screen, toggle Discreet mode in the top bar.`);
-    }
-
-    if (bookMentioned) {
-      const scored = Engine.compareBooks([bookMentioned.id], s.profile, s.weights, pool)[0];
-      replies.push(`**${bookMentioned.title}** lands at ${scored.fitScore} for you with ${scored.confidence}% confidence. ${scored.why.reasons[0] || "It matches your baseline without strong conflicts."}`);
-      if (bookMentioned.content_warnings.length) {
-        replies.push(`Worth flagging: it carries ${bookMentioned.content_warnings.length} content warning${bookMentioned.content_warnings.length > 1 ? "s" : ""} — ${bookMentioned.content_warnings.slice(0, 2).map(w => w.replace(/-/g, " ")).join(", ")}.`);
-      }
-    }
-
-    if (/\b(why|how do you|explain|scor)/.test(text)) {
-      replies.push(`Every score comes from your profile: numeric sliders (heat, consent, and so on) and tag overlaps (tone, kink, style). Weights are adjustable in your profile. Hard exclusions are absolute. Full explanation in the Transparency tab.`);
-    }
-
-    if (replies.length === 0) {
-      // Generic supportive fallback
-      const openers = [
-        `I hear you. Tell me more about what you're looking for.`,
-        `That's a lot to sit with. Do you want a recommendation, a reflection, or just to think out loud?`,
-        `Noted. What would help most right now — picking something to read, comparing two titles, or logging a thought?`
-      ];
-      replies.push(openers[Math.floor(Math.random() * openers.length)]);
-      if (ctx.currentReading.length) {
-        replies.push(`You've got **${ctx.currentReading[0].title}** in progress. Want me to bring it back up, or set it aside for something new?`);
-      }
-    }
-
-    return replies.join("\n\n");
+    // Fallback — supportive, offers routes into the real capabilities.
+    const top = (ctx.dailyPicks || [])[0];
+    const lines = [];
+    if (top) lines.push(`Tonight's top pick is **${top.title}** (fit ${top.fitScore}) — shall I tell you why?`);
+    else     lines.push(`I'm here. Ask for a recommendation, a comparison, or how something was scored.`);
+    return lines.join(" ");
   }
 
   function appendChatMessage(threadKey, friendId, role, text) {
@@ -5004,64 +5227,10 @@
     }
   }
 
-  function computeSaraContext(routeId) {
-    const s = store.get();
-    const chips = [];
-    const ctx = { route: routeId, chips, book: null, compareSlots: [], journalEntryId: null };
-    const readingCount = Object.entries(s.bookStates).filter(([, v]) => v === "reading").length;
-    const wantCount    = Object.entries(s.bookStates).filter(([, v]) => v === "want").length;
-
-    if (routeId === "discover") {
-      chips.push({ label: "Home" });
-      chips.push({ label: `Strictness: ${s.profile.warnStrict}` });
-      if (readingCount) chips.push({ label: `Reading ${readingCount}` });
-    } else if (routeId === "library") {
-      chips.push({ label: "Library" });
-      if (libState && libState.query) chips.push({ label: `Search: "${libState.query}"` });
-      if (libState && libState.readingFilter !== "all") chips.push({ label: `Filter: ${libState.readingFilter}` });
-    } else if (routeId === "compare") {
-      chips.push({ label: "Compare" });
-      const titles = (cmpState.slots || [cmpState.a, cmpState.b])
-        .filter(Boolean)
-        .map(id => findBook(id)?.title)
-        .filter(Boolean);
-      titles.forEach(t => chips.push({ label: t }));
-      ctx.compareSlots = titles;
-    } else if (routeId === "journal") {
-      chips.push({ label: "Journal" });
-      const entry = s.journal.find(e => e.id === journalState.selectedId);
-      if (entry) {
-        chips.push({ label: entry.title ? `Entry: ${entry.title}` : "Untitled entry" });
-        if (entry.bookId) {
-          const b = findBook(entry.bookId);
-          if (b) chips.push({ label: `On: ${b.title}` });
-        }
-        ctx.journalEntryId = entry.id;
-      }
-    } else if (routeId === "vault") {
-      chips.push({ label: "Vault" });
-      if (s.vault.pinned.length)   chips.push({ label: `${s.vault.pinned.length} pinned` });
-      if (s.vault.analyses.length) chips.push({ label: `${s.vault.analyses.length} saved analyses` });
-    } else if (routeId === "profile") {
-      chips.push({ label: "Profile" });
-      chips.push({ label: `Heat ${s.profile.heat}/5` });
-      chips.push({ label: `Consent ${s.profile.consent}/5` });
-      chips.push({ label: `Strictness: ${s.profile.warnStrict}` });
-    } else if (routeId === "chat") {
-      chips.push({ label: "Connections" });
-      chips.push({ label: `${s.chats.friends.length} friend${s.chats.friends.length === 1 ? "" : "s"}` });
-    } else if (routeId === "discovery") {
-      chips.push({ label: "Discovery" });
-      if (discoveryState && discoveryState.lastQuery) chips.push({ label: `Search: "${discoveryState.lastQuery}"` });
-      const discoveredCount = (s.discovered || []).length;
-      if (discoveredCount) chips.push({ label: `${discoveredCount} discovered` });
-    } else if (routeId === "settings") {
-      chips.push({ label: "Settings" });
-    } else if (routeId === "transparency") {
-      chips.push({ label: "Transparency" });
-    }
-    return ctx;
-  }
+  // computeSaraContext is now defined alongside buildSaraContext
+  // above — this second definition was the legacy regex-driven
+  // version and has been removed. Keeping the comment so future
+  // greps find the old symbol.
 
   const THEMES = [
     { id: "rose",      label: "Rose Atelier",  preview: "linear-gradient(135deg, #f9f0ec, #b84a62, #8e2e44)" },
@@ -5352,7 +5521,19 @@
     setupKeyboard();
 
     // Mount Sara (persistent floating assistant) once at shell level.
-    if (window.LumenSara) window.LumenSara.boot();
+    if (window.LumenSara) {
+      window.LumenSara.boot();
+      // Keep Sara's context in sync with every state change —
+      // slider tweaks, chip toggles, imports, rejections all push
+      // a fresh structured context object without needing a
+      // renderView() bounce through the hash router.
+      store.subscribe(() => {
+        try {
+          const r = router.current();
+          window.LumenSara.setContext(computeSaraContext(r.id));
+        } catch (e) { /* ignore */ }
+      });
+    }
 
     adultGate();
   }
