@@ -59,7 +59,7 @@
       discovered: [],
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
-      chats: { sara: [], friends: [] },
+      chats: { sara: [], saraPinned: [], friends: [] },
       ui: {
         theme: "rose",
         discreet: false,
@@ -223,6 +223,36 @@
   };
 
   /* -------------------- view helpers -------------------- */
+  // Bookmark / share-with-Sara button used on every book-card surface.
+  // Toggling it opens Sara, drops the book into the chat as a rich
+  // shared-card message, and adds it to the pinned tray. Tapping again
+  // unpins. Stops event propagation so the card's own onclick (open
+  // detail) doesn't also fire.
+  function pinShareBtn(bookId, opts = {}) {
+    const Sara = window.LumenSara;
+    const pinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const btn = util.el("button", {
+      class: "card-pin" + (pinned ? " is-pinned" : "") + (opts.size === "lg" ? " card-pin-lg" : ""),
+      "aria-label": pinned ? "Unpin from Sara" : "Pin to Sara — share in chat",
+      "aria-pressed": pinned ? "true" : "false",
+      title: pinned ? "Unpin from Sara" : "Pin to Sara",
+      onclick: (e) => {
+        e.stopPropagation();
+        if (!Sara) return;
+        if (Sara.isPinned(bookId)) Sara.unpinBook(bookId);
+        else Sara.pinBook(bookId);
+        // Re-render the host view so other pin icons in the same view
+        // also reflect the new pinned state.
+        try { renderView(); } catch (e2) { /* ignore */ }
+      }
+    });
+    // Bookmark glyph — solid when pinned, outline otherwise.
+    btn.innerHTML = pinned
+      ? '<span aria-hidden="true">❦</span>'
+      : '<span aria-hidden="true">⚐</span>';
+    return btn;
+  }
+
   // Cover block shared by Daily Picks + detail modal. Google Books
   // thumbnails upgraded to https; a two-letter initials block falls in
   // if the URL 404s or the book has no thumbnail at all. The optional
@@ -270,6 +300,7 @@
       }
     });
 
+    card.appendChild(pinShareBtn(book.id));
     card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
 
     const body = util.el("div", { class: "daily-pick-body" });
@@ -766,9 +797,10 @@
   }
 
   function bookCardFull(book, scored) {
-    const card = util.el("div", { class: "book-card has-dismiss has-cover",
+    const card = util.el("div", { class: "book-card has-dismiss has-cover has-pin",
       onclick: () => openBookDetail(book.id)
     });
+    card.appendChild(pinShareBtn(book.id));
     // Dismiss control — top-right. Confirmation is handled inline via undo toast.
     card.appendChild(util.el("button", {
       class: "card-dismiss",
@@ -939,6 +971,19 @@
       pinBook(bookId);
       openBookDetail(bookId);
     } }, "Pin to Vault"));
+    {
+      const Sara = window.LumenSara;
+      const isPinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+      actions.appendChild(util.el("button", {
+        class: "btn btn-sm" + (isPinned ? " btn-primary" : ""),
+        onclick: () => {
+          if (!Sara) return;
+          if (Sara.isPinned(bookId)) Sara.unpinBook(bookId);
+          else Sara.pinBook(bookId);
+          openBookDetail(bookId);
+        }
+      }, isPinned ? "Unpin from Sara" : "Share with Sara"));
+    }
     if (book.source_url) {
       actions.appendChild(util.el("a", {
         class: "btn btn-sm btn-ghost",
@@ -1422,6 +1467,9 @@
           }
         }
       });
+
+      // Pin / share with Sara — sits next to the dismiss control.
+      card.appendChild(pinShareBtn(book.id));
 
       // Dismiss — drops this card from the current results feed
       card.appendChild(util.el("button", {
@@ -4508,6 +4556,10 @@
   }
 
   // Expose a small surface for later batches to hook into.
-  window.Lumen = { store, router, ui, util, views, ROUTES, saraRespond };
+  // Public surface for sara.js — keep this list small and intentional.
+  window.Lumen = {
+    store, router, ui, util, views, ROUTES, saraRespond,
+    findBook, listAllBooks, openBookDetail
+  };
   document.addEventListener("DOMContentLoaded", boot);
 })();

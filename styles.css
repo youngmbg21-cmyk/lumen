@@ -1886,36 +1886,48 @@ body[data-privacy-blur="on"] .app-main::after {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
-/* Mobile floating action button */
+/* ============================================================
+   Sara — floating reading-companion panel
+   - 3 width states: dock (380), wide (560), focus (≈50vw, 760 cap)
+   - in `focus` mode the main page content reflows so it isn't covered
+   - rich book-card messages, pinned tray, mood chips, discreet mode
+   ============================================================ */
+
+/* Floating launcher — soft tear-drop / fleuron glyph instead of "S".
+   Visible at all viewport widths so the panel can be summoned anywhere. */
 .sara-fab {
   position: fixed;
   right: var(--s-4);
-  bottom: calc(var(--shell-topbar) + var(--s-4));
-  width: 52px; height: 52px;
+  bottom: var(--s-4);
+  width: 56px; height: 56px;
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-ink);
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: var(--accent-ink, #fff);
   box-shadow: var(--shadow-3);
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: 22px;
   z-index: 60;
+  border: none;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
+.sara-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -10px rgba(60, 38, 22, 0.4); }
 @media (max-width: 880px) {
-  .sara-fab { display: flex; }
   .sara-launcher { display: none; }
 }
 
 .sara-panel {
+  --sara-w: 380px;
   position: fixed;
   top: calc(var(--shell-topbar) + var(--s-3));
   right: var(--s-4);
-  width: 380px;
+  width: var(--sara-w);
   max-width: calc(100vw - var(--s-5));
   height: calc(100vh - var(--shell-topbar) - var(--s-7));
-  max-height: 680px;
+  max-height: 760px;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: var(--r-3);
@@ -1927,25 +1939,38 @@ body[data-privacy-blur="on"] .app-main::after {
   transform: translateY(12px) scale(0.98);
   opacity: 0;
   pointer-events: none;
-  transition: transform var(--dur-2) var(--ease), opacity var(--dur-2) var(--ease);
+  transition: transform var(--dur-2) var(--ease),
+              opacity var(--dur-2) var(--ease),
+              width var(--dur-2) var(--ease);
 }
 .sara-panel.open {
   transform: translateY(0) scale(1);
   opacity: 1;
   pointer-events: auto;
 }
-.sara-panel.wide { width: 460px; }
-.sara-panel.tall { height: calc(100vh - var(--shell-topbar) - var(--s-5)); }
+.sara-panel[data-width="dock"]  { --sara-w: 380px; }
+.sara-panel[data-width="wide"]  { --sara-w: 560px; }
+.sara-panel[data-width="focus"] { --sara-w: min(50vw, 760px); }
+
+/* Reflow the main content when Sara is in `focus` mode on desktop —
+   pushes the .app-main column over so the panel doesn't cover it.
+   Mobile keeps the overlay behaviour. */
+@media (min-width: 1100px) {
+  body[data-sara-width="focus"] .app-main {
+    padding-right: calc(min(50vw, 760px) + var(--s-5));
+    transition: padding-right var(--dur-2) var(--ease);
+  }
+}
 
 @media (max-width: 880px) {
   .sara-panel {
     top: auto;
-    bottom: calc(var(--shell-topbar) + var(--s-3));
+    bottom: var(--s-3);
     right: var(--s-3);
     left: var(--s-3);
     width: auto;
     max-width: none;
-    height: 70vh;
+    height: 78vh;
   }
 }
 
@@ -1953,21 +1978,53 @@ body[data-privacy-blur="on"] .app-main::after {
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: var(--s-2);
+  background: linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--accent-glow, var(--primary-soft)) 18%, var(--bg-raised)));
 }
+.sara-head-title { min-width: 0; }
 .sara-head .sara-title {
   font-family: var(--font-serif);
-  font-size: 16px;
+  font-size: 18px;
   color: var(--text);
+  letter-spacing: -0.01em;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.sara-head .sara-title-serif { font-weight: 500; }
+.sara-head .sara-title-sub {
+  font-style: italic;
+  color: var(--accent-deep);
+  font-weight: 400;
+  font-size: 14px;
 }
 .sara-head .sara-sub {
   font-size: 11px;
   color: var(--text-subtle);
-  margin-top: 1px;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
-.sara-head-actions { display: flex; gap: 4px; }
+.sara-privacy-pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent-glow, var(--primary-soft)) 60%, transparent);
+  color: var(--accent-deep);
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sara-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.sara-head-actions .icon-btn[aria-pressed="true"] {
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent-deep);
+}
 
 .sara-context {
   padding: var(--s-2) var(--s-4);
@@ -1990,6 +2047,75 @@ body[data-privacy-blur="on"] .app-main::after {
   font-family: var(--font-sans);
 }
 
+/* Pinned-books tray — horizontal scroller of cover-chips, sits above
+   the conversation. Empty state reads as a soft hint instead of being
+   blank. */
+.sara-pinned-tray {
+  display: flex;
+  gap: 6px;
+  padding: var(--s-2) var(--s-3);
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sara-pinned-tray.is-empty { padding: 6px var(--s-4); }
+.sara-pinned-empty {
+  font-size: 11px;
+  color: var(--text-subtle);
+  font-style: italic;
+  line-height: 1.4;
+}
+.sara-pinned-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 3px;
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  color: var(--text);
+  max-width: 180px;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.sara-pinned-chip:hover { border-color: var(--primary); background: var(--bg-raised); }
+.sara-pinned-chip img,
+.sara-pinned-chip-fallback {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--accent-glow, var(--primary-soft));
+  color: var(--accent-deep);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 11px;
+}
+.sara-pinned-chip-label {
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sara-pinned-chip-x {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  text-align: center;
+  line-height: 14px;
+  border-radius: 50%;
+  color: var(--text-subtle);
+  font-size: 13px;
+  cursor: pointer;
+}
+.sara-pinned-chip-x:hover { color: var(--accent); background: var(--bg-raised); }
+
 .sara-body {
   flex: 1 1 auto;
   overflow-y: auto;
@@ -2000,17 +2126,123 @@ body[data-privacy-blur="on"] .app-main::after {
   background: var(--bg-sunken);
 }
 .sara-body .chat-msg { max-width: 100%; }
+.sara-body .chat-msg ul { margin: 6px 0 0; padding-left: 18px; }
+.sara-body .chat-msg li { margin: 2px 0; line-height: 1.5; }
 
-.sara-suggestions {
+/* Rich book-card message — cover on the left, meta + actions on the right.
+   Renders inside .sara-body alongside ordinary chat messages. */
+.sara-share-card {
+  display: grid;
+  grid-template-columns: 60px minmax(0, 1fr);
+  gap: var(--s-3);
+  align-items: flex-start;
+  padding: var(--s-3);
+  border-radius: var(--r-3);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+}
+.sara-share-cover {
+  width: 60px; height: 90px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--accent-glow, var(--primary-soft)), var(--bg-sunken));
+  flex-shrink: 0;
+  position: relative;
+}
+.sara-share-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sara-share-cover .cover-fallback {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--accent-deep);
+  font-weight: 500;
+}
+.sara-share-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.sara-share-title {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--text);
+}
+.sara-share-author { font-size: 11px; color: var(--primary); letter-spacing: 0.04em; }
+.sara-share-warns {
+  font-size: 10px;
+  color: var(--accent-deep);
+  font-style: italic;
+  margin-top: 2px;
+}
+.sara-share-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.sara-share-actions .btn { padding: 3px 9px; font-size: 11px; }
+
+/* Mood-chip row — primary entry to a conversation.
+   Always visible above the compose box. */
+.sara-moods {
   display: flex;
   gap: 6px;
   padding: var(--s-2) var(--s-4);
   background: var(--bg-raised);
   border-top: 1px solid var(--border);
   overflow-x: auto;
+  align-items: center;
   scrollbar-width: thin;
 }
-.sara-suggestions .chip { flex-shrink: 0; font-size: 11px; padding: 4px 10px; }
+.sara-moods-lead {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-mute);
+  flex-shrink: 0;
+  margin-right: 2px;
+}
+.sara-mood-chip {
+  flex-shrink: 0;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 5px 11px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-sunken);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
+}
+.sara-mood-chip:hover {
+  border-color: var(--primary);
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent-deep);
+}
+
+/* "More prompts" disclosure — keeps route-aware suggestions one tap
+   away without crowding the default surface. */
+.sara-suggestions-wrap {
+  background: var(--bg-raised);
+  border-top: 1px solid var(--border);
+  padding: 4px var(--s-4) 6px;
+}
+.sara-suggestions-summary {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+  cursor: pointer;
+  list-style: none;
+  padding: 4px 0;
+}
+.sara-suggestions-summary::marker, .sara-suggestions-summary::-webkit-details-marker { display: none; }
+.sara-suggestions-summary::after { content: " ▾"; font-size: 10px; }
+.sara-suggestions-wrap[open] .sara-suggestions-summary::after { content: " ▴"; }
+.sara-suggestions {
+  display: flex;
+  gap: 6px;
+  padding: 4px 0;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.sara-suggestions .chip { flex-shrink: 0; font-size: 11px; padding: 5px 11px; }
 
 .sara-compose {
   display: flex;
@@ -2054,6 +2286,69 @@ body[data-privacy-blur="on"] .app-main::after {
 [data-discreet="on"] .journal-entry-preview:hover {
   filter: none;
 }
+
+/* Sara-only discreet — blurs covers + titles inside the chat panel
+   without affecting the rest of the app. Hover a card to reveal. */
+.sara-panel.discreet .sara-share-cover img,
+.sara-panel.discreet .sara-share-title,
+.sara-panel.discreet .sara-pinned-chip img,
+.sara-panel.discreet .sara-pinned-chip-label {
+  filter: blur(5px);
+  transition: filter var(--dur-1) var(--ease);
+}
+.sara-panel.discreet .sara-share-card:hover .sara-share-cover img,
+.sara-panel.discreet .sara-share-card:hover .sara-share-title,
+.sara-panel.discreet .sara-pinned-chip:hover img,
+.sara-panel.discreet .sara-pinned-chip:hover .sara-pinned-chip-label {
+  filter: none;
+}
+
+/* Bookmark / share-with-Sara button — top-left corner of every book
+   card. Sits next to the existing dismiss × so they don't collide. */
+.card-pin {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-1) var(--ease),
+              background var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+  z-index: 2;
+}
+.book-card:hover .card-pin,
+.daily-pick-card:hover .card-pin,
+.disco-card:hover .card-pin,
+.card-pin:focus-visible,
+.card-pin.is-pinned { opacity: 1; }
+.card-pin:hover {
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent-deep);
+  border-color: var(--primary);
+}
+.card-pin.is-pinned {
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+  border-color: var(--accent);
+}
+.card-pin-lg { width: 32px; height: 32px; font-size: 16px; }
+@media (hover: none) { .card-pin { opacity: 0.7; } }
+/* Daily-pick + disco cards already have :hover affordances; keep the
+   pin tucked top-left of the card. The cards are position-relative
+   via .has-dismiss / their own rules. */
+.daily-pick-card { position: relative; }
+.disco-card { position: relative; }
 
 /* ============================================================
    Steam Engine — heat-level indicator bar
