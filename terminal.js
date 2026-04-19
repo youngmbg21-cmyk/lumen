@@ -234,6 +234,276 @@
     return String(s || "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // ================= Slice A: heatmap + bars + dense grid =================
+
+  // Panel chrome reused across centre + right columns.
+  function panel(titleText, subText, body, extraClass) {
+    const p = el("div", { class: "panel term-panel" + (extraClass ? " " + extraClass : "") });
+    const head = el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: titleText }),
+      subText ? el("span", { class: "panel-sub", text: subText }) : null
+    ].filter(Boolean));
+    p.appendChild(head);
+    if (body) p.appendChild(body);
+    return p;
+  }
+
+  // Heat × Explicitness — 5×5 grid showing how the catalogue is
+  // distributed across the two intensity axes. Density is rendered
+  // as accent tint; empty cells stay quiet.
+  function renderHeatmap(pool) {
+    const wrap = el("div", { class: "term-heatmap" });
+    // grid[i][j] where i is heat row (5 → 1, top to bottom) and
+    // j is explicit column (1 → 5, left to right).
+    const grid = [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+    pool.forEach(b => {
+      const r = 5 - b.heat;
+      const c = b.explicit - 1;
+      if (r >= 0 && r < 5 && c >= 0 && c < 5) grid[r][c] += 1;
+    });
+    const max = Math.max(1, ...grid.flat());
+
+    // Header row.
+    const header = el("div", { class: "term-heatmap-row term-heatmap-hdr" });
+    header.appendChild(el("div", { text: "H ↓ / E →" }));
+    [1,2,3,4,5].forEach(n => header.appendChild(el("div", { text: String(n) })));
+    wrap.appendChild(header);
+
+    for (let i = 0; i < 5; i++) {
+      const heatLvl = 5 - i;
+      const row = el("div", { class: "term-heatmap-row" });
+      row.appendChild(el("div", { class: "term-heatmap-rowlabel", text: "H" + heatLvl }));
+      for (let j = 0; j < 5; j++) {
+        const v = grid[i][j];
+        if (v === 0) {
+          row.appendChild(el("div", { class: "term-heatmap-cell is-empty",
+            title: `Heat ${heatLvl} · Explicit ${j + 1}: no titles` }));
+        } else {
+          const intensity = v / max;
+          const alpha = (0.18 + intensity * 0.7).toFixed(2);
+          const cell = el("div", { class: "term-heatmap-cell",
+            title: `Heat ${heatLvl} · Explicit ${j + 1}: ${v} title${v === 1 ? "" : "s"}`,
+            text: String(v)
+          });
+          cell.style.background = `color-mix(in srgb, var(--accent) ${(intensity * 70 + 18).toFixed(0)}%, transparent)`;
+          cell.style.color = intensity > 0.55 ? "var(--accent-ink, #fff)" : "var(--text)";
+          row.appendChild(cell);
+        }
+      }
+      wrap.appendChild(row);
+    }
+    return panel("Heat × Explicitness matrix", "catalogue distribution", wrap);
+  }
+
+  // Top trope frequency bars. Reads trope_tags from each book.
+  function renderTropeBar(pool) {
+    const counts = {};
+    pool.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const max = Math.max(1, ...entries.map(e => e[1]));
+    const wrap = el("div", { class: "term-bars" });
+    if (!entries.length) {
+      wrap.appendChild(el("p", { class: "t-small t-subtle", style: { padding: "var(--s-3)" }, text: "No trope tags in current pool." }));
+      return panel("Trope frequency", "top signals", wrap);
+    }
+    entries.forEach(([name, n], i) => {
+      const cls = i % 3 === 0 ? "" : i % 3 === 1 ? "tone-sage" : "tone-violet";
+      const row = el("div", { class: "term-bar-row" });
+      row.appendChild(el("div", { class: "term-bar-label", title: name, text: name.replace(/-/g, " ") }));
+      const track = el("div", { class: "term-bar-track" });
+      const fill = el("div", { class: "term-bar-fill " + cls });
+      fill.style.width = ((n / max) * 100).toFixed(1) + "%";
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el("div", { class: "term-bar-val", text: String(n) }));
+      wrap.appendChild(row);
+    });
+    return panel("Trope frequency", "top signals", wrap);
+  }
+
+  // Publication era buckets.
+  function renderEraBar(pool) {
+    const buckets = [
+      { label: "Pre-1950",  test: y => y > 0 && y < 1950 },
+      { label: "1950-1999", test: y => y >= 1950 && y < 2000 },
+      { label: "2000-2009", test: y => y >= 2000 && y < 2010 },
+      { label: "2010-2014", test: y => y >= 2010 && y < 2015 },
+      { label: "2015-2019", test: y => y >= 2015 && y < 2020 },
+      { label: "2020+",     test: y => y >= 2020 }
+    ];
+    const data = buckets.map(b => ({ label: b.label, n: pool.filter(x => b.test(x.year)).length }));
+    const max = Math.max(1, ...data.map(d => d.n));
+    const wrap = el("div", { class: "term-bars" });
+    data.forEach(d => {
+      const row = el("div", { class: "term-bar-row" });
+      row.appendChild(el("div", { class: "term-bar-label", text: d.label }));
+      const track = el("div", { class: "term-bar-track" });
+      const fill = el("div", { class: "term-bar-fill tone-blush" });
+      fill.style.width = ((d.n / max) * 100).toFixed(1) + "%";
+      track.appendChild(fill);
+      row.appendChild(track);
+      row.appendChild(el("div", { class: "term-bar-val", text: String(d.n) }));
+      wrap.appendChild(row);
+    });
+    return panel("Publication era", "across time", wrap);
+  }
+
+  // Dense Bloomberg-style data grid. Sortable headers, search input,
+  // row click opens the existing Lumen book-detail sheet so the
+  // Terminal stays consistent with every other surface.
+  function rateClass(n) { return "term-rate-h" + Math.max(1, Math.min(5, n || 3)); }
+  function fitClass(f) { return f >= 75 ? "is-strong" : f >= 55 ? "is-mid" : "is-low"; }
+
+  function renderDataGrid(pool, visible, rerender) {
+    const wrap = el("div", { class: "panel term-grid-panel" });
+    wrap.appendChild(el("div", { class: "panel-head" }, [
+      el("span", { class: "panel-title", text: "Catalogue grid" }),
+      el("span", { class: "panel-sub", text: "every title, every signal" })
+    ]));
+
+    // Controls: search + count.
+    const controls = el("div", { class: "term-grid-controls" });
+    const search = el("input", {
+      type: "text", class: "term-grid-search",
+      placeholder: "/ search title, author, trope…",
+      value: termState.search,
+      oninput: (e) => { termState.search = e.target.value; rerender(); }
+    });
+    controls.appendChild(search);
+    controls.appendChild(el("div", { class: "term-grid-count" }, [
+      el("em", { text: String(visible.length) }),
+      " showing"
+    ]));
+    wrap.appendChild(controls);
+
+    // Scrolling table.
+    const scroll = el("div", { class: "term-grid-scroll" });
+    const table = el("table", { class: "term-grid" });
+    const cols = [
+      { key: "fit",      label: "Fit",      title: "Engine fit score" },
+      { key: "title",    label: "Title" },
+      { key: "author",   label: "Author" },
+      { key: "year",     label: "Year" },
+      { key: "subgenre", label: "Subgenre" },
+      { key: "heat",     label: "H", title: "Heat" },
+      { key: "explicit", label: "E", title: "Explicit" },
+      { key: "emotion",  label: "M", title: "Emotion" },
+      { key: "consent",  label: "C", title: "Consent" },
+      { key: "taboo",    label: "T", title: "Taboo" },
+      { key: "plot",     label: "P", title: "Plot weight" },
+      { key: "_signals", label: "Signals", noSort: true }
+    ];
+    const thead = document.createElement("thead");
+    const trh = document.createElement("tr");
+    cols.forEach(c => {
+      const th = document.createElement("th");
+      th.textContent = c.label;
+      if (c.title) th.title = c.title;
+      if (!c.noSort) {
+        th.classList.add("is-sortable");
+        if (termState.sortKey === c.key) {
+          th.classList.add("is-sorted");
+          if (termState.sortDir === "asc") th.classList.add("is-asc");
+        }
+        th.addEventListener("click", () => {
+          if (termState.sortKey === c.key) {
+            termState.sortDir = termState.sortDir === "asc" ? "desc" : "asc";
+          } else {
+            termState.sortKey = c.key;
+            termState.sortDir = (c.key === "title" || c.key === "author" || c.key === "subgenre") ? "asc" : "desc";
+          }
+          rerender();
+        });
+      }
+      trh.appendChild(th);
+    });
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    const tbody = document.createElement("tbody");
+    if (!visible.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = cols.length;
+      td.style.padding = "30px";
+      td.style.textAlign = "center";
+      td.style.fontFamily = "var(--font-serif)";
+      td.style.fontStyle = "italic";
+      td.style.color = "var(--text-mute)";
+      td.textContent = "No titles match the current filters.";
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      visible.forEach(b => {
+        const tr = document.createElement("tr");
+        if (termState.selectedId === b.id) tr.classList.add("is-selected");
+        tr.dataset.id = b.id;
+        tr.addEventListener("click", () => {
+          // Selection drives the right-column inline detail; the
+          // double-click / explicit-action affordance opens the
+          // full Lumen detail sheet.
+          termState.selectedId = b.id;
+          rerender();
+        });
+        tr.addEventListener("dblclick", () => {
+          if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id);
+        });
+
+        // Fit cell — score + mini-bar.
+        const fitTd = document.createElement("td");
+        fitTd.className = "term-fit-cell " + fitClass(b.fit);
+        fitTd.title = `Fit ${b.fit}% · Confidence ${b.confidence}%`;
+        fitTd.appendChild(el("div", { class: "term-fit-num", text: String(b.fit) }));
+        const mini = el("div", { class: "term-fit-mini" });
+        const miniFill = el("span");
+        miniFill.style.width = b.fit + "%";
+        mini.appendChild(miniFill);
+        fitTd.appendChild(mini);
+        tr.appendChild(fitTd);
+
+        const titleTd = el("td", { class: "term-title-cell", title: b.title, text: b.title });
+        const authorTd = el("td", { class: "term-author-cell", title: b.author, text: b.author });
+        const yearTd = el("td", { class: "term-num-cell", text: b.year ? String(b.year) : "—" });
+        const subTd = el("td", { class: "term-sub-cell", title: b.subgenre, text: b.subgenre });
+        tr.appendChild(titleTd);
+        tr.appendChild(authorTd);
+        tr.appendChild(yearTd);
+        tr.appendChild(subTd);
+
+        ["heat","explicit","emotion","consent","taboo","plot"].forEach(k => {
+          const td = el("td", { class: "term-num-cell" });
+          const pill = el("span", { class: "term-rate-pill " + rateClass(b[k]), text: String(b[k]) });
+          td.appendChild(pill);
+          tr.appendChild(td);
+        });
+
+        const sig = [
+          ...(b.tone || []).slice(0, 1),
+          ...(b.dynamic || []).slice(0, 1),
+          ...(b.trope || []).slice(0, 1)
+        ].slice(0, 2).map(s => s.replace(/-/g, " ")).join(" · ") || "—";
+        tr.appendChild(el("td", { class: "term-sig-cell", text: sig }));
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
+    return wrap;
+  }
+
+  // Centre-column layout: charts row above the data grid.
+  function renderCentreColumn(pool, visible, rerender) {
+    const col = el("div", { class: "term-centre stack" });
+    const charts = el("div", { class: "term-charts-row" });
+    charts.appendChild(renderHeatmap(pool));
+    charts.appendChild(renderTropeBar(pool));
+    charts.appendChild(renderEraBar(pool));
+    col.appendChild(charts);
+    col.appendChild(renderDataGrid(pool, visible, rerender));
+    return col;
+  }
+
   // ================= main render =================
   function render() {
     const L = window.Lumen;
@@ -244,8 +514,6 @@
     const pool = currentPool();
     const visible = applyFilters(pool);
 
-    // Re-render helper — used by the filter tiles. Re-renders in
-    // place so chip/filter toggles don't bounce through the router.
     function rerender() {
       const fresh = render();
       wrap.replaceWith(fresh);
@@ -254,20 +522,35 @@
     wrap.appendChild(renderCommandBar(pool));
     wrap.appendChild(renderKpiStrip(pool, visible));
 
-    // Centre/left/right/bottom placeholders — Batches 3-5 fill these.
-    const scaffold = el("div", { class: "card stack" });
-    scaffold.appendChild(el("h3", { html: "Terminal <em>scaffold</em> · Batches 2 complete, 3–6 landing next" }));
-    if (!pool.length) {
-      scaffold.appendChild(el("p", { class: "t-small t-muted", text: "Your pool is empty — Terminal numbers are zeros until you import a catalog (Settings → Curated catalog) or add titles from Discovery." }));
-    } else {
-      scaffold.appendChild(el("p", { class: "t-small t-muted",
-        text: `Live pool: ${pool.length} titles · ${visible.length} in view. Fit scores mirror the rest of the app; click a subgenre tile below to filter.` }));
-    }
-    wrap.appendChild(scaffold);
+    // Three-column dashboard. Left + right are placeholder shells in
+    // this slice — Slices B and C populate the compass + sliders +
+    // chips on the left and the inline detail + similar + editor's
+    // brief on the right.
+    const dash = el("div", { class: "term-dashboard" });
 
+    const leftPlaceholder = el("aside", { class: "term-left" });
+    leftPlaceholder.appendChild(panel("Your compass",
+      "Slice B lands here",
+      el("div", { class: "panel-body" }, [
+        el("p", { class: "t-small t-subtle", text: "Taste compass · sliders · tone & dynamic chip filters arrive in the next slice." })
+      ])
+    ));
+    dash.appendChild(leftPlaceholder);
+
+    dash.appendChild(renderCentreColumn(pool, visible, rerender));
+
+    const rightPlaceholder = el("aside", { class: "term-right" });
+    rightPlaceholder.appendChild(panel("Selected title",
+      "Slice C lands here",
+      el("div", { class: "panel-body" }, [
+        el("p", { class: "t-small t-subtle", text: "Inline detail, similar-by-signal-overlap, and the editor's brief arrive in the final slice. Click a row in the grid to mark a selection — it'll fill in here when Slice C ships." })
+      ])
+    ));
+    dash.appendChild(rightPlaceholder);
+
+    wrap.appendChild(dash);
     wrap.appendChild(renderDistribution(pool, rerender));
 
-    // Start the clock once the view is in the DOM.
     setTimeout(startClock, 0);
     return wrap;
   }
