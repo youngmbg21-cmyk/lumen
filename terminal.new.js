@@ -86,9 +86,115 @@
   }
 
   // ============================================================
+  // SCORING — verbatim from lumen_terminal.html. Drives the fit
+  // value used in KPIs, ticker, grid, detail panel, similar list,
+  // and editor's brief. Reads termState.profile (sliders + tone/
+  // dynamic Sets) so chip toggles immediately influence ranking.
+  // ============================================================
+  function numMatch(u, b) {
+    const d = Math.abs(u - b);
+    if (d === 0) return 1;
+    if (d === 1) return 0.6;
+    if (d === 2) return 0.25;
+    return 0;
+  }
+
+  function setOverlap(userSet, bookArr) {
+    if (!userSet.size) return { credit: 0.5, matched: [] };
+    if (!bookArr || !bookArr.length) return { credit: 0, matched: [] };
+    const matched = bookArr.filter(t => userSet.has(t));
+    return { credit: matched.length / userSet.size, matched };
+  }
+
+  function scoreBook(b) {
+    const W = { heat: 1.0, explicit: 1.0, emotion: 1.0, consent: 1.5, taboo: 1.2, plot: 0.8, tone: 1.0, dynamic: 1.1 };
+    const p = termState.profile;
+    let raw = 0, max = 0;
+    const contributions = {};
+    for (const k of ["heat", "explicit", "emotion", "plot"]) {
+      const s = numMatch(p[k], b[k]);
+      raw += s * W[k]; max += W[k];
+      contributions[k] = s;
+    }
+    // Consent: floor (book ≥ user → full credit)
+    const consentScore = b.consent >= p.consent ? 1 : numMatch(p.consent, b.consent);
+    raw += consentScore * W.consent; max += W.consent;
+    contributions.consent = consentScore;
+    // Taboo: ceiling (book ≤ user → full credit)
+    const tabooScore = b.taboo <= p.taboo ? 1 : numMatch(p.taboo, b.taboo);
+    raw += tabooScore * W.taboo; max += W.taboo;
+    contributions.taboo = tabooScore;
+    const toneO = setOverlap(p.tone,    b.tone);
+    raw += toneO.credit * W.tone; max += W.tone;
+    const dynO  = setOverlap(p.dynamic, b.dynamic);
+    raw += dynO.credit  * W.dynamic; max += W.dynamic;
+    const fit = Math.round((raw / max) * 100);
+    const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
+    const confidence = Math.min(100, 30 + Math.round(tagSignals * 7));
+    return { fit, confidence, contributions, toneMatched: toneO.matched, dynMatched: dynO.matched };
+  }
+
+  // Apply subgenre + search filter, score every survivor, then sort.
+  function filteredBooks() {
+    const q = termState.search.toLowerCase().trim();
+    let list = rawBooks().filter(b => {
+      if (termState.subgenreFilter && b.subgenre !== termState.subgenreFilter) return false;
+      if (q) {
+        const hay = [b.title, b.author, b.subgenre, (b.trope || []).join(" "),
+                     (b.tone || []).join(" "), b.short_summary || ""].join(" ").toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+    list = list.map(b => Object.assign({}, b, scoreBook(b)));
+    const sk = termState.sortKey, sd = termState.sortDir;
+    list.sort((a, b) => {
+      let av = a[sk], bv = b[sk];
+      if (typeof av === "string") { av = av.toLowerCase(); bv = (bv || "").toLowerCase(); }
+      if (av < bv) return sd === "asc" ? -1 : 1;
+      if (av > bv) return sd === "asc" ? 1 : -1;
+      return 0;
+    });
+    return list;
+  }
+
+  // ============================================================
+  // SMALL HELPERS
+  // ============================================================
+  function $(root, sel) { return root.querySelector(sel); }
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function initials(s) {
+    return String(s || "").split(/\s+/).map(w => w[0] || "").join("")
+      .replace(/[^A-Za-z]/g, "").toUpperCase().slice(0, 4) || "—";
+  }
+  function descriptorForFit(f) {
+    if (f >= 75) return "strong fit";
+    if (f >= 55) return "moderate fit";
+    if (f >= 35) return "loose fit";
+    return "thin fit";
+  }
+  function rateClass(n) { return "rate-h" + Math.max(1, Math.min(5, n || 3)); }
+
+  // Sparkline SVG for KPI cells. Verbatim from reference.
+  function sparklineSVG(data) {
+    const w = 44, h = 18;
+    const min = Math.min(...data), max = Math.max(...data);
+    const range = Math.max(1, max - min);
+    const step = w / (data.length - 1);
+    const pts = data.map((v, i) =>
+      `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`).join(" ");
+    return `<svg class="kpi-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+  }
+
+  // ============================================================
   // PLACEHOLDER render() — keeps the tab alive while subsequent
-  // chunks (scoring, helpers, populators, command bar, dashboard,
-  // event wiring) are written. Replaced in the final chunk.
+  // chunks (populators, command bar, dashboard, event wiring) are
+  // written. Replaced in the final chunk.
   // ============================================================
   function render() {
     const wrap = document.createElement("div");
@@ -103,5 +209,12 @@
     return wrap;
   }
 
-  window.LumenTerminalNext = { render, _state: termState, _shape: toTerminalShape, _raw: rawBooks };
+  window.LumenTerminalNext = {
+    render,
+    _state:    termState,
+    _shape:    toTerminalShape,
+    _raw:      rawBooks,
+    _filtered: filteredBooks,
+    _score:    scoreBook
+  };
 })();
