@@ -770,12 +770,47 @@
       _discovered: true
     };
   }
+  // Normalize an entry from the curated catalog (data/catalog.js).
+  // Catalog entries already arrive in the rich-seed shape, but we
+  // defensively fill in array defaults and stamp `_catalog` so the
+  // UI can render a "Curated" badge and treat the row as read-only.
+  function catalogAsBook(c) {
+    return Object.assign({
+      tone: [], pacing: [], literary_style: [],
+      relationship_dynamic: [], trope_tags: [], kink_tags: [],
+      gender_pairing: [], orientation_tags: [],
+      content_warnings: []
+    }, c, {
+      source: c.source || "Curated",
+      _catalog: true
+    });
+  }
+
+  // Curated catalog — loaded via data/catalog.js at boot. Empty
+  // array when the catalog hasn't been generated yet.
+  function getCatalog() {
+    const raw = (window.LumenData && Array.isArray(window.LumenData.CATALOG))
+      ? window.LumenData.CATALOG : [];
+    return raw.map(catalogAsBook);
+  }
+
   function findBook(bookId) {
     const d = (store.get().discovered || []).find(x => x.id === bookId);
-    return d ? discoveredAsBook(d) : null;
+    if (d) return discoveredAsBook(d);
+    const c = getCatalog().find(x => x.id === bookId);
+    return c || null;
   }
+
+  // Combined pool: curated catalog first, then user-discovered
+  // entries. De-duplicated by id so a discovery-search re-add of a
+  // catalog title doesn't produce two rows.
   function listAllBooks() {
-    return (store.get().discovered || []).map(discoveredAsBook);
+    const catalog = getCatalog();
+    const discovered = (store.get().discovered || []).map(discoveredAsBook);
+    const seen = new Set(catalog.map(b => b.id));
+    const merged = catalog.slice();
+    discovered.forEach(b => { if (!seen.has(b.id)) { merged.push(b); seen.add(b.id); } });
+    return merged;
   }
   // Books the user has explicitly saved — currently the same as
   // listAllBooks() minus hidden. Compare will restrict to this set.
@@ -933,6 +968,7 @@
     const badges = util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-3)" } });
     const rsBadge = readingStateBadge(book.id);
     if (rsBadge) badges.appendChild(rsBadge);
+    if (book._catalog)    badges.appendChild(ui.tag("curated", "accent"));
     if (book._discovered) badges.appendChild(ui.tag("from discovery", "accent"));
     if ((book.content_warnings || []).length) badges.appendChild(ui.tag(`${book.content_warnings.length} warning${book.content_warnings.length > 1 ? "s" : ""}`, "warn"));
     if (scored && scored.confidence < 60) badges.appendChild(ui.tag(`low confidence`, "danger"));
@@ -3146,7 +3182,7 @@
         }, [
           util.el("div", {}, [
             util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: b.title }),
-            util.el("div", { class: "t-tiny t-subtle", text: `${b.author}${b.year ? " · " + util.fmtYear(b.year) : ""}${b._seed ? " · from starter library" : b._discovered ? " · from Discovery" : ""}` })
+            util.el("div", { class: "t-tiny t-subtle", text: `${b.author}${b.year ? " · " + util.fmtYear(b.year) : ""}${b._catalog ? " · curated" : b._seed ? " · from starter library" : b._discovered ? " · from Discovery" : ""}` })
           ])
         ]);
         list.appendChild(row);
