@@ -355,7 +355,10 @@
       row.appendChild(el("div", { class: "term-bar-label", title: name, text: name.replace(/-/g, " ") }));
       const track = el("div", { class: "term-bar-track" });
       const fill = el("div", { class: "term-bar-fill " + cls });
-      fill.style.width = ((n / max) * 100).toFixed(1) + "%";
+      // Scale to half-width at max — the reference panels give
+      // each bar lots of whitespace to the right of the value,
+      // so even the tallest bar fills only ~50% of the track.
+      fill.style.width = ((n / max) * 50).toFixed(1) + "%";
       track.appendChild(fill);
       row.appendChild(track);
       row.appendChild(el("div", { class: "term-bar-val", text: String(n) }));
@@ -382,7 +385,8 @@
       row.appendChild(el("div", { class: "term-bar-label", text: d.label }));
       const track = el("div", { class: "term-bar-track" });
       const fill = el("div", { class: "term-bar-fill tone-blush" });
-      fill.style.width = ((d.n / max) * 100).toFixed(1) + "%";
+      // Same half-width scaling as the trope bars for rhythm parity.
+      fill.style.width = ((d.n / max) * 50).toFixed(1) + "%";
       track.appendChild(fill);
       row.appendChild(track);
       row.appendChild(el("div", { class: "term-bar-val", text: String(d.n) }));
