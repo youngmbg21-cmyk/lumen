@@ -1902,7 +1902,7 @@
          file so the curated catalog lives in version control.
      ================================================================== */
   const catalogImport = {
-    mode: "titles",          // "titles" | "csv-sparse" | "csv-full"
+    mode: "titles",          // "titles" | "csv"
     raw: "",                  // paste buffer
     parsed: [],               // [{ input, status, book?, _source?, error? }]
     enriching: false,
@@ -2041,41 +2041,66 @@
       return;
     }
 
+    // Unified CSV path — auto-detects per row.
+    //   - title or author missing       → error (can't enrich without them).
+    //   - every required field present  → ready  (use as-is, fields marked "human").
+    //   - otherwise                     → pending (queue for Claude; any
+    //                                     human-provided fields are kept and
+    //                                     override the AI fill-in at merge).
     const rows = parseDelimited(text);
     if (!rows.length) { catalogImport.parsed = []; return; }
     const header = rows[0].map(normColumnName);
     const records = rows.slice(1).filter(r => r.some(c => c && c.length));
-    if (mode === "csv-sparse") {
-      const titleIdx = header.indexOf("title");
-      const authorIdx = header.indexOf("author");
-      const descIdx = header.indexOf("description");
-      if (titleIdx < 0) {
-        catalogImport.parsed = [{ status: "error", error: "CSV header must include a 'title' column.", row: 0, input: {} }];
-        return;
-      }
-      catalogImport.parsed = records.map((r, i) => ({
-        input: {
-          title: r[titleIdx] || "",
-          author: authorIdx >= 0 ? (r[authorIdx] || "") : "",
-          description: descIdx >= 0 ? (r[descIdx] || "") : ""
-        },
-        status: "pending",
-        row: i + 2
-      }));
+    if (header.indexOf("title") < 0 || header.indexOf("author") < 0) {
+      catalogImport.parsed = [{ status: "error", error: "CSV header must include at least 'title' and 'author' columns.", row: 0, input: {} }];
       return;
     }
-
-    // Full CSV — everything in one pass, no enrichment needed.
     catalogImport.parsed = records.map((r, i) => {
       const obj = {}; header.forEach((h, idx) => { if (h) obj[h] = r[idx] || ""; });
-      const { book, missing } = parseFullCsvRow(obj);
-      if (missing.length) {
-        return { input: { title: obj.title, author: obj.author }, status: "error",
-                 error: `missing: ${missing.join(", ")}`, row: i + 2 };
+      const title = obj.title || "";
+      const author = obj.author || "";
+      if (!title || !author) {
+        return { input: { title, author }, status: "error",
+                 error: "missing title or author", row: i + 2 };
       }
-      const _source = {}; Object.keys(book).forEach(k => { _source[k] = "human"; });
-      return { input: { title: book.title, author: book.author }, status: "ready",
-               book, _source, row: i + 2 };
+      const { book, missing } = parseFullCsvRow(obj);
+      if (!missing.length) {
+        // All required fields present — goes straight to ready.
+        const _source = {}; Object.keys(book).forEach(k => { _source[k] = "human"; });
+        return { input: { title, author, description: obj.description || "" },
+                 status: "ready", book, _source, row: i + 2 };
+      }
+      // Partial row — anything the user did provide is kept and marked
+      // "human"; the remaining required fields will be filled by Claude
+      // at enrichment time.
+      const partial = {};
+      const partialSource = {};
+      ["id", "title", "author", "year", "category", "subgenre", "description",
+       "source", "source_url", "thumbnail"].forEach(k => {
+        if (obj[k] && String(obj[k]).trim()) {
+          partial[k] = (k === "year") ? (parseInt(obj[k], 10) || 0) : obj[k];
+          partialSource[k] = "human";
+        }
+      });
+      ["tone","pacing","literary_style","relationship_dynamic","trope_tags",
+       "kink_tags","gender_pairing","orientation_tags","content_warnings"].forEach(k => {
+        const lst = splitListCell(obj[k]);
+        if (lst.length) { partial[k] = lst; partialSource[k] = "human"; }
+      });
+      NUM_COLS.forEach(k => {
+        const v = Number(obj[k]);
+        if (Number.isFinite(v)) {
+          partial[k] = Math.max(1, Math.min(5, Math.round(v)));
+          partialSource[k] = "human";
+        }
+      });
+      return {
+        input: { title, author, description: obj.description || "" },
+        status: "pending",
+        partial, partialSource,
+        missing,
+        row: i + 2
+      };
     });
   }
 
@@ -2091,11 +2116,23 @@
     for (const row of pending) {
       try {
         const { book, _source, confidence } = await Disco.enrichCatalogEntry(row.input);
-        book.id = slugifyId(book.title, book.author);
+        // Merge: any human-provided fields from the partial CSV row
+        // win over Claude's fill-in, and their _source stays "human"
+        // so future re-enrichments won't clobber them.
+        const partial = row.partial || {};
+        const partialSource = row.partialSource || {};
+        Object.keys(partial).forEach(k => {
+          book[k] = partial[k];
+          _source[k] = partialSource[k] || "human";
+        });
+        book.id = book.id || partial.id || slugifyId(book.title, book.author);
         row.book = book;
         row._source = _source;
         row.confidence = confidence;
         row.status = "ready";
+        row.missing = null;
+        row.partial = null;
+        row.partialSource = null;
       } catch (err) {
         row.status = "error";
         row.error = (err && err.code === "not-fiction") ? "Claude flagged this as non-fiction"
@@ -2144,6 +2181,10 @@
       line.appendChild(head);
       if (row.status === "error") {
         line.appendChild(util.el("div", { class: "t-tiny", style: { color: "var(--danger)", marginTop: "4px" }, text: row.error || "error" }));
+      } else if (row.status === "pending") {
+        const gaps = (row.missing || []).join(", ");
+        line.appendChild(util.el("div", { class: "t-tiny t-subtle", style: { marginTop: "4px" },
+          text: gaps ? `Claude will fill: ${gaps}` : "Awaiting Claude enrichment" }));
       } else if (row.status === "ready" && row.book) {
         const nums = util.el("div", { class: "catalog-import-nums" });
         NUM_COLS.forEach(k => {
@@ -2242,7 +2283,7 @@
     card.appendChild(util.el("div", { class: "settings-card-head" }, [
       util.el("div", {}, [
         util.el("h3", { text: "Curated catalog" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Import your 100-book corpus. Paste a title list (Claude scores each), a sparse CSV (title + author), or the full CSV schema. See data/CATALOG.md for column definitions." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Import your 100-book corpus. Paste a title list or a CSV with any subset of the schema — the only required columns are title and author. Claude fills every other field on Enrich; anything you did provide is kept and marked human-sourced. See data/CATALOG.md for the full column list." })
       ]),
       util.el("span", {
         class: "settings-badge " + (currentCount ? "settings-badge-ok" : "settings-badge-missing"),
@@ -2250,11 +2291,17 @@
       })
     ]));
 
-    // Mode switcher
+    // Mode switcher — two paths.
+    //  - Titles list: one 'Title — Author' per line. Claude fills
+    //    every field.
+    //  - CSV: any columns from the schema (see data/CATALOG.md). Only
+    //    'title' and 'author' are required; missing columns are queued
+    //    for Claude on Enrich. Rows with all columns filled are used
+    //    as-is and marked "human"-sourced so a later re-enrich won't
+    //    overwrite them.
     const modes = [
-      { id: "titles",      label: "Titles list",   hint: "One 'Title — Author' per line. Claude fills everything." },
-      { id: "csv-sparse",  label: "CSV sparse",    hint: "Columns: title, author [, description]. Claude fills the rest." },
-      { id: "csv-full",    label: "CSV full",      hint: "Full 26-column schema, applied as-is." }
+      { id: "titles", label: "Titles list", hint: "One 'Title — Author' per line. Claude fills every field on Enrich." },
+      { id: "csv",    label: "CSV",         hint: "Any columns from the schema work. Only title + author are required — Claude fills any gaps on Enrich; fields you did provide are kept and marked human-sourced." }
     ];
     const modeBar = util.el("div", { class: "segmented", role: "group", "aria-label": "Input mode" });
     modes.forEach(m => {
