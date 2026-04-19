@@ -3778,7 +3778,7 @@
     {
       id: "greeting",
       match: (t) => /^\s*(hi|hello|hey|good\s*(morning|evening|afternoon))\b/i.test(t),
-      handler: () => `Hi. I'm here — ask what to read tonight, why a book landed where it did, or how to compare two titles.`
+      handler: () => `Hi. I'm here — ask what to read tonight, why a book landed where it did, or how to compare three titles.`
     },
     {
       id: "library-count",
@@ -3952,7 +3952,7 @@
     const s = store.get();
     if (s.chats.sara.length === 0) {
       appendChatMessage("sara", null, "sara",
-        `Hi — I'm Sara. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare two titles, or to help you journal a reaction. Everything here is private.`);
+        `Hi — I'm Sara. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare three titles, or to help you journal a reaction. Everything here is private.`);
     }
   }
 
@@ -4474,14 +4474,21 @@
     cmpState.slots.forEach((id, idx) => {
       const b = id ? findBook(id) : null;
       if (b) {
-        const filled = util.el("div", { class: "cmp-slot" });
-        filled.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
-        filled.appendChild(util.el("div", { class: "cmp-slot-title", text: b.title }));
-        filled.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
-        filled.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
+        const filled = util.el("div", { class: "cmp-slot filled" });
+        if (b.thumbnail) {
+          const cover = util.el("img", { class: "cmp-slot-cover", src: b.thumbnail, alt: "" });
+          cover.onerror = () => cover.remove();
+          filled.appendChild(cover);
+        }
+        const body = util.el("div", { class: "cmp-slot-body" });
+        body.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
+        body.appendChild(util.el("div", { class: "cmp-slot-title", text: b.title }));
+        body.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
+        body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
           util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => openSlotPicker(idx) }, "Replace"),
           util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; renderView(); } }, "Remove")
         ]));
+        filled.appendChild(body);
         slots.appendChild(filled);
       } else {
         slots.appendChild(util.el("div", { class: "cmp-slot empty", onclick: () => openSlotPicker(idx) }, [
@@ -4869,10 +4876,10 @@
       wrap.appendChild(util.el("div", { class: "card card-accent" }, [
         util.el("div", { class: "t-eyebrow", text: "Sara · your guide" }),
         util.el("h3", { class: "t-serif", style: { marginTop: "4px" }, text: "What are you in the mood for today?" }),
-        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: "I can help you narrow down by mood, compare two titles side by side, or reflect on what you just read." }),
+        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: "I can help you narrow down by mood, compare three titles side by side, or reflect on what you just read." }),
         util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } }, [
           util.el("button", { class: "btn btn-sm", onclick: () => router.go("chat") }, "Talk with Sara"),
-          util.el("button", { class: "btn btn-sm", onclick: () => router.go("compare") }, "Compare two titles"),
+          util.el("button", { class: "btn btn-sm", onclick: () => router.go("compare") }, "Compare three titles"),
           util.el("button", { class: "btn btn-sm", onclick: () => router.go("journal") }, "Write a reflection")
         ])
       ]));
