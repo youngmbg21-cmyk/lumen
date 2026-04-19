@@ -192,9 +192,253 @@
   }
 
   // ============================================================
+  // POPULATORS — each function reads from filteredBooks() / state
+  // and writes innerHTML into a specific container in the wrap.
+  // Verbatim parity with lumen_terminal.html; element ids match
+  // the reference so the markup template can be lifted unchanged
+  // in a later chunk.
+  // ============================================================
+
+  // ---------- KPI strip — six cells, sparklines anchored R/B ----------
+  function renderKPIs(root) {
+    const list  = filteredBooks();
+    const total = rawBooks().length;
+    const avgFit = list.length ? Math.round(list.reduce((s, b) => s + b.fit, 0) / list.length) : 0;
+    const top    = list[0]?.fit || 0;
+    const strong = list.filter(b => b.fit >= 70).length;
+    const avgHeat = list.length ? (list.reduce((s, b) => s + b.heat, 0) / list.length).toFixed(1) : "0";
+    const cells = [
+      { label: "CATALOGUE", val: `<em>${total}</em>`, sub: "curated titles", cls: "gold",
+        spark: [80, 85, 90, 95, 100, 100] },
+      { label: "IN VIEW", val: `<em>${list.length}</em>`,
+        sub: `${total ? Math.round(list.length / total * 100) : 0}% of library`, cls: "",
+        spark: [60, 75, 65, 80, 90, list.length] },
+      { label: "AVG FIT", val: `${avgFit}<span class="unit">%</span>`,
+        sub: `<span class="kpi-delta up">▲ ${Math.max(0, avgFit - 55)}pp vs library</span>`, cls: "",
+        spark: [45, 50, 55, 58, 65, avgFit] },
+      { label: "TOP FIT", val: `${top}<span class="unit">%</span>`,
+        sub: list[0] ? escapeHtml(list[0].title.slice(0, 18)) : "—", cls: "gold",
+        spark: [70, 75, 80, 82, 85, top] },
+      { label: "STRONG ≥70", val: `<em>${strong}</em>`,
+        sub: `${list.length ? Math.round(strong / list.length * 100) : 0}% of view`, cls: "good",
+        spark: [5, 8, 12, 18, 22, strong] },
+      { label: "AVG HEAT", val: `<em>${avgHeat}</em>`, sub: "on 1-5 scale", cls: "blush",
+        spark: [3.5, 3.8, 4.0, 4.1, 4.2, parseFloat(avgHeat)] }
+    ];
+    $(root, "#kpiStrip").innerHTML = cells.map(k => `
+      <div class="kpi-cell ${k.cls}">
+        <div class="kpi-cell-label">${k.label}</div>
+        <div class="kpi-cell-val">${k.val}</div>
+        <div class="kpi-cell-sub">${k.sub}</div>
+        ${sparklineSVG(k.spark)}
+      </div>`).join("");
+  }
+
+  // ---------- Heat × Explicit matrix ----------
+  function renderHeatmap(root) {
+    const list = filteredBooks();
+    const grid = [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+    list.forEach(b => { grid[5 - b.heat][b.explicit - 1]++; });
+    const max = Math.max(1, ...grid.flat());
+    const rows = [];
+    rows.push(`<div class="heatmap-row hdr"><div>H ↓ / E →</div>${[1,2,3,4,5].map(n => `<div>${n}</div>`).join("")}</div>`);
+    for (let i = 0; i < 5; i++) {
+      const heatLvl = 5 - i;
+      const cells = [`<div class="heatmap-row-label">H${heatLvl}</div>`];
+      for (let j = 0; j < 5; j++) {
+        const v = grid[i][j];
+        if (v === 0) {
+          cells.push(`<div class="heatmap-cell empty" title="Heat ${heatLvl} · Explicit ${j+1}: no titles"></div>`);
+        } else {
+          const intensity = v / max;
+          const alpha = 0.18 + intensity * 0.7;
+          const color = `rgba(184,74,98,${alpha.toFixed(2)})`;
+          const textColor = intensity > 0.55 ? "#fff" : "var(--text)";
+          cells.push(`<div class="heatmap-cell" style="background:${color};color:${textColor};" title="Heat ${heatLvl} · Explicit ${j+1}: ${v} titles">${v}</div>`);
+        }
+      }
+      rows.push(`<div class="heatmap-row">${cells.join("")}</div>`);
+    }
+    $(root, "#heatmap").innerHTML = rows.join("");
+  }
+
+  // ---------- Trope frequency bars ----------
+  function renderTropeBar(root) {
+    const list = filteredBooks();
+    const counts = {};
+    list.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const max = Math.max(1, ...entries.map(e => e[1]));
+    const html = entries.map(([name, n], i) => {
+      const cls = i % 3 === 0 ? "" : i % 3 === 1 ? "sage" : "violet";
+      return `<div class="bar-row">
+        <div class="bar-label" title="${escapeHtml(name)}">${escapeHtml(name.replace(/-/g, " "))}</div>
+        <div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max)*100}%"></div></div>
+        <div class="bar-val">${n}</div>
+      </div>`;
+    }).join("");
+    $(root, "#tropeBar").innerHTML = html ||
+      `<div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);font-size:12px;text-align:center;padding:10px;">No data in current filter</div>`;
+  }
+
+  // ---------- Publication-era bars ----------
+  function renderEraBar(root) {
+    const list = filteredBooks();
+    const buckets = [
+      { label: "Pre-1950",  test: y => y > 0 && y < 1950 },
+      { label: "1950-1999", test: y => y >= 1950 && y < 2000 },
+      { label: "2000-2009", test: y => y >= 2000 && y < 2010 },
+      { label: "2010-2014", test: y => y >= 2010 && y < 2015 },
+      { label: "2015-2019", test: y => y >= 2015 && y < 2020 },
+      { label: "2020+",     test: y => y >= 2020 }
+    ];
+    const data = buckets.map(b => ({ label: b.label, n: list.filter(x => x.year && b.test(x.year)).length }));
+    const max = Math.max(1, ...data.map(d => d.n));
+    $(root, "#eraBar").innerHTML = data.map(d => `<div class="bar-row">
+      <div class="bar-label">${escapeHtml(d.label)}</div>
+      <div class="bar-track"><div class="bar-fill blush" style="width:${(d.n/max)*100}%"></div></div>
+      <div class="bar-val">${d.n}</div>
+    </div>`).join("");
+  }
+
+  // ---------- Radar SVG (compass + overlap) — verbatim ----------
+  function renderRadar(svgEl, values, comparisonValues) {
+    const axes = ["heat", "explicit", "emotion", "consent", "taboo", "plot"];
+    const R = 85;
+    const pts = axes.map((a, i) => {
+      const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+      const r = (values[a] / 5) * R;
+      return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    });
+    const axisLines = axes.map((a, i) => {
+      const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+      const x = Math.cos(angle) * R, y = Math.sin(angle) * R;
+      const lx = Math.cos(angle) * (R + 14), ly = Math.sin(angle) * (R + 14);
+      return `<line class="compass-axis" x1="0" y1="0" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>
+              <text class="compass-label-text" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${a.toUpperCase().slice(0, 4)}</text>`;
+    }).join("");
+    const rings = [0.25, 0.5, 0.75, 1].map(r =>
+      `<circle class="compass-ring" cx="0" cy="0" r="${r * R}"/>`).join("");
+    const shape = `M ${pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ")} Z`;
+    let cmpShape = "";
+    if (comparisonValues) {
+      const cmpPts = axes.map((a, i) => {
+        const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+        const r = (comparisonValues[a] / 5) * R;
+        return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+      });
+      const cmp = `M ${cmpPts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" L ")} Z`;
+      cmpShape = `<path d="${cmp}" fill="var(--gold-soft)" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="3 2" stroke-linejoin="round"/>`;
+    }
+    const points = pts.map(p =>
+      `<circle class="compass-point" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5"/>`).join("");
+    svgEl.innerHTML = rings + axisLines + cmpShape +
+      `<path d="${shape}" class="compass-shape"/>` + points;
+  }
+
+  // ---------- Ticker — top fits, seamless loop via duplication ----------
+  function renderTicker(root) {
+    const list = filteredBooks();
+    const top = list.slice(0, 12);
+    const items = top.map(b => {
+      const delta = Math.floor(Math.random() * 12 - 3);
+      const sign = delta >= 0 ? "+" : "";
+      const cls  = delta >= 0 ? "" : "neg";
+      return `<span class="ticker-item">
+        <span class="ticker-symbol">${initials(b.title) + initials(b.author)}</span>
+        <span class="ticker-val">${b.fit}%</span>
+        <span class="ticker-delta ${cls}">${sign}${delta}</span>
+      </span>`;
+    });
+    const tickEl = $(root, "#ticker");
+    if (!items.length) {
+      tickEl.innerHTML = `<span class="ticker-item">Load a catalogue to light the ticker.</span>`;
+      return;
+    }
+    tickEl.innerHTML = items.join("") + items.join("");
+  }
+
+  // ---------- Subgenre distribution footer ----------
+  function renderDistribution(root, rerender) {
+    const counts = {}, heatTotals = {};
+    rawBooks().forEach(b => {
+      counts[b.subgenre]    = (counts[b.subgenre] || 0) + 1;
+      heatTotals[b.subgenre] = (heatTotals[b.subgenre] || 0) + b.heat;
+    });
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    const body = $(root, "#distributionBody");
+    body.innerHTML = entries.map(([name, count]) => {
+      const avgHeat = (heatTotals[name] / count).toFixed(1);
+      const active = termState.subgenreFilter === name;
+      return `<div class="genre-tile ${active ? "filter-active" : ""}" data-genre="${escapeHtml(name)}">
+        <div class="genre-tile-name">${escapeHtml(name)}</div>
+        <div class="genre-tile-stats">
+          <div class="genre-tile-count">${count}</div>
+          <div class="genre-tile-avg">HEAT ${avgHeat}</div>
+        </div>
+      </div>`;
+    }).join("");
+    body.querySelectorAll(".genre-tile").forEach(t => {
+      t.addEventListener("click", () => {
+        const g = t.dataset.genre;
+        termState.subgenreFilter = (termState.subgenreFilter === g) ? null : g;
+        const sub = $(root, "#distSub");
+        if (sub) sub.textContent = termState.subgenreFilter ? `filtered: ${termState.subgenreFilter}` : "click to filter";
+        rerender();
+      });
+    });
+  }
+
+  // ---------- Catalogue grid — sortable, dense, click-to-select ----------
+  function renderGrid(root, rerender) {
+    const list = filteredBooks();
+    const body = $(root, "#gridBody");
+    body.innerHTML = list.map(b => {
+      const fitCls = b.fit >= 75 ? "strong" : b.fit >= 55 ? "mid" : "low";
+      const subg = b.subgenre || "—";
+      const sig = [...(b.tone || []).slice(0, 1), ...(b.dynamic || []).slice(0, 1),
+                   ...(b.trope || []).slice(0, 1)].slice(0, 2).map(s => s.replace(/-/g, " ")).join(" · ");
+      return `<tr data-id="${escapeHtml(b.id)}" class="${termState.selectedId === b.id ? "selected" : ""}">
+        <td class="fit-col ${fitCls}" title="Fit: ${b.fit}% · Confidence: ${b.confidence}%">
+          ${b.fit}
+          <div class="mini-bar" style="margin-top:2px;"><div class="mini-bar-fill" style="width:${b.fit}%"></div></div>
+        </td>
+        <td class="title-col"  title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</td>
+        <td class="author-col" title="${escapeHtml(b.author)}">${escapeHtml(b.author)}</td>
+        <td class="num-col">${b.year || "—"}</td>
+        <td class="sub-col" title="${escapeHtml(subg)}">${escapeHtml(subg)}</td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.heat)}">${b.heat}</span></td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.explicit)}">${b.explicit}</span></td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.emotion)}">${b.emotion}</span></td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.consent)}">${b.consent}</span></td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.taboo)}">${b.taboo}</span></td>
+        <td class="num-col"><span class="rate-pill ${rateClass(b.plot)}">${b.plot}</span></td>
+        <td class="sub-col" style="color:var(--accent-deep);font-style:italic;font-family:'Cormorant Garamond',serif;font-size:12px;">${escapeHtml(sig) || "—"}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--text-mute);font-family:'Cormorant Garamond',serif;font-style:italic;">No titles match current filters</td></tr>`;
+
+    body.querySelectorAll("tr[data-id]").forEach(row => {
+      row.addEventListener("click", () => {
+        termState.selectedId = row.dataset.id;
+        rerender();
+      });
+    });
+
+    const countEl = $(root, "#gridCount");
+    if (countEl) countEl.textContent = list.length;
+    root.querySelectorAll("#dataGrid thead th").forEach(th => {
+      th.classList.remove("sorted", "asc");
+      if (th.dataset.sort === termState.sortKey) {
+        th.classList.add("sorted");
+        if (termState.sortDir === "asc") th.classList.add("asc");
+      }
+    });
+  }
+
+  // ============================================================
   // PLACEHOLDER render() — keeps the tab alive while subsequent
-  // chunks (populators, command bar, dashboard, event wiring) are
-  // written. Replaced in the final chunk.
+  // chunks (command bar template, dashboard scaffold, event
+  // wiring, detail/similar/insight) are written.
   // ============================================================
   function render() {
     const wrap = document.createElement("div");
@@ -215,6 +459,11 @@
     _shape:    toTerminalShape,
     _raw:      rawBooks,
     _filtered: filteredBooks,
-    _score:    scoreBook
+    _score:    scoreBook,
+    _populators: {
+      kpis: renderKPIs, heatmap: renderHeatmap, tropes: renderTropeBar,
+      era:  renderEraBar, radar: renderRadar, ticker: renderTicker,
+      distribution: renderDistribution, grid: renderGrid
+    }
   };
 })();
