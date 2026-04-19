@@ -671,11 +671,7 @@
 
     <main class="centre-col">
       <div class="kpi-strip" id="kpiStrip"></div>
-      <div class="charts-row">
-        <div class="panel">
-          <div class="panel-head"><span class="panel-title">Heat × Explicitness matrix</span><span class="panel-sub">catalogue distribution</span></div>
-          <div class="heatmap-wrap" id="heatmap"></div>
-        </div>
+      <div class="charts-row charts-row-2col">
         <div class="panel">
           <div class="panel-head"><span class="panel-title">Trope frequency</span><span class="panel-sub">top signals</span></div>
           <div class="barchart" id="tropeBar"></div>
@@ -794,7 +790,6 @@
     // Run populators
     renderRadar($(wrap, "#userRadar"), termState.profile);
     renderKPIs(wrap);
-    renderHeatmap(wrap);
     renderTropeBar(wrap);
     renderEraBar(wrap);
     renderTicker(wrap);
@@ -822,7 +817,7 @@
     $(wrap, "#searchInput").addEventListener("input", e => {
       termState.search = e.target.value;
       renderKPIs(wrap); renderGrid(wrap, rerender); renderInsight(wrap);
-      renderHeatmap(wrap); renderTropeBar(wrap); renderEraBar(wrap);
+      renderTropeBar(wrap); renderEraBar(wrap);
     });
 
     // Sortable headers
