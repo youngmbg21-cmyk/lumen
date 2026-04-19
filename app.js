@@ -80,7 +80,17 @@
       if (!raw) return initialState();
       const parsed = JSON.parse(raw);
       if (!parsed || parsed.schema !== SCHEMA_VERSION) return initialState();
-      return Object.assign(initialState(), parsed);
+      const merged = Object.assign(initialState(), parsed);
+      // Back-fill persona/preference keys added after first release so
+      // older states pick up the defaults instead of rendering as
+      // undefined. Applied to profile only — everything else is
+      // already handled by the shallow Object.assign above.
+      merged.profile = Object.assign({}, DEFAULT_PROFILE, merged.profile || {});
+      // Same for the chats submap so newer arrays (saraPinned,
+      // dailyPicksRejected) exist on upgrade.
+      merged.chats = Object.assign({ sara: [], saraPinned: [], friends: [] }, merged.chats || {});
+      if (!merged.dailyPicksRejected) merged.dailyPicksRejected = {};
+      return merged;
     } catch (e) {
       return initialState();
     }
@@ -3569,6 +3579,138 @@
   // Back-compat — old callers of computeSaraContext(routeId) get
   // the same shape, but we discard everything except route/chips.
   // The richer data lives on the context object now.
+  // ============================================================
+  // Sara system context — flattens buildSaraContext() into the
+  // prompt-ready string that's appended to the persona in
+  // chatWithSara(). Format is readable JSON-ish plain text so the
+  // model can cite fields back verbatim. Kept short — hard
+  // constraints land loud, soft constraints read as hints, big
+  // lists are truncated.
+  // ============================================================
+  function buildSaraSystemContext(routeId) {
+    const ctx = buildSaraContext(routeId);
+    const s = store.get();
+    const now = new Date();
+
+    // Collect last 5 rated books. bookStates has "want" / "reading"
+    // / "read" / "skip". Treat "read" as rated. If no ratings exist,
+    // fall back to the most recently-added library entries.
+    const allRated = Object.entries(s.bookStates || {})
+      .filter(([, v]) => v === "read")
+      .map(([id]) => findBook(id))
+      .filter(Boolean)
+      .slice(0, 5);
+    const wantToRead = Object.entries(s.bookStates || {})
+      .filter(([, v]) => v === "want")
+      .map(([id]) => findBook(id))
+      .filter(Boolean)
+      .slice(0, 8);
+
+    // Truncate the library roster to the 12 highest-fit books so
+    // the model has usable ids to emit in ENHANCED_BOOK_CARD markers
+    // without bloating the prompt.
+    const topLibrary = (ctx.dailyPicks || []).concat(
+      ctx.saraPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
+    );
+    const rosterIds = new Set(topLibrary.map(b => b.id));
+    for (const b of listAllBooks().slice(0, 12)) {
+      if (rosterIds.size >= 14) break;
+      if (!rosterIds.has(b.id) && !(s.hidden || {})[b.id]) {
+        topLibrary.push({ id: b.id, title: b.title, author: b.author, fitScore: null });
+        rosterIds.add(b.id);
+      }
+    }
+
+    const profile = ctx.user.profile;
+    const pushLine = (arr, k, v) => { if (v !== "" && v !== null && v !== undefined) arr.push(`${k}: ${v}`); };
+    const personaLines = [];
+    pushLine(personaLines, "readingLevel",     profile.readingLevel || "casual");
+    pushLine(personaLines, "formatPreference", profile.formatPreference || "any");
+    pushLine(personaLines, "spoilersEnabled",  !!profile.spoilersEnabled);
+    pushLine(personaLines, "warnStrict",       profile.warnStrict);
+    pushLine(personaLines, "heat",    `${profile.heat}/5`);
+    pushLine(personaLines, "explicit", `${profile.explicit}/5`);
+    pushLine(personaLines, "consent floor", `>=${profile.consent}/5`);
+    pushLine(personaLines, "taboo tolerance", `${profile.taboo}/5`);
+    pushLine(personaLines, "plot weight", `${profile.plot}/5`);
+    if ((profile.tone || []).length)   personaLines.push(`tone preferences: ${profile.tone.join(", ")}`);
+    if ((profile.trope || []).length)  personaLines.push(`tropes drawn to: ${profile.trope.join(", ")}`);
+    if ((profile.kink || []).length)   personaLines.push(`kink tags: ${profile.kink.join(", ")}`);
+    if ((profile.exclude || []).length)
+      personaLines.push(`HARD exclusions (never recommend books carrying these): ${profile.exclude.join(", ")}`);
+
+    const focusLines = [];
+    if (ctx.focus && ctx.focus.book) {
+      const f = ctx.focus.book;
+      focusLines.push(`activeBook: ${f.title} (id=${f.id})`);
+      focusLines.push(`activeBookFitScore: ${f.fitScore || "n/a"}`);
+      focusLines.push(`activeBookHeat: ${f.heat || "n/a"}/5`);
+      focusLines.push(`activeBookReadingState: ${f.readingState}`);
+      if ((f.warnings || []).length) focusLines.push(`activeBookWarnings: ${f.warnings.slice(0, 5).join(", ")}`);
+    } else {
+      focusLines.push("activeBook: (none — user is browsing)");
+    }
+
+    const lib = ctx.library;
+    const libLines = [
+      `visibleTotal: ${lib.visibleTotal}`,
+      `curatedCount: ${lib.curatedCount}`,
+      `discoveredCount: ${lib.discoveredCount}`,
+      `averageFit: ${lib.averageFit}`
+    ];
+
+    const pickLines = (ctx.dailyPicks || []).map((p, i) =>
+      `${i + 1}. ${p.title} by ${p.author} (id=${p.id}, fit=${p.fitScore}${p.warnings.length ? ", warnings=" + p.warnings.length : ""})`);
+    const rejectedPickLines = (ctx.dailyPicksRejected || []).slice(0, 6).map(r => `- ${r.title} (id=${r.id})`);
+
+    const ratedLines = allRated.length
+      ? allRated.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
+      : ["(none yet)"];
+    const wantLines = wantToRead.length
+      ? wantToRead.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
+      : ["(nothing saved to want-to-read)"];
+    const rosterLines = topLibrary.slice(0, 14).map(b =>
+      `- ${b.title}${b.author ? " by " + b.author : ""} (id=${b.id})`);
+
+    const pinnedLines = (ctx.saraPinned || []).map(p => `- ${p.title} (id=${p.id})`);
+    const compareLines = (ctx.compare.slots || []).filter(Boolean).map(c => `- ${c.title} (id=${c.id}, fit=${c.fit})`);
+
+    return [
+      `sessionAt: ${now.toISOString()}`,
+      `route: ${ctx.route}`,
+      ``,
+      `--- persona & hard constraints ---`,
+      ...personaLines,
+      ``,
+      `--- environmental focus ---`,
+      ...focusLines,
+      ``,
+      `--- library history (last 5 rated / "read") ---`,
+      ...ratedLines,
+      ``,
+      `--- want to read (up to 8) ---`,
+      ...wantLines,
+      ``,
+      `--- library roster (for ENHANCED_BOOK_CARD ids) ---`,
+      ...rosterLines,
+      ``,
+      `--- daily picks on screen ---`,
+      ...(pickLines.length ? pickLines : ["(none)"]),
+      ``,
+      `--- pinned to Sara ---`,
+      ...(pinnedLines.length ? pinnedLines : ["(none)"]),
+      ``,
+      `--- rejected (never recommend as a daily pick) ---`,
+      ...(rejectedPickLines.length ? rejectedPickLines : ["(none)"]),
+      ``,
+      `--- compare slots ---`,
+      ...(compareLines.length ? compareLines : ["(none)"]),
+      ``,
+      `--- library stats ---`,
+      ...libLines
+    ].join("\n");
+  }
+
   function computeSaraContext(routeId) {
     const ctx = buildSaraContext(routeId);
     // Chips preserved for the top strip.
@@ -4920,6 +5062,52 @@
       excludeCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Any book tagged with these is removed entirely" }));
       col.appendChild(excludeCard);
 
+      // --- Companion preferences (Sara) ------------------------------------
+      // How Sara tailors her tone and what she filters out of her
+      // replies. Hard constraint: spoilers. Soft constraints:
+      // reading level, format preference.
+      const companionCard = util.el("div", { class: "card stack" });
+      companionCard.appendChild(util.el("div", { class: "card-head" }, [
+        util.el("h3", { html: "Companion <em>preferences</em>" }),
+        util.el("span", { class: "card-sub t-subtle", text: "Sara reads these on every turn" })
+      ]));
+
+      companionCard.appendChild(buildFieldLabel("Reading level", "register"));
+      companionCard.appendChild(segmented("readingLevel", [
+        { label: "Casual",   value: "casual" },
+        { label: "Literary", value: "literary" },
+        { label: "Academic", value: "academic" }
+      ]));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Guides Sara's vocabulary and sentence rhythm. Casual = a friend over coffee; Academic = a seminar aside." }));
+
+      companionCard.appendChild(buildFieldLabel("Format preference", "medium"));
+      companionCard.appendChild(segmented("formatPreference", [
+        { label: "Any",       value: "any" },
+        { label: "Audiobook", value: "audiobook" },
+        { label: "Ebook",     value: "ebook" },
+        { label: "Hardcover", value: "hardcover" },
+        { label: "Paperback", value: "paperback" }
+      ]));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "If you pick Audiobook, Sara leads with narrator quality when she names a book." }));
+
+      const spoilersToggle = util.el("label", { class: "toggle", style: { marginTop: "var(--s-3)" } });
+      const spoilerInput = util.el("input", {
+        type: "checkbox",
+        checked: store.get().profile.spoilersEnabled ? "checked" : null,
+        onchange: (e) => {
+          const on = !!e.target.checked;
+          store.update(s2 => { s2.profile.spoilersEnabled = on; });
+          refreshProfilePreview();
+        }
+      });
+      spoilersToggle.appendChild(spoilerInput);
+      spoilersToggle.appendChild(util.el("span", { class: "toggle-track" }));
+      spoilersToggle.appendChild(util.el("span", { class: "toggle-label", text: "Allow plot spoilers" }));
+      companionCard.appendChild(spoilersToggle);
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Off by default — Sara will name themes and beats but not twists. Flip on if you prefer a full read-out." }));
+
+      col.appendChild(companionCard);
+
       // --- Quick scenarios ------------------------------------------------
       const scenariosCard = util.el("div", { class: "card" });
       scenariosCard.appendChild(util.el("div", { class: "card-head" }, [
@@ -5631,7 +5819,8 @@
   // Public surface for sara.js — keep this list small and intentional.
   window.Lumen = {
     store, router, ui, util, views, ROUTES, saraRespond,
-    findBook, listAllBooks, openBookDetail
+    findBook, listAllBooks, openBookDetail,
+    buildSaraSystemContext
   };
   document.addEventListener("DOMContentLoaded", boot);
 })();
