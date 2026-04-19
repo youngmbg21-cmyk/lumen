@@ -1009,7 +1009,221 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* ============================================================
-   END OF CHUNK 2 (≈500 lines)
-   Next chunk will add: similar-item list, insight card, footer
-   distribution + genre tile, toast, and responsive breakpoints.
+   SIMILAR BOOKS — overlap list under the detail panel
+   ============================================================ */
+.lumen-terminal .similar-item {
+  display: grid;
+  grid-template-columns: 34px 1fr 44px;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border-faint);
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.lumen-terminal .similar-item:last-child { border-bottom: none; }
+.lumen-terminal .similar-item:hover      { background: var(--bg-sunk); }
+.lumen-terminal .similar-item-cover {
+  width: 34px; height: 44px;
+  border-radius: 3px;
+  background: var(--bg-deep);
+  object-fit: cover;
+  object-position: center;
+}
+.lumen-terminal .similar-item-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lumen-terminal .similar-item-author {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 10px;
+  color: var(--text-mute);
+}
+.lumen-terminal .similar-item-score {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  text-align: right;
+}
+
+/* ============================================================
+   INSIGHT CARD — Editor's brief
+   ============================================================ */
+.lumen-terminal .insight {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+.lumen-terminal .insight::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle at top right, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+}
+.lumen-terminal .insight-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.lumen-terminal .insight-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  line-height: 1.25;
+}
+.lumen-terminal .insight-title em { font-style: italic; color: var(--accent-deep); }
+.lumen-terminal .insight-body {
+  font-size: 11px;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+/* ============================================================
+   FOOTER STRIP — subgenre distribution tiles
+   ============================================================ */
+.lumen-terminal .footer-strip {
+  padding: 14px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+.lumen-terminal .distribution-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.lumen-terminal .distribution-head {
+  padding: 10px 16px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border-faint);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.lumen-terminal .distribution-body {
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.lumen-terminal .genre-tile {
+  background: var(--bg-sunk);
+  border-radius: 8px;
+  padding: 10px 12px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.18s;
+  border: 1px solid transparent;
+}
+.lumen-terminal .genre-tile:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+}
+.lumen-terminal .genre-tile.filter-active {
+  border-color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+.lumen-terminal .genre-tile-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.lumen-terminal .genre-tile-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.lumen-terminal .genre-tile-count {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.lumen-terminal .genre-tile-avg {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+/* ============================================================
+   TOAST — transient feedback (theme switch, etc.)
+   Fixed to viewport, not scoped to terminal area, so it floats
+   above everything when shown.
+   ============================================================ */
+.lumen-terminal #toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--text);
+  color: var(--bg-surface);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-lift);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.25s;
+  pointer-events: none;
+  z-index: 999;
+  font-family: 'DM Sans', sans-serif;
+}
+.lumen-terminal #toast.show { opacity: 1; transform: translateY(0); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 1400px) {
+  .lumen-terminal .dashboard   { grid-template-columns: 240px 1fr 280px; }
+  .lumen-terminal .charts-row  { grid-template-columns: 1fr 1fr; }
+  .lumen-terminal .charts-row > :nth-child(3) { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .lumen-terminal .dashboard   { grid-template-columns: 1fr; }
+  .lumen-terminal .kpi-strip   { grid-template-columns: repeat(3, 1fr); }
+  .lumen-terminal .ticker-wrap { display: none; }
+}
+@media (max-width: 720px) {
+  .lumen-terminal .dashboard   { padding: 8px; gap: 8px; }
+  .lumen-terminal .kpi-strip   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .lumen-terminal .charts-row  { grid-template-columns: 1fr; }
+  .lumen-terminal .data-grid   { font-size: 10px; }
+  .lumen-terminal .data-grid td { padding: 5px 6px; }
+  .lumen-terminal .command-bar { grid-template-columns: auto auto; gap: 10px; padding: 8px 12px; }
+  .lumen-terminal .command-bar > :nth-child(2) { display: none; }
+  .lumen-terminal .distribution-body { grid-template-columns: repeat(2, 1fr); }
+}
+
+/* ============================================================
+   CSS PORT COMPLETE — ready for terminal.js DOM rewrite (step 2)
    ============================================================ */
