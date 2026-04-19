@@ -1402,18 +1402,9 @@
 
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Discovery · erotica novels only" }),
+        util.el("div", { class: "t-eyebrow", text: "Discovery" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Discovery returns erotica novels only. Romance, literary fiction, psychology, self-help, workplace and leadership books, relationship advice, sociology, memoirs, essays, academic titles, manuals and guides are all actively excluded." })
-      ])
-    ]));
-
-    // Erotica-only notice — always visible above the search so the
-    // restriction is unmistakable, in both tailored and broad modes.
-    wrap.appendChild(util.el("div", { class: "card card-quiet", style: { padding: "var(--s-3)", borderLeft: "3px solid var(--accent)" } }, [
-      util.el("div", { class: "t-small" }, [
-        util.el("strong", { text: "Erotica novels only — hard filter. " }),
-        util.el("span", { class: "t-muted", text: "Three independent gates reject non-erotica: (1) the Google Books query ANDs subject:Erotica + subject:Fiction and negatively excludes Psychology, Social Science, Self-Help, Business & Economics, Family & Relationships, Body Mind & Spirit, Religion, Health, Philosophy, Memoir, Biography, History, Literary Criticism, Essays, Poetry and Juvenile / Young Adult subjects; (2) a local metadata gate requires a Google Books category containing the literal word 'erotica', blocks adjacent-genre categories, and rejects title / description patterns like 'workbook', 'handbook', 'psychology of', 'leadership', 'workplace', 'case study', 'how to'; (3) Claude's classifier must return isErotica=true with ≥75 confidence, format in {erotica-novel, erotic-romance-novel}, and no non-fiction signal. When in doubt, a result is rejected." })
+        util.el("p", { class: "lede", text: "Search Google Books for any title, author, or topic. Claude reads the result and returns heat, tropes, and a one-line insight you can use to decide whether it belongs in your Library." })
       ])
     ]));
 
@@ -1421,7 +1412,7 @@
     const hero = util.el("div", { class: "disco-hero" });
     const searchInput = util.el("input", {
       class: "disco-hero-input",
-      placeholder: "Search erotica titles, authors, or themes…",
+      placeholder: "Search titles, authors, or themes…",
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
@@ -1467,7 +1458,7 @@
       hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
       hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
-      hintLead.textContent = "Up to six erotica novels from Google Books · Claude analyzes each for heat, tropes, and one calm insight, and rejects anything that isn't novel-fiction erotica.";
+      hintLead.textContent = "Up to six Google Books results · Claude reads each for heat, tropes, and a one-line insight.";
       hint.appendChild(hintLead);
     }
     hint.appendChild(modeSegmented);
@@ -1535,7 +1526,7 @@
     else {
       grid.appendChild(util.el("div", { class: "discovery-empty" }, [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Erotica-only. Search a title, author, or theme and Claude will classify every result, rejecting anything that isn't novel-fiction erotica. Set your API key in Settings first." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a title, author, or theme and Claude will read each blurb as it arrives. Set your API key in Settings first." })
       ]));
     }
 
@@ -1549,7 +1540,7 @@
         return;
       }
       discoveryState.raw.forEach(book => grid.appendChild(renderDiscoCard(book)));
-      resultsLabel.textContent = `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
+      resultsLabel.textContent = `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`;
     }
 
     async function runSearch() {
@@ -1600,10 +1591,10 @@
       }
 
       if (!items.length) {
-        resultsLabel.textContent = `No erotica results for "${q}"`;
+        resultsLabel.textContent = `No results for "${q}"`;
         grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "No erotica matches for that query" }),
-          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Discovery is restricted to novel-fiction erotica. Non-erotica titles that would otherwise match have been filtered out. Try a more specific erotica-leaning keyword, an author known for the genre, or an erotica subgenre." })
+          util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing matched that query" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Try a different title, author, or topic." })
         ]));
         return;
       }
@@ -1614,31 +1605,13 @@
 
       // Analyse sequentially so the status badge narrates progress.
       // In Tailored mode we re-sort the whole list every time a new
-      // analysis completes so higher-fit items bubble up live. Claude
-      // doubles as an erotica-only classifier — any title it flags as
-      // non-erotica is removed from the feed so the strict restriction
-      // applies even to edge cases the keyword filter misses.
-      let rejected = 0;
+      // Enrich each result with Claude — heat, tropes, one calm
+      // insight. No category filter is applied; users are free to
+      // add any Google Books result to their Library.
       for (const book of items) {
         try {
           const result = await Disco.analyzeWithClaude(book);
-          if (result && result.isErotica === false) {
-            const idx = discoveryState.raw.findIndex(b => b.id === book.id);
-            if (idx !== -1) discoveryState.raw.splice(idx, 1);
-            delete discoveryState.enrichments[book.id];
-            rejected += 1;
-            // Log the full classifier trace so it's easy to debug why
-            // a specific title was rejected in the console.
-            console.debug("[Lumen Discovery] Classifier rejected non-erotica:", {
-              title: book.title,
-              rawIsErotica: result.classifierRawIsErotica,
-              confidence: result.classifierConfidence,
-              format: result.classifierFormat,
-              nonfictionSignal: result.classifierNonfictionSignal
-            });
-          } else {
-            discoveryState.enrichments[book.id] = result;
-          }
+          discoveryState.enrichments[book.id] = result;
         } catch (err) {
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
         }
@@ -1652,16 +1625,8 @@
           paintGrid();
         } else {
           const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-          if (node && discoveryState.raw.some(b => b.id === book.id)) {
-            node.replaceWith(renderDiscoCard(book));
-          } else if (node) {
-            node.remove();
-          }
+          if (node) node.replaceWith(renderDiscoCard(book));
         }
-      }
-      if (rejected) {
-        const n = discoveryState.raw.length;
-        resultsLabel.textContent = `${n} erotica result${n === 1 ? "" : "s"} for "${q}" · ${rejected} hidden as non-erotica`;
       }
     }
 
@@ -1707,7 +1672,7 @@
           const countEl = document.getElementById("disco-count");
           if (countEl) {
             countEl.textContent = discoveryState.raw.length
-              ? `${discoveryState.raw.length} erotica result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
+              ? `${discoveryState.raw.length} result${discoveryState.raw.length === 1 ? "" : "s"} for "${discoveryState.lastQuery}"`
               : `All results dismissed — try a new search`;
           }
           ui.toast(`Dismissed ${book.title}`, {
