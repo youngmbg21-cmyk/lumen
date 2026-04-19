@@ -435,21 +435,418 @@
     });
   }
 
+  // ---------- Detail panel — selected book ----------
+  function renderDetail(root) {
+    const all = rawBooks();
+    const book = all.find(b => b.id === termState.selectedId) || all[0];
+    if (!book) return;
+    termState.selectedId = book.id;
+    const scored = Object.assign({}, book, scoreBook(book));
+
+    $(root, "#detailTitle").textContent  = book.title;
+    $(root, "#detailAuthor").textContent = `${book.author} · ${book.year || "n.d."}`;
+    const coverEl = $(root, "#detailCover");
+    coverEl.querySelectorAll("img").forEach(i => i.remove());
+    if (book.cover_url) {
+      const img = document.createElement("img");
+      img.src = book.cover_url;
+      img.onerror = () => img.remove();
+      coverEl.insertBefore(img, coverEl.firstChild);
+    }
+    const fitEl = $(root, "#detFit");
+    fitEl.textContent = scored.fit + "%";
+    fitEl.className = "detail-fit-val " + (scored.fit >= 70 ? "sage" : scored.fit >= 50 ? "" : "warn");
+    $(root, "#detConf").textContent = scored.confidence + "%";
+    $(root, "#detailSummary").textContent = book.short_summary || book.fit_notes || "";
+
+    $(root, "#detailKV").innerHTML = `
+      <dt>Subgenre</dt><dd>${escapeHtml(book.subgenre || "—")}</dd>
+      <dt>Series</dt><dd>${book.series ? escapeHtml(book.series) : `<span style="font-style:italic;color:var(--text-mute);">standalone</span>`}</dd>
+      <dt>Published</dt><dd>${book.year || "—"}</dd>
+      <dt>Pairing</dt><dd>${(book.orientation || []).map(o => escapeHtml(o.replace(/-/g, " "))).join(", ") || "—"}</dd>
+    `;
+
+    renderRadar($(root, "#detailRadar"), termState.profile, book);
+
+    const sigTags = [
+      ...(book.tone    || []).map(t => ({ text: t, cls: "" })),
+      ...(book.dynamic || []).map(t => ({ text: t, cls: "gold" })),
+      ...(book.trope   || []).map(t => ({ text: t, cls: "" })),
+      ...(book.kink    || []).map(t => ({ text: t, cls: "" }))
+    ];
+    $(root, "#detailTags").innerHTML = sigTags.length
+      ? sigTags.map(t => `<span class="detail-tag ${t.cls}">${escapeHtml(t.text.replace(/-/g, " "))}</span>`).join("")
+      : `<span style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);">no tagged signals</span>`;
+
+    const warnings = book.warnings || [];
+    $(root, "#detailWarnings").innerHTML = warnings.length
+      ? warnings.map(w => `<span class="detail-tag warn">${escapeHtml(w)}</span>`).join("")
+      : `<span style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--sage);font-size:11px;">no warnings flagged</span>`;
+  }
+
+  // ---------- Similar — top-5 by signal overlap with selected ----------
+  function renderSimilar(root, rerender) {
+    const all = rawBooks();
+    const base = all.find(b => b.id === termState.selectedId);
+    const list = $(root, "#similarList");
+    if (!base) {
+      list.innerHTML = `<div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>`;
+      return;
+    }
+    const scored = all.filter(b => b.id !== base.id).map(b => {
+      let overlap = 0;
+      overlap += new Set(base.tone).size    && b.tone    ? b.tone.filter(x => base.tone.includes(x)).length    * 3 : 0;
+      overlap += new Set(base.dynamic).size && b.dynamic ? b.dynamic.filter(x => base.dynamic.includes(x)).length * 4 : 0;
+      overlap += new Set(base.trope).size   && b.trope   ? b.trope.filter(x => base.trope.includes(x)).length   * 5 : 0;
+      overlap += new Set(base.kink).size    && b.kink    ? b.kink.filter(x => base.kink.includes(x)).length    * 2 : 0;
+      if (b.subgenre === base.subgenre) overlap += 4;
+      overlap -= Math.abs(b.heat - base.heat) + Math.abs(b.plot - base.plot);
+      return { b, overlap };
+    }).sort((x, y) => y.overlap - x.overlap).slice(0, 5);
+
+    list.innerHTML = scored.map(({ b, overlap }) => {
+      const pct = Math.max(30, Math.min(95, 40 + overlap * 4));
+      return `<div class="similar-item" data-id="${escapeHtml(b.id)}">
+        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(b.cover_url)}" onerror="this.style.display='none'"/>` : `<div class="similar-item-cover"></div>`}
+        <div style="min-width:0;">
+          <div class="similar-item-title">${escapeHtml(b.title)}</div>
+          <div class="similar-item-author">${escapeHtml(b.author)}</div>
+        </div>
+        <div class="similar-item-score">${pct}%</div>
+      </div>`;
+    }).join("");
+    list.querySelectorAll(".similar-item").forEach(el => {
+      el.addEventListener("click", () => {
+        termState.selectedId = el.dataset.id;
+        rerender();
+      });
+    });
+  }
+
+  // ---------- Editor's brief — 4-tier insight by strong-fit count ----------
+  function renderInsight(root) {
+    const list = filteredBooks();
+    const strong = list.filter(b => b.fit >= 70).length;
+    const topGenre = (() => {
+      const sums = {};
+      list.filter(b => b.fit >= 60).forEach(b => { sums[b.subgenre] = (sums[b.subgenre] || 0) + 1; });
+      return Object.entries(sums).sort((a, b) => b[1] - a[1])[0]?.[0] || "Erotic Romance";
+    })();
+    const mainTone = [...termState.profile.tone][0] || "balanced";
+    let headline, body;
+    if (strong >= 20) {
+      headline = `Her compass is <em>richly served</em>.`;
+      body = `${strong} titles score above 70% — the library has strong depth in her preferred territory. Top subgenre for her: ${escapeHtml(topGenre)}.`;
+    } else if (strong >= 8) {
+      headline = `A <em>specialist's</em> taste.`;
+      body = `${strong} titles meet her threshold. She's looking for specific signals — lean into ${escapeHtml(topGenre)} and the ${escapeHtml(mainTone)} tone range.`;
+    } else if (strong > 0) {
+      headline = `A <em>particular</em> reader.`;
+      body = `Only ${strong} titles score above 70%. Suggest widening tone filters or softening the consent floor by one step to expand the pool.`;
+    } else {
+      headline = `An <em>unmet</em> signature.`;
+      body = `No titles currently clear 70% fit. Try relaxing taboo tolerance or clearing tone filters — the catalogue is rich but narrow on her exact compass.`;
+    }
+    $(root, "#insightTitle").innerHTML = headline;
+    $(root, "#insightBody").textContent = body;
+  }
+
+  // ---------- Chip filters (tone + dynamic) ----------
+  const TONE_OPTIONS = ["dark", "intense", "obsessive", "sensual", "tender", "lyrical", "wry", "reflective", "transgressive", "playful"];
+  const DYN_OPTIONS  = ["dominance-submission", "power-exchange", "forbidden", "enemies-to-lovers", "marriage", "reverse-harem", "fated-mates", "second-chance", "courtship", "mutual-longing"];
+
+  function renderChips(root, rerender) {
+    const renderOne = (containerId, options, key) => {
+      const c = $(root, "#" + containerId);
+      c.innerHTML = options.map(o => {
+        const active = termState.profile[key].has(o);
+        return `<span class="chip ${active ? "active" : ""}" data-tag="${escapeHtml(o)}" data-key="${key}">${escapeHtml(o.replace(/-/g, " "))}</span>`;
+      }).join("");
+      c.querySelectorAll(".chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          const tag = chip.dataset.tag, k = chip.dataset.key;
+          if (termState.profile[k].has(tag)) termState.profile[k].delete(tag);
+          else termState.profile[k].add(tag);
+          rerender();
+        });
+      });
+    };
+    renderOne("toneChips",    TONE_OPTIONS, "tone");
+    renderOne("dynamicChips", DYN_OPTIONS,  "dynamic");
+  }
+
+  // ---------- Toast + system clock ----------
+  function showToast(root, msg) {
+    const t = $(root, "#toast");
+    if (!t) return;
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+  function clockText() {
+    const d = new Date(), p = n => String(n).padStart(2, "0");
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  function startClock(root) {
+    if (startClock._id) clearInterval(startClock._id);
+    startClock._id = setInterval(() => {
+      const n = $(root, "#sysTime");
+      if (!n || !document.body.contains(n)) { clearInterval(startClock._id); startClock._id = null; return; }
+      n.textContent = clockText();
+    }, 1000);
+  }
+
+  // ---------- Init: seed termState.profile from Lumen on first mount ----------
+  function initFromLumen() {
+    if (termState._seededFromLumen) return;
+    const L = window.Lumen;
+    const lp = L && L.store && L.store.get && L.store.get().profile;
+    if (lp) {
+      ["heat", "explicit", "emotion", "consent", "taboo", "plot"].forEach(k => {
+        if (typeof lp[k] === "number") termState.profile[k] = clamp1to5(lp[k]);
+      });
+    }
+    termState._seededFromLumen = true;
+  }
+
   // ============================================================
-  // PLACEHOLDER render() — keeps the tab alive while subsequent
-  // chunks (command bar template, dashboard scaffold, event
-  // wiring, detail/similar/insight) are written.
+  // DASHBOARD MARKUP — mirrors lumen_terminal.html one-for-one.
+  // Empty containers receive innerHTML from the populators.
+  // ============================================================
+  function dashboardHTML() {
+    const sliders = ["heat", "explicit", "emotion", "consent", "taboo", "plot"];
+    const sliderRows = sliders.map(k => `
+      <div class="slider-mini">
+        <div class="slider-mini-label">${k === "consent" ? "Consent ≥" : k.charAt(0).toUpperCase() + k.slice(1)}</div>
+        <input type="range" id="s_${k}" min="1" max="5" value="${termState.profile[k]}">
+        <div class="slider-mini-val" id="v_${k}">${termState.profile[k]}</div>
+      </div>`).join("");
+    return `
+<div class="wrap">
+  <header class="command-bar">
+    <div class="brand">
+      <div class="brand-mark">Lumen</div>
+      <div class="brand-sub">TERMINAL</div>
+      <div class="brand-divider"></div>
+      <div class="brand-mode">Editorial analytics for discerning readers</div>
+    </div>
+    <div class="ticker-wrap"><div class="ticker" id="ticker"></div></div>
+    <div class="theme-switcher" id="themeSwitcher">
+      <div class="theme-dot" data-theme="rose"      title="Rose Atelier"></div>
+      <div class="theme-dot" data-theme="plum"      title="Midnight Plum"></div>
+      <div class="theme-dot" data-theme="pearl"     title="Pearl &amp; Gold"></div>
+      <div class="theme-dot" data-theme="botanical" title="Botanical Dusk"></div>
+    </div>
+    <div class="sys-status">
+      <span class="live-dot"></span>
+      <span id="sysTime">—</span>
+      <span style="color:var(--border-strong);">·</span>
+      <span id="sysCount">${rawBooks().length} titles</span>
+    </div>
+  </header>
+
+  <div class="dashboard">
+    <aside class="left-col">
+      <div class="panel profile-panel">
+        <div class="panel-head"><span class="panel-title">Your Compass</span><span class="panel-sub">her taste</span></div>
+        <div class="panel-body">
+          <div class="taste-compass">
+            <div class="compass-label">Profile radar</div>
+            <svg class="compass-svg" id="userRadar" viewBox="-110 -110 220 220"></svg>
+          </div>
+          ${sliderRows}
+          <div class="filter-section">
+            <div class="filter-section-label">Tone filter</div>
+            <div class="chip-row" id="toneChips"></div>
+          </div>
+          <div class="filter-section">
+            <div class="filter-section-label">Dynamic filter</div>
+            <div class="chip-row" id="dynamicChips"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="centre-col">
+      <div class="kpi-strip" id="kpiStrip"></div>
+      <div class="charts-row">
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">Heat × Explicitness matrix</span><span class="panel-sub">catalogue distribution</span></div>
+          <div class="heatmap-wrap" id="heatmap"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">Trope frequency</span><span class="panel-sub">top signals</span></div>
+          <div class="barchart" id="tropeBar"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><span class="panel-title">Publication era</span><span class="panel-sub">across time</span></div>
+          <div class="barchart" id="eraBar"></div>
+        </div>
+      </div>
+      <div class="panel grid-panel">
+        <div class="panel-head"><span class="panel-title">Catalogue Grid</span><span class="panel-sub">every title, every signal</span></div>
+        <div class="grid-controls">
+          <input type="text" class="search-input" id="searchInput" placeholder="/ search title, author, trope…" value="${escapeHtml(termState.search)}" />
+          <div class="grid-count"><em id="gridCount">0</em> SHOWING</div>
+        </div>
+        <div class="grid-scroll">
+          <table class="data-grid" id="dataGrid">
+            <thead><tr>
+              <th data-sort="fit"      class="sorted">Fit</th>
+              <th data-sort="title">Title</th>
+              <th data-sort="author">Author</th>
+              <th data-sort="year">Year</th>
+              <th data-sort="subgenre">Subgenre</th>
+              <th data-sort="heat"     title="Heat">H</th>
+              <th data-sort="explicit" title="Explicit">E</th>
+              <th data-sort="emotion"  title="Emotion">M</th>
+              <th data-sort="consent"  title="Consent">C</th>
+              <th data-sort="taboo"    title="Taboo">T</th>
+              <th data-sort="plot"     title="Plot">P</th>
+              <th>Signals</th>
+            </tr></thead>
+            <tbody id="gridBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+
+    <aside class="right-col">
+      <div class="panel detail-panel">
+        <div class="panel-head"><span class="panel-title">Selected Title</span><span class="panel-sub">in detail</span></div>
+        <div class="panel-body flush">
+          <div class="detail-cover" id="detailCover">
+            <div class="detail-cover-meta">
+              <div class="detail-title" id="detailTitle">Select a title</div>
+              <div class="detail-author" id="detailAuthor">from the grid</div>
+            </div>
+          </div>
+          <div class="detail-content" id="detailContent">
+            <div class="detail-fit-strip">
+              <div class="detail-fit-cell"><div class="detail-fit-label">Fit for her</div><div class="detail-fit-val" id="detFit">—</div></div>
+              <div class="detail-fit-cell"><div class="detail-fit-label">Confidence</div><div class="detail-fit-val sage" id="detConf">—</div></div>
+            </div>
+            <div class="detail-radar-wrap">
+              <div class="detail-radar-title">Overlap</div>
+              <div class="detail-radar-sub">her profile vs this title</div>
+              <svg class="compass-svg" id="detailRadar" viewBox="-95 -95 190 190" style="height:160px;"></svg>
+            </div>
+            <div class="detail-summary" id="detailSummary">Choose a title from the grid to see its profile, signal overlap with yours, and editorial notes.</div>
+            <dl class="detail-kv" id="detailKV"></dl>
+            <div class="filter-section-label" style="margin-bottom:6px;">Signals</div>
+            <div class="detail-tags" id="detailTags"></div>
+            <div class="filter-section-label" style="margin-bottom:6px;">Advisory flags</div>
+            <div class="detail-tags" id="detailWarnings"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Similar to this</span><span class="panel-sub">by signal overlap</span></div>
+        <div class="panel-body compact" id="similarList">
+          <div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>
+        </div>
+      </div>
+
+      <div class="insight">
+        <div class="insight-label">Editor's brief</div>
+        <div class="insight-title" id="insightTitle">Your <em>signature</em> lands here.</div>
+        <div class="insight-body" id="insightBody">Your current compass favours emotionally-weighted narratives with moderate heat.</div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="footer-strip">
+    <div class="distribution-panel">
+      <div class="distribution-head">
+        <span class="panel-title">Subgenre distribution</span>
+        <span class="panel-sub" id="distSub">${termState.subgenreFilter ? `filtered: ${escapeHtml(termState.subgenreFilter)}` : "click to filter"}</span>
+      </div>
+      <div class="distribution-body" id="distributionBody"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+</div>`;
+  }
+
+  // ============================================================
+  // RENDER — build the dashboard, run all populators, wire events.
   // ============================================================
   function render() {
+    initFromLumen();
     const wrap = document.createElement("div");
     wrap.className = "page lumen-terminal";
-    wrap.innerHTML = `<div class="wrap" style="padding:40px;text-align:center;">
-      <div class="brand-mark">Lumen</div>
-      <div class="brand-sub" style="margin-top:8px;">Terminal · porting in progress</div>
-      <p style="margin-top:14px;font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);">
-        ${rawBooks().length} titles loaded from the catalogue.
-      </p>
-    </div>`;
+    wrap.innerHTML = dashboardHTML();
+
+    function rerender() {
+      const fresh = render();
+      wrap.replaceWith(fresh);
+    }
+
+    // Mark active theme dot from the live body class
+    const bodyTheme = (document.body.className.match(/theme-(\w+)/) || [])[1] || "rose";
+    wrap.querySelectorAll(".theme-dot").forEach(d =>
+      d.classList.toggle("active", d.dataset.theme === bodyTheme));
+
+    // Run populators
+    renderRadar($(wrap, "#userRadar"), termState.profile);
+    renderKPIs(wrap);
+    renderHeatmap(wrap);
+    renderTropeBar(wrap);
+    renderEraBar(wrap);
+    renderTicker(wrap);
+    renderChips(wrap, rerender);
+    renderGrid(wrap, rerender);
+    renderDistribution(wrap, rerender);
+    renderDetail(wrap);
+    renderSimilar(wrap, rerender);
+    renderInsight(wrap);
+
+    // Sliders — live readout, re-render on release; mirror to Lumen.store.
+    ["heat", "explicit", "emotion", "consent", "taboo", "plot"].forEach(k => {
+      const s = $(wrap, "#s_" + k), v = $(wrap, "#v_" + k);
+      s.addEventListener("input", () => {
+        const n = parseInt(s.value, 10);
+        v.textContent = String(n);
+        termState.profile[k] = n;
+        const L = window.Lumen;
+        if (L && L.store && L.store.update) L.store.update(st => { if (st.profile) st.profile[k] = n; });
+      });
+      s.addEventListener("change", rerender);
+    });
+
+    // Search input — re-render dependent panels only.
+    $(wrap, "#searchInput").addEventListener("input", e => {
+      termState.search = e.target.value;
+      renderKPIs(wrap); renderGrid(wrap, rerender); renderInsight(wrap);
+      renderHeatmap(wrap); renderTropeBar(wrap); renderEraBar(wrap);
+    });
+
+    // Sortable headers
+    wrap.querySelectorAll("#dataGrid thead th[data-sort]").forEach(th => {
+      th.addEventListener("click", () => {
+        const k = th.dataset.sort;
+        if (termState.sortKey === k) termState.sortDir = termState.sortDir === "asc" ? "desc" : "asc";
+        else { termState.sortKey = k; termState.sortDir = (k === "title" || k === "author" || k === "subgenre") ? "asc" : "desc"; }
+        renderGrid(wrap, rerender);
+      });
+    });
+
+    // Theme dots — mutate body theme class + toast.
+    wrap.querySelectorAll(".theme-dot").forEach(d => {
+      d.addEventListener("click", () => {
+        const t = d.dataset.theme;
+        document.body.className = document.body.className.replace(/\btheme-\w+/g, "").trim() + " theme-" + t;
+        wrap.querySelectorAll(".theme-dot").forEach(x => x.classList.toggle("active", x === d));
+        showToast(wrap, `Theme: ${t.charAt(0).toUpperCase() + t.slice(1)}`);
+      });
+    });
+
+    // Clock — start once the wrap is in the document.
+    setTimeout(() => { startClock(wrap); $(wrap, "#sysTime").textContent = clockText(); }, 0);
+
     return wrap;
   }
 
