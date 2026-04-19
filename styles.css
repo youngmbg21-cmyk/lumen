@@ -4731,3 +4731,101 @@ body[data-privacy-blur="on"] .app-main::after {
   background: rgba(255,255,255,0.14);
   color: #f2ecdf;
 }
+
+/* ============================================================
+   Collapsible left nav — enabled on the Terminal route so the
+   dashboard gets the full width. A fixed pull-tab on the left
+   edge slides the sidebar back in as an overlay when needed.
+   ============================================================ */
+body[data-sidenav="hidden"] .app,
+body[data-sidenav="overlay"] .app {
+  grid-template-columns: 0 1fr;
+}
+body[data-sidenav="hidden"] .app-side {
+  overflow: hidden;
+  transform: translateX(-100%);
+  transition: transform 260ms var(--ease, ease), opacity 220ms ease;
+  pointer-events: none;
+}
+body[data-sidenav="overlay"] .app-side {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: var(--shell-sidebar);
+  height: 100vh;
+  z-index: 85;
+  transform: translateX(0);
+  transition: transform 260ms var(--ease, ease);
+  box-shadow: 0 24px 60px -24px rgba(60, 38, 22, 0.35);
+  overflow-y: auto;
+}
+body[data-sidenav="overlay"] #sidenav-scrim {
+  opacity: 1;
+  pointer-events: auto;
+}
+body[data-sidenav="hidden"] .app-top {
+  grid-column: 1 / -1;
+}
+body[data-sidenav="hidden"] .app-main,
+body[data-sidenav="overlay"] .app-main {
+  grid-column: 1 / -1;
+}
+
+/* Pull-tab — visible any time the sidenav is in "hidden" mode.
+   Small arrow on the left edge, centred vertically. Glows on
+   hover so it's discoverable without shouting. */
+.sidenav-pulltab {
+  display: none;
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 86;
+  width: 22px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 var(--r-2) var(--r-2) 0;
+  background: var(--bg-raised);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, width 160ms ease;
+  box-shadow: 0 6px 22px -10px rgba(60, 38, 22, 0.25);
+}
+body[data-sidenav="hidden"] .sidenav-pulltab { display: inline-flex; }
+.sidenav-pulltab:hover {
+  width: 28px;
+  background: var(--accent-soft, var(--primary-soft));
+  color: var(--accent-deep);
+  box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.35);
+}
+
+/* Scrim — darkens the Terminal behind the sidebar overlay so
+   the user knows the nav is temporarily floating in front. */
+.sidenav-scrim {
+  position: fixed;
+  inset: 0;
+  background: color-mix(in srgb, var(--overlay, rgba(0, 0, 0, 0.4)) 70%, transparent);
+  z-index: 84;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+}
+
+/* Give the Terminal the full width once the nav is gone —
+   override the global .page 1200px clamp for this route only. */
+body[data-sidenav="hidden"] .lumen-terminal,
+body[data-sidenav="overlay"] .lumen-terminal {
+  max-width: none;
+}
+/* Terminal is never page-clamped: it always expands to the
+   .app-main content box, even when the nav is visible on
+   narrow viewports. */
+.lumen-terminal { max-width: none; width: 100%; }
