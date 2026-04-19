@@ -534,6 +534,176 @@
     }
   }
 
+  // ----------------------------------------------------------------
+  // Catalog enrichment — takes a minimal input (title + author,
+  // optional description) and returns a fully scored catalog entry
+  // matching the schema in data/CATALOG.md. Used by the in-app
+  // importer so the user can paste a title list and have Claude
+  // fill in the scoring metadata. Every field is marked "ai" in
+  // the returned _source map so downstream re-enrichment knows
+  // what is safe to overwrite vs. what the human has edited.
+  // ----------------------------------------------------------------
+  async function enrichCatalogEntry(input) {
+    const apiKey = getApiKey();
+    if (!apiKey) throw new Error("missing-api-key");
+    if (!input || !input.title) throw new Error("missing-title");
+
+    setStatus("reading", `Claude is scoring · ${input.title}`);
+
+    const schemaHint = [
+      '{',
+      '  "category": "slug e.g. contemporary-erotic-romance | historical-erotic-literature | literary-erotica",',
+      '  "subgenre": "slug (optional, short)",',
+      '  "year": integer (4-digit, negative for BCE; 0 if unknown),',
+      '  "description": "1-3 sentence editorial blurb",',
+      '  "heat_level": 1..5,',
+      '  "explicitness": 1..5,',
+      '  "emotional_intensity": 1..5,',
+      '  "consent_clarity": 1..5,',
+      '  "taboo_level": 1..5,',
+      '  "plot_weight": 1..5,',
+      '  "tone": ["lowercase-slug", ...],',
+      '  "pacing": ["..."],',
+      '  "literary_style": ["..."],',
+      '  "relationship_dynamic": ["..."],',
+      '  "trope_tags": ["..."],',
+      '  "kink_tags": ["..."],',
+      '  "gender_pairing": ["m/f", "f/f", "m/m", "m/f/f", ...],',
+      '  "orientation_tags": ["hetero-dominant", "queer", "polymorphous", ...],',
+      '  "content_warnings": ["..."],',
+      '  "confidence": 0..100',
+      '}'
+    ].join("\n");
+
+    const prompt = [
+      "You are an editorial analyst for Lumen, a private reading companion for adult-fiction readers (erotica novels).",
+      "For the book below, return ONLY a compact JSON object matching this schema — no prose, no markdown fences, no commentary:",
+      schemaHint,
+      "",
+      "Rules:",
+      "- All numeric 1..5 fields are REQUIRED integers; reason carefully about what the book actually is.",
+      "- heat_level = overall sensual/erotic intensity; 1 implied, 5 unreserved explicit-throughout.",
+      "- explicitness = directness of the prose (veiled metaphor → clinically direct).",
+      "- emotional_intensity = how much emotional weight the text carries.",
+      "- consent_clarity = 5 = on-page enthusiastic consent; lower values tolerate period-typical or ambiguous framings. When uncertain err LOW.",
+      "- taboo_level = how transgressive the content is for a modern mainstream reader.",
+      "- plot_weight = 1 = scene-heavy, 5 = strong narrative architecture.",
+      "- Tag arrays must be lowercase slugs (dash-separated if multi-word). 2–4 values each when possible; empty arrays are acceptable.",
+      "- gender_pairing: use m/f, m/m, f/f, m/f/f, etc.",
+      "- content_warnings: BE CONSERVATIVE — err toward INCLUDING a warning. Use slugs like 'consent-ambiguity', 'dated-attitudes', 'period-typical-problematic-content', 'power-imbalance', 'underage-content-highly-disturbing', 'incest-theme', 'exploitation', 'self-negation'.",
+      "- confidence: 0..100 — your confidence in the scoring overall.",
+      "- If the book is not a work of fiction (it's a guide, essay, psychology text, self-help, etc.) return {\"error\": \"not-fiction\"} INSTEAD of the schema above.",
+      "",
+      `Title: ${input.title}`,
+      `Author: ${input.author || "Unknown"}`,
+      input.description ? `Description: ${String(input.description).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
+    ].join("\n");
+
+    let res;
+    try {
+      res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 900,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+    } catch (err) {
+      setStatus("error", "Network call failed");
+      throw err;
+    }
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      setStatus("error", `Claude returned ${res.status}`);
+      throw new Error(`claude-${res.status}: ${text}`);
+    }
+
+    const payload = await res.json();
+    const textOut = (payload.content || [])
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+
+    // Parse + normalize. Missing numeric fields are rejected (the
+    // whole row fails); unknown tag values are kept so the importer
+    // can surface them as "new vocab terms" in the preview report.
+    const m = textOut.match(/\{[\s\S]*\}/);
+    if (!m) { setStatus("error", "Could not parse Claude response"); throw new Error("claude-parse-failed"); }
+    let obj;
+    try { obj = JSON.parse(m[0]); }
+    catch (e) { setStatus("error", "Invalid JSON"); throw new Error("claude-json-invalid"); }
+
+    if (obj.error === "not-fiction") {
+      setStatus("online", `Not fiction · ${input.title}`);
+      const e = new Error("not-fiction");
+      e.code = "not-fiction";
+      throw e;
+    }
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v))));
+    const requireNumeric = (k) => {
+      const v = Number(obj[k]);
+      if (!Number.isFinite(v)) throw new Error(`ai-missing-${k}`);
+      return clamp(v, 1, 5);
+    };
+    const normList = (v) => {
+      if (!Array.isArray(v)) return [];
+      const out = [];
+      const seen = new Set();
+      for (const raw of v) {
+        if (typeof raw !== "string") continue;
+        const s = raw.trim().toLowerCase().replace(/\s+/g, "-");
+        if (!s || seen.has(s)) continue;
+        seen.add(s); out.push(s);
+      }
+      return out;
+    };
+
+    const enriched = {
+      title: input.title,
+      author: input.author || "Unknown",
+      year: Number.isFinite(Number(obj.year)) ? parseInt(obj.year, 10) || 0 : 0,
+      category: (typeof obj.category === "string" && obj.category.trim()) || "erotica-fiction",
+      subgenre: (typeof obj.subgenre === "string" && obj.subgenre.trim()) || "",
+      description: (typeof obj.description === "string" && obj.description.trim())
+        || input.description
+        || "No description available.",
+      heat_level: requireNumeric("heat_level"),
+      explicitness: requireNumeric("explicitness"),
+      emotional_intensity: requireNumeric("emotional_intensity"),
+      consent_clarity: requireNumeric("consent_clarity"),
+      taboo_level: requireNumeric("taboo_level"),
+      plot_weight: requireNumeric("plot_weight"),
+      tone: normList(obj.tone),
+      pacing: normList(obj.pacing),
+      literary_style: normList(obj.literary_style),
+      relationship_dynamic: normList(obj.relationship_dynamic),
+      trope_tags: normList(obj.trope_tags),
+      kink_tags: normList(obj.kink_tags),
+      gender_pairing: normList(obj.gender_pairing),
+      orientation_tags: normList(obj.orientation_tags),
+      content_warnings: normList(obj.content_warnings)
+    };
+
+    // Provenance: every field that came from the model is marked
+    // "ai" so a later human edit can flip a single field to
+    // "human" and re-enrichment won't overwrite it.
+    const _source = {};
+    Object.keys(enriched).forEach(k => { _source[k] = "ai"; });
+
+    setStatus("online", `Scored · ${input.title}`);
+    return {
+      book: enriched,
+      _source,
+      confidence: Number.isFinite(Number(obj.confidence)) ? clamp(Number(obj.confidence), 0, 100) : null
+    };
+  }
+
   window.LumenDiscovery = {
     setApiKey,
     getApiKey,
@@ -543,6 +713,7 @@
     clearGoogleKey,
     searchBooks,
     analyzeWithClaude,
+    enrichCatalogEntry,
     isEroticaResult,
     onStatus,
     get status() { return state.status; },

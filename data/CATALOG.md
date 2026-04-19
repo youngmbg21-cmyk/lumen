@@ -9,6 +9,10 @@ This document describes the spreadsheet schema the catalog is generated
 from, the normalization rules applied during import, and the two
 workflows for regenerating `catalog.js` from your master spreadsheet.
 
+> See also [`SEEDING.md`](./SEEDING.md) for the Claude Code sub-agent
+> path that generates the catalog from a title list without any
+> spreadsheet at all.
+
 ## Workflow A · in-app importer (recommended for non-developers)
 
 1. Open **Settings → Import catalog**. *(Shipped in Batch 2.)*
