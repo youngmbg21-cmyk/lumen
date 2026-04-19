@@ -98,18 +98,6 @@
     moodRow.id = "sara-moods";
     panel.appendChild(moodRow);
 
-    const sugg = document.createElement("details");
-    sugg.className = "sara-suggestions-wrap";
-    const suggSummary = document.createElement("summary");
-    suggSummary.className = "sara-suggestions-summary";
-    suggSummary.textContent = "More prompts";
-    sugg.appendChild(suggSummary);
-    const suggInner = document.createElement("div");
-    suggInner.className = "sara-suggestions";
-    suggInner.id = "sara-suggestions";
-    sugg.appendChild(suggInner);
-    panel.appendChild(sugg);
-
     const compose = document.createElement("form");
     compose.className = "sara-compose";
     composeTA = document.createElement("textarea");
@@ -405,20 +393,6 @@
     });
   }
 
-  function renderSuggestions() {
-    const host = document.getElementById("sara-suggestions");
-    if (!host) return;
-    host.innerHTML = "";
-    const list = suggestionsForRoute(ctxState.route);
-    list.forEach(s => {
-      const b = document.createElement("button");
-      b.className = "chip";
-      b.textContent = s;
-      b.addEventListener("click", () => send(s));
-      host.appendChild(b);
-    });
-  }
-
   // Mood chips — primary entry point above the compose box. First-
   // person phrasing, relevant to the erotica-fiction audience. Sends
   // a templated prompt that the rule-based responder already handles.
@@ -446,22 +420,6 @@
       b.addEventListener("click", () => send(`Show me something ${m.key} tonight.`));
       moodRow.appendChild(b);
     });
-  }
-
-  function suggestionsForRoute(route) {
-    const base = ["What should I read tonight?", "Why does Lumen score that way?", "How private is this?"];
-    const perRoute = {
-      discover: ["Pick tonight's book", "Summarize my profile"],
-      library:  ["What matches my mood?", "Filter to high-fit only"],
-      compare:  ["What's the biggest difference?", "Which is safer?"],
-      chat:     ["Show conversation history"],
-      journal:  ["Give me a reflection prompt"],
-      vault:    ["What have I pinned recently?"],
-      profile:  ["What do my settings mean?"],
-      settings: ["Where is my API key stored?", "What can you see?"],
-      transparency: ["What won't you do?"]
-    };
-    return (perRoute[route] || []).concat(base).slice(0, 5);
   }
 
   // Slash-command shortcuts. Each returns a canonical natural-language
@@ -510,7 +468,6 @@
     ensureSeed();
     renderMessages();
     renderContext();
-    renderSuggestions();
     renderMoods();
     renderPinnedTray();
     if (!opened) lastFocus = document.activeElement;
@@ -594,7 +551,7 @@
 
   function setContext(patch) {
     Object.assign(ctxState, patch || {});
-    if (panel) { renderContext(); renderSuggestions(); }
+    if (panel) { renderContext(); }
     ctxSubs.forEach(fn => fn(ctxState));
   }
 
