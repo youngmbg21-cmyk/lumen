@@ -568,10 +568,20 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   display: grid;
   grid-template-columns: 1.2fr 1fr 1fr;
   gap: 14px;
-  align-items: start;
+  align-items: stretch;
 }
 .lumen-terminal .charts-row.charts-row-2col {
   grid-template-columns: 1fr 1fr;
+}
+.lumen-terminal .charts-row > .panel {
+  display: flex;
+  flex-direction: column;
+}
+.lumen-terminal .charts-row > .panel > .barchart {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 /* Heat × Explicit matrix */
@@ -630,6 +640,23 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   align-items: center;
   gap: 8px;
   padding: 2px 0;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+.lumen-terminal .bar-row.interactive { cursor: pointer; }
+.lumen-terminal .bar-row.interactive:hover {
+  background: var(--bg-sunk);
+}
+.lumen-terminal .bar-row.selected .bar-label {
+  font-weight: 700;
+  color: var(--accent-deep);
+}
+.lumen-terminal .bar-row.selected .bar-track {
+  outline: 1px solid var(--accent-deep);
+  outline-offset: 1px;
+}
+.lumen-terminal .bar-row.selected .bar-val {
+  color: var(--accent-deep);
 }
 .lumen-terminal .bar-label {
   font-size: 10px;
