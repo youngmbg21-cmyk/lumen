@@ -2215,35 +2215,6 @@ body[data-privacy-blur="on"] .app-main::after {
   color: var(--accent-deep);
 }
 
-/* "More prompts" disclosure — keeps route-aware suggestions one tap
-   away without crowding the default surface. */
-.sara-suggestions-wrap {
-  background: var(--bg-raised);
-  border-top: 1px solid var(--border);
-  padding: 4px var(--s-4) 6px;
-}
-.sara-suggestions-summary {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-subtle);
-  cursor: pointer;
-  list-style: none;
-  padding: 4px 0;
-}
-.sara-suggestions-summary::marker, .sara-suggestions-summary::-webkit-details-marker { display: none; }
-.sara-suggestions-summary::after { content: " ▾"; font-size: 10px; }
-.sara-suggestions-wrap[open] .sara-suggestions-summary::after { content: " ▴"; }
-.sara-suggestions {
-  display: flex;
-  gap: 6px;
-  padding: 4px 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-.sara-suggestions .chip { flex-shrink: 0; font-size: 11px; padding: 5px 11px; }
-
 .sara-compose {
   display: flex;
   gap: var(--s-2);
