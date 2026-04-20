@@ -750,14 +750,14 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   font-weight: 500;
   font-size: 13px;
   color: var(--text);
-  max-width: 240px;
+  max-width: 150px;
 }
 .lumen-terminal .data-grid td.author-col {
   font-family: 'Cormorant Garamond', serif;
   font-style: italic;
   font-size: 12px;
   color: var(--text-mute);
-  max-width: 130px;
+  max-width: 110px;
 }
 .lumen-terminal .data-grid td.num-col {
   font-family: 'JetBrains Mono', monospace;
@@ -779,7 +779,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .data-grid td.sub-col {
   font-size: 10px;
   color: var(--text-mute);
-  max-width: 120px;
+  max-width: 100px;
 }
 
 /* Pills inside the grid (rate 1-5) */
