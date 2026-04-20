@@ -98,7 +98,12 @@ body.theme-botanical .lumen-terminal {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   position: relative;
-  height: 100%;
+  /* Definite height = viewport − topbar(64) − app-main top+bottom
+     padding(48+48) so percentage heights inside (columns, sticky
+     grid) resolve. Without this fallback the terminal went auto-
+     height and the whole page scrolled as one instead of each
+     column scrolling on its own. */
+  height: calc(100vh - 160px);
   min-height: 0;
   display: flex;
   flex-direction: column;
