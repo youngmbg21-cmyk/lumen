@@ -4476,8 +4476,23 @@
       if (b) {
         const filled = util.el("div", { class: "cmp-slot filled" });
         if (b.thumbnail) {
-          const cover = util.el("img", { class: "cmp-slot-cover", src: b.thumbnail, alt: "" });
-          cover.onerror = () => cover.remove();
+          // Google Books thumbnails default to zoom=1 (tiny) with a
+          // page-curl overlay; that scales up grainy in the slot
+          // card. Bump zoom and drop the curl; fall back to the
+          // original if the larger variant 404s.
+          const original = b.thumbnail;
+          const hi = /books\.google\.com\/books\/content/.test(original)
+            ? original
+                .replace(/([?&])edge=curl(?=&|$)/, "$1")
+                .replace(/&&+/g, "&").replace(/\?&/, "?")
+                .replace(/([?&])zoom=\d+/, "$1zoom=2")
+                .replace(/^http:\/\//, "https://")
+            : original;
+          const cover = util.el("img", { class: "cmp-slot-cover", src: hi, alt: "" });
+          cover.onerror = () => {
+            if (cover.src !== original) { cover.onerror = () => cover.remove(); cover.src = original; }
+            else cover.remove();
+          };
           filled.appendChild(cover);
         }
         const body = util.el("div", { class: "cmp-slot-body" });
