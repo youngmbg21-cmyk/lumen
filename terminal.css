@@ -298,7 +298,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 7px;
+  padding: 5px 3.5px;
   background: var(--panel-alt);
   border-bottom: 1px solid var(--border-faint);
 }
@@ -322,8 +322,8 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   font-size: 12px;
   color: var(--accent-deep);
 }
-.lumen-terminal .panel-body { padding: 6px 7px; }
-.lumen-terminal .panel-body.compact { padding: 4px 5px; }
+.lumen-terminal .panel-body { padding: 6px 3.5px; }
+.lumen-terminal .panel-body.compact { padding: 4px 2.5px; }
 .lumen-terminal .panel-body.flush   { padding: 0; }
 
 /* ============================================================
@@ -585,7 +585,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* Heat × Explicit matrix */
-.lumen-terminal .heatmap-wrap { padding: 6px 7px 7px; }
+.lumen-terminal .heatmap-wrap { padding: 6px 3.5px 7px; }
 .lumen-terminal .heatmap-row {
   display: grid;
   grid-template-columns: 90px repeat(5, 1fr);
@@ -633,7 +633,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 }
 
 /* Bar charts — trope + era */
-.lumen-terminal .barchart { padding: 3px 7px; }
+.lumen-terminal .barchart { padding: 3px 3.5px; }
 .lumen-terminal .bar-row {
   display: grid;
   grid-template-columns: 110px 1fr 34px;
@@ -911,7 +911,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   font-size: 13px;
   color: var(--text-soft);
 }
-.lumen-terminal .detail-content { padding: 7px; }
+.lumen-terminal .detail-content { padding: 7px 3.5px; }
 
 .lumen-terminal .detail-fit-strip {
   display: grid;
@@ -1095,7 +1095,7 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 6px 7px;
+  padding: 6px 3.5px;
   box-shadow: var(--shadow-soft);
   position: relative;
   overflow: hidden;
