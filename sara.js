@@ -537,27 +537,16 @@
     const cover = document.createElement("div");
     cover.className = "sara-share-cover";
     if (book && book.thumbnail) {
-      const original = String(book.thumbnail).replace(/^http:/, "https:");
-      const hi = (window.Lumen && window.Lumen.util && window.Lumen.util.hiresCover)
-        ? window.Lumen.util.hiresCover(original) : original;
       const img = document.createElement("img");
-      img.src = hi;
+      img.src = String(book.thumbnail).replace(/^http:/, "https:");
       img.alt = `Cover of ${book.title}`;
       img.loading = "lazy";
-      const showFallback = () => {
+      img.onerror = function () {
+        this.remove();
         const fb = document.createElement("div");
         fb.className = "cover-fallback";
         fb.textContent = (book.title || "??").slice(0, 2).toUpperCase();
         cover.appendChild(fb);
-      };
-      img.onerror = function () {
-        if (this.src !== original) {
-          this.onerror = function () { this.remove(); showFallback(); };
-          this.src = original;
-        } else {
-          this.remove();
-          showFallback();
-        }
       };
       cover.appendChild(img);
     } else {
@@ -630,20 +619,9 @@
       chip.title = `${book.title}${book.author ? " · " + book.author : ""}`;
       chip.setAttribute("aria-label", `Pinned: ${book.title}. Click to open.`);
       if (book.thumbnail) {
-        const original = String(book.thumbnail).replace(/^http:/, "https:");
-        const hi = (window.Lumen && window.Lumen.util && window.Lumen.util.hiresCover)
-          ? window.Lumen.util.hiresCover(original) : original;
         const img = document.createElement("img");
-        img.src = hi;
+        img.src = String(book.thumbnail).replace(/^http:/, "https:");
         img.alt = "";
-        img.onerror = function () {
-          if (this.src !== original) {
-            this.onerror = function () { this.remove(); };
-            this.src = original;
-          } else {
-            this.remove();
-          }
-        };
         chip.appendChild(img);
       } else {
         const fb = document.createElement("span");
