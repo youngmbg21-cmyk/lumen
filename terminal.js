@@ -434,8 +434,6 @@
     body.innerHTML = list.map(b => {
       const fitCls = b.fit >= 75 ? "strong" : b.fit >= 55 ? "mid" : "low";
       const subg = b.subgenre || "—";
-      const sig = [...(b.tone || []).slice(0, 1), ...(b.dynamic || []).slice(0, 1),
-                   ...(b.trope || []).slice(0, 1)].slice(0, 2).map(s => s.replace(/-/g, " ")).join(" · ");
       return `<tr data-id="${escapeHtml(b.id)}" class="${termState.selectedId === b.id ? "selected" : ""}">
         <td class="fit-col ${fitCls}" title="Fit: ${b.fit}% · Confidence: ${b.confidence}%">
           ${b.fit}
@@ -451,9 +449,8 @@
         <td class="num-col"><span class="rate-pill ${rateClass(b.consent)}">${b.consent}</span></td>
         <td class="num-col"><span class="rate-pill ${rateClass(b.taboo)}">${b.taboo}</span></td>
         <td class="num-col"><span class="rate-pill ${rateClass(b.plot)}">${b.plot}</span></td>
-        <td class="sub-col" style="color:var(--accent-deep);font-style:italic;font-family:'Cormorant Garamond',serif;font-size:12px;">${escapeHtml(sig) || "—"}</td>
       </tr>`;
-    }).join("") || `<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--text-mute);font-family:'Cormorant Garamond',serif;font-style:italic;">No titles match current filters</td></tr>`;
+    }).join("") || `<tr><td colspan="11" style="padding:30px;text-align:center;color:var(--text-mute);font-family:'Cormorant Garamond',serif;font-style:italic;">No titles match current filters</td></tr>`;
 
     body.querySelectorAll("tr[data-id]").forEach(row => {
       row.addEventListener("click", () => {
@@ -762,6 +759,19 @@
           </div>
         </div>
       </div>
+
+      <div class="panel">
+        <div class="panel-head"><span class="panel-title">Similar to this</span><span class="panel-sub">by signal overlap</span></div>
+        <div class="panel-body compact" id="similarList">
+          <div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>
+        </div>
+      </div>
+
+      <div class="insight">
+        <div class="insight-label">Editor's brief</div>
+        <div class="insight-title" id="insightTitle">Your <em>signature</em> lands here.</div>
+        <div class="insight-body" id="insightBody">Your current compass favours emotionally-weighted narratives with moderate heat.</div>
+      </div>
     </aside>
 
     <main class="centre-col">
@@ -796,7 +806,6 @@
               <th data-sort="consent"  title="Consent">C</th>
               <th data-sort="taboo"    title="Taboo">T</th>
               <th data-sort="plot"     title="Plot">P</th>
-              <th>Signals</th>
             </tr></thead>
             <tbody id="gridBody"></tbody>
           </table>
@@ -831,19 +840,6 @@
             <div class="detail-tags" id="detailWarnings"></div>
           </div>
         </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-head"><span class="panel-title">Similar to this</span><span class="panel-sub">by signal overlap</span></div>
-        <div class="panel-body compact" id="similarList">
-          <div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>
-        </div>
-      </div>
-
-      <div class="insight">
-        <div class="insight-label">Editor's brief</div>
-        <div class="insight-title" id="insightTitle">Your <em>signature</em> lands here.</div>
-        <div class="insight-body" id="insightBody">Your current compass favours emotionally-weighted narratives with moderate heat.</div>
       </div>
     </aside>
   </div>
