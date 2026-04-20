@@ -4948,25 +4948,69 @@
       const b = id ? findBook(id) : null;
       if (b) {
         const filled = util.el("div", { class: "cmp-slot filled" });
-        if (b.thumbnail) {
-          // Google Books thumbnails default to zoom=1 (tiny) with a
-          // page-curl overlay; that scales up grainy in the slot
-          // card. Bump zoom and drop the curl; fall back to the
-          // original if the larger variant 404s.
-          const original = b.thumbnail;
-          const hi = /books\.google\.com\/books\/content/.test(original)
-            ? original
-                .replace(/([?&])edge=curl(?=&|$)/, "$1")
-                .replace(/&&+/g, "&").replace(/\?&/, "?")
-                .replace(/([?&])zoom=\d+/, "$1zoom=2")
-                .replace(/^http:\/\//, "https://")
-            : original;
+        // Inline URL upgrader for Google Books thumbnails (zoom=1 is
+        // tiny + page-curl overlay adds noise; zoom=2 reads cleaner).
+        const upgradeGB = (u) => {
+          if (!u || typeof u !== "string") return u;
+          if (!/books\.google\.com\/books\/content/.test(u)) return u;
+          return u
+            .replace(/([?&])edge=curl(?=&|$)/, "$1")
+            .replace(/&&+/g, "&").replace(/\?&/, "?")
+            .replace(/([?&])zoom=\d+/, "$1zoom=2")
+            .replace(/^http:\/\//, "https://");
+        };
+
+        // Initials-style placeholder — always rendered so there's a
+        // visual anchor while any async cover fetch is in flight and
+        // as a final fallback if nothing can be loaded.
+        const placeholder = util.el("div", {
+          class: "cmp-slot-cover cmp-slot-cover-fallback"
+        }, (b.title || "??").slice(0, 2).toUpperCase());
+        filled.appendChild(placeholder);
+
+        // Mount an <img> in place of the placeholder. Called both for
+        // the already-cached thumbnail case and after an on-the-fly
+        // Google Books lookup resolves.
+        const mountCover = (url) => {
+          if (!url) return;
+          const original = url;
+          const hi = upgradeGB(original);
           const cover = util.el("img", { class: "cmp-slot-cover", src: hi, alt: "" });
           cover.onerror = () => {
-            if (cover.src !== original) { cover.onerror = () => cover.remove(); cover.src = original; }
-            else cover.remove();
+            if (cover.src !== original) { cover.onerror = () => cover.replaceWith(placeholder); cover.src = original; }
+            else cover.replaceWith(placeholder);
           };
-          filled.appendChild(cover);
+          cover.onload = () => {
+            if (placeholder.parentNode) placeholder.replaceWith(cover);
+            else filled.insertBefore(cover, filled.firstChild);
+          };
+          // Kick off the request; onload / onerror swap the DOM.
+        };
+
+        if (b.thumbnail) {
+          mountCover(b.thumbnail);
+        } else {
+          // No cached cover. Ask Google Books (via the existing
+          // discovery shim) for a thumbnail. Persist the result so
+          // reloads don't re-fetch — on catalog books this goes into
+          // the catalog override; on user-discovered entries it
+          // lands on state.discovered[id].thumbnail.
+          const Disco = window.LumenDiscovery;
+          if (Disco && typeof Disco.lookupBookMetadata === "function") {
+            Disco.lookupBookMetadata({ title: b.title, author: b.author })
+              .then(gb => {
+                if (!gb || !gb.thumbnail) return;
+                // Persist the thumbnail so the next render skips the
+                // lookup. mutateBookEmbedding already knows both
+                // locations (discovered + catalog override), so reuse
+                // it by writing a plain field.
+                try {
+                  mutateBookEmbedding(b.id, rec => { rec.thumbnail = gb.thumbnail; });
+                } catch (_) { /* persistence is best-effort */ }
+                mountCover(gb.thumbnail);
+              })
+              .catch(() => { /* keep the placeholder */ });
+          }
         }
         const body = util.el("div", { class: "cmp-slot-body" });
         body.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
