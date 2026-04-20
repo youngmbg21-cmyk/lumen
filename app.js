@@ -1406,6 +1406,9 @@
 
       let filtered;
       const indexingIds = new Set();
+      // Per-book similarity for the semantic top-30, used to paint
+      // the "X% match" badge + hover tooltip (Batch 5).
+      const simById = new Map();
 
       if (isSemantic && usableSemantic) {
         // Rank by cosine similarity. Top 30 of books that have an
@@ -1420,9 +1423,10 @@
           else withoutE.push(b);
         });
         withE.sort((a, b) => b.s - a.s);
-        const top = withE.slice(0, 30).map(x => x.b);
+        const top = withE.slice(0, 30);
+        top.forEach(x => simById.set(x.b.id, x.s));
         normalSort(withoutE).forEach(b => indexingIds.add(b.id));
-        filtered = top.concat(withoutE);
+        filtered = top.map(x => x.b).concat(withoutE);
       } else if (isSemantic) {
         // Semantic mode, query present, but vector not ready (still
         // debouncing / embedding). Show the base pool in normal
@@ -1475,9 +1479,59 @@
               fontSize: "10px", opacity: "0.75", pointerEvents: "none"
             }
           }, "indexing…"));
+        } else if (simById.has(b.id)) {
+          // Batch 5: "X% match" badge + "why this matched" tooltip.
+          const pct = Math.max(0, Math.round(simById.get(b.id) * 100));
+          const matches = matchExplanation(libState.query, b);
+          const tipText = matches && matches.length
+            ? "Matched on: " + matches.join(" · ")
+            : "Matched on description";
+          card.style.position = card.style.position || "relative";
+          card.appendChild(util.el("span", {
+            class: "tag tag-accent",
+            title: tipText,
+            tabindex: "0",
+            "aria-label": `${pct} percent match. ${tipText}`,
+            style: {
+              position: "absolute", top: "10px", right: "10px",
+              fontSize: "10px", fontWeight: "600", cursor: "help"
+            }
+          }, `${pct}% match`));
         }
         grid.appendChild(card);
       });
+    }
+
+    // "Why this matched" — cheap approximation per spec: tokenize
+    // the query, tokenize each of the book's tone/trope/kink/dynamic
+    // tags, and return up to three tags that share a token with the
+    // query. Returns null if none overlap (caller shows "matched on
+    // description" instead).
+    function matchExplanation(queryText, book) {
+      const qTokens = new Set(
+        String(queryText || "").toLowerCase()
+          .split(/[^a-z0-9]+/).filter(t => t.length > 2)
+      );
+      if (!qTokens.size || !book) return null;
+      const tags = []
+        .concat(book.tone || [])
+        .concat(book.tropes || book.trope_tags || book.trope || [])
+        .concat(book.dynamic || book.relationship_dynamic || [])
+        .concat(book.kink || book.kink_tags || []);
+      const out = [];
+      const seen = new Set();
+      for (const raw of tags) {
+        if (!raw || typeof raw !== "string") continue;
+        const norm = raw.toLowerCase();
+        if (seen.has(norm)) continue;
+        const tagTokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
+        if (tagTokens.some(t => qTokens.has(t))) {
+          out.push(raw.replace(/-/g, " "));
+          seen.add(norm);
+          if (out.length >= 3) break;
+        }
+      }
+      return out.length ? out : null;
     }
 
     // Debounced semantic search. Kicks a 300ms timer; when it fires
