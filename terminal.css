@@ -98,8 +98,17 @@ body.theme-botanical .lumen-terminal {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   position: relative;
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   transition: background-color 0.4s ease;
+}
+.lumen-terminal > .wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .lumen-terminal *,
 .lumen-terminal *::before,
@@ -282,7 +291,24 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   max-width: 1800px;
   margin: 0 auto;
   align-items: stretch;
+  /* Desktop: dashboard fills the viewport below the command bar and
+     each column manages its own scroll. On narrow widths the
+     dashboard collapses to one column via media queries, so this
+     only applies where we still have three-column real estate. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
+.lumen-terminal .dashboard > aside,
+.lumen-terminal .dashboard > main {
+  overflow-y: auto;
+  min-height: 0;
+  max-height: 100%;
+}
+.lumen-terminal .dashboard > aside::-webkit-scrollbar,
+.lumen-terminal .dashboard > main::-webkit-scrollbar       { width: 6px; }
+.lumen-terminal .dashboard > aside::-webkit-scrollbar-thumb,
+.lumen-terminal .dashboard > main::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 
 /* ============================================================
    PANEL BASE
@@ -695,6 +721,23 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
    DATA GRID — Bloomberg-style dense table
    ============================================================ */
 .lumen-terminal .grid-panel .panel-body { padding: 0; }
+/* Once the user scrolls past the KPI strip + chart row, the grid
+   panel pins to the top of the centre-col so it stays visible while
+   its internal .grid-scroll handles the row overflow. Bounded to
+   the column's visible height so nothing gets clipped below. */
+.lumen-terminal .centre-col > .grid-panel {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.lumen-terminal .centre-col > .grid-panel > .grid-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .lumen-terminal .data-grid {
   width: 100%;
   font-family: 'DM Sans', sans-serif;

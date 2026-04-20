@@ -632,64 +632,6 @@
     }, 1000);
   }
 
-  // ---------- Catalogue grid ↔ Selected Title height sync ----------
-  // Pegs grid-scroll's bottom so the grid card ends ABOVE the
-  // "Similar to this" card on the right. Target: similar.top - 1px
-  // (falls back to detail.bottom when similar isn't present).
-  // Uses rAF + image-load + ResizeObserver on the right column so
-  // late layout shifts (covers loading, summary reflow) re-sync.
-  function syncGridToDetail(root) {
-    const right  = $(root, ".right-col");
-    const detail = $(root, ".detail-panel");
-    const scroll = $(root, ".grid-scroll");
-    if (!right || !detail || !scroll) return;
-    if (syncGridToDetail._ro)        syncGridToDetail._ro.disconnect();
-    if (syncGridToDetail._onResize)  window.removeEventListener("resize", syncGridToDetail._onResize);
-    if (syncGridToDetail._onScroll)  window.removeEventListener("scroll", syncGridToDetail._onScroll, true);
-
-    const sync = () => {
-      if (!document.body.contains(scroll)) {
-        if (syncGridToDetail._ro)       { syncGridToDetail._ro.disconnect(); syncGridToDetail._ro = null; }
-        if (syncGridToDetail._onResize) { window.removeEventListener("resize", syncGridToDetail._onResize); syncGridToDetail._onResize = null; }
-        if (syncGridToDetail._onScroll) { window.removeEventListener("scroll", syncGridToDetail._onScroll, true); syncGridToDetail._onScroll = null; }
-        return;
-      }
-      // Prefer the Similar card's TOP as the stop-line; fall back to
-      // the detail panel's BOTTOM. Both are viewport-relative and
-      // scroll together with grid-scroll's top, so the difference is
-      // scroll-independent.
-      const similar = detail.nextElementSibling;
-      const stopY = similar ? similar.getBoundingClientRect().top
-                            : detail.getBoundingClientRect().bottom;
-      const scrollTop = scroll.getBoundingClientRect().top;
-      // Subtract a hair so the grid visually ends ABOVE the next card.
-      const available = Math.max(0, Math.round(stopY - scrollTop - 2));
-      scroll.style.maxHeight = available + "px";
-    };
-
-    // First pass synchronous, then another on next frame after layout
-    // has settled, and again on any cover image load.
-    sync();
-    requestAnimationFrame(() => { requestAnimationFrame(sync); });
-    detail.querySelectorAll("img").forEach(img => {
-      if (img.complete) return;
-      img.addEventListener("load",  sync, { once: true });
-      img.addEventListener("error", sync, { once: true });
-    });
-
-    if (typeof ResizeObserver !== "undefined") {
-      const ro = new ResizeObserver(sync);
-      ro.observe(right);
-      ro.observe(detail);
-      syncGridToDetail._ro = ro;
-    }
-    syncGridToDetail._onResize = sync;
-    window.addEventListener("resize", sync);
-    // Capture-phase scroll catches the app-main scrolling too.
-    syncGridToDetail._onScroll = sync;
-    window.addEventListener("scroll", sync, true);
-  }
-
   // ---------- Init: seed termState.profile from Lumen on first mount ----------
   function initFromLumen() {
     if (termState._seededFromLumen) return;
@@ -921,12 +863,6 @@
 
     // Clock — start once the wrap is in the document.
     setTimeout(() => { startClock(wrap); $(wrap, "#sysTime").textContent = clockText(); }, 0);
-
-    // Peg the Catalogue Grid's bottom to the Selected Title card's
-    // bottom so the two cards align. Run after the wrap is in the
-    // DOM, observe the detail panel for resize, and re-run on viewport
-    // resize. Self-cleans when the wrap leaves the document.
-    setTimeout(() => syncGridToDetail(wrap), 0);
 
     return wrap;
   }
