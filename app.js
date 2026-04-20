@@ -750,7 +750,24 @@
     readingFilter: "all",
     category: "all",
     sort: "fit",
-    minFit: 0
+    minFit: 0,
+    // Session-only — not persisted to localStorage. Defaults to
+    // "exact" (current behavior). Semantic mode re-ranks the
+    // current filtered pool by cosine similarity to the query's
+    // Voyage embedding.
+    searchMode: "exact"
+  };
+
+  // Closure for the semantic-search async flow. Reset on reload
+  // implicitly because libState itself isn't persisted. The seq
+  // counter discards stale embed responses when the user keeps
+  // typing.
+  const semanticState = {
+    lastQueryText: "",
+    lastQueryVec: null,
+    loading: false,
+    seq: 0,
+    debounceTimer: null
   };
 
   function setReadingState(bookId, state) {
@@ -1267,9 +1284,46 @@
     const searchInput = util.el("input", {
       class: "input", placeholder: "Search titles or authors", style: { maxWidth: "260px" },
       value: libState.query,
-      oninput: (e) => { libState.query = e.target.value.toLowerCase(); updateGrid(); }
+      oninput: (e) => {
+        libState.query = e.target.value.toLowerCase();
+        if (libState.searchMode === "semantic") triggerSemanticEmbed();
+        else updateGrid();
+      }
     });
     filterRow.appendChild(searchInput);
+
+    // Search-mode segmented control — Exact (default) vs Semantic.
+    // Semantic is disabled when there's no Voyage key; tooltip
+    // points the user at Settings. Session-only: resets on reload.
+    const hasVoyageKey = !!(window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey());
+    const modeSeg = util.el("div", { class: "segmented", "aria-label": "Search mode" });
+    const modeOptions = [
+      { id: "exact",    label: "Exact" },
+      { id: "semantic", label: "Semantic" }
+    ];
+    modeOptions.forEach(opt => {
+      const b = util.el("button", Object.assign({
+        type: "button",
+        "aria-pressed": libState.searchMode === opt.id ? "true" : "false",
+        "data-v": opt.id,
+        onclick: () => {
+          if (opt.id === "semantic" && !hasVoyageKey) return;
+          libState.searchMode = opt.id;
+          setModeButton(opt.id);
+          if (opt.id === "semantic" && libState.query) triggerSemanticEmbed();
+          else updateGrid();
+        }
+      }, (opt.id === "semantic" && !hasVoyageKey) ? {
+        disabled: true,
+        title: "Add a Voyage API key in Settings → Voyage API key to enable semantic search"
+      } : {}), opt.label);
+      modeSeg.appendChild(b);
+    });
+    filterRow.appendChild(modeSeg);
+    function setModeButton(id) {
+      modeSeg.querySelectorAll("button").forEach(x =>
+        x.setAttribute("aria-pressed", x.dataset.v === id ? "true" : "false"));
+    }
 
     const rfOptions = [{ id: "all", label: "All" }, ...READING_STATES.filter(r => r.id !== "none")];
     const rfSegmented = util.el("div", { class: "segmented" });
@@ -1321,15 +1375,8 @@
     const grid = util.el("div", { id: "lib-grid", style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--s-4)" } });
     wrap.appendChild(grid);
 
-    function updateGrid() {
-      const q = libState.query;
-      let filtered = allBooks.filter(b => {
-        if (q && !(b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))) return false;
-        if (libState.category !== "all" && b.category !== libState.category) return false;
-        if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
-        return true;
-      });
-      filtered.sort((a, b) => {
+    function normalSort(list) {
+      list.sort((a, b) => {
         if (libState.sort === "fit") {
           const sa = scoredMap[a.id]?.fitScore ?? -1;
           const sb = scoredMap[b.id]?.fitScore ?? -1;
@@ -1339,11 +1386,65 @@
         if (libState.sort === "year")  return (a.year || 0) - (b.year || 0);
         return 0;
       });
+      return list;
+    }
+
+    function updateGrid() {
+      const q = libState.query;
+      // Base pool always applies category + readingFilter. Text match
+      // and ordering are branched below by searchMode.
+      const basePool = allBooks.filter(b => {
+        if (libState.category !== "all" && b.category !== libState.category) return false;
+        if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
+        return true;
+      });
+
+      const isSemantic = libState.searchMode === "semantic" && !!q;
+      const usableSemantic = isSemantic
+        && semanticState.lastQueryText === q
+        && Array.isArray(semanticState.lastQueryVec);
+
+      let filtered;
+      const indexingIds = new Set();
+
+      if (isSemantic && usableSemantic) {
+        // Rank by cosine similarity. Top 30 of books that have an
+        // embedding; books without one go to the bottom in normal
+        // sort order with an "indexing…" badge.
+        const sim = window.LumenEmbeddings.similarity;
+        const qVec = semanticState.lastQueryVec;
+        const withE = [];
+        const withoutE = [];
+        basePool.forEach(b => {
+          if (Array.isArray(b._embedding)) withE.push({ b, s: sim(qVec, b._embedding) });
+          else withoutE.push(b);
+        });
+        withE.sort((a, b) => b.s - a.s);
+        const top = withE.slice(0, 30).map(x => x.b);
+        normalSort(withoutE).forEach(b => indexingIds.add(b.id));
+        filtered = top.concat(withoutE);
+      } else if (isSemantic) {
+        // Semantic mode, query present, but vector not ready (still
+        // debouncing / embedding). Show the base pool in normal
+        // sort; mark books missing an embedding as indexing.
+        filtered = normalSort(basePool.slice());
+        filtered.forEach(b => { if (!Array.isArray(b._embedding)) indexingIds.add(b.id); });
+      } else {
+        // Exact mode — original behavior (title/author substring).
+        filtered = basePool.filter(b =>
+          !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+        normalSort(filtered);
+      }
 
       const excluded = allBooks.length - Engine.applyHardExclusions(allBooks, Engine.normalizeProfile(s.profile)).length;
       const hiddenCount = Object.keys(hidden).length;
       stats.innerHTML = "";
       stats.appendChild(util.el("span", {}, `Showing ${filtered.length} of ${allBooks.length}`));
+      if (isSemantic && semanticState.loading) {
+        stats.appendChild(util.el("span", { class: "tag" }, "semantic · embedding query…"));
+      } else if (isSemantic && usableSemantic) {
+        stats.appendChild(util.el("span", { class: "tag tag-accent" }, "semantic · top 30 by meaning"));
+      }
       if (excluded > 0)   stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
       if (hiddenCount)    stats.appendChild(util.el("a", { class: "tag tag-accent", href: "#/settings", style: { textDecoration: "none" } }, `${hiddenCount} dismissed — restore in Settings`));
 
@@ -1363,7 +1464,64 @@
         }
         return;
       }
-      filtered.forEach(b => grid.appendChild(bookCardFull(b, scoredMap[b.id])));
+      filtered.forEach(b => {
+        const card = bookCardFull(b, scoredMap[b.id]);
+        if (indexingIds.has(b.id)) {
+          card.style.position = card.style.position || "relative";
+          card.appendChild(util.el("span", {
+            class: "tag",
+            style: {
+              position: "absolute", top: "10px", right: "10px",
+              fontSize: "10px", opacity: "0.75", pointerEvents: "none"
+            }
+          }, "indexing…"));
+        }
+        grid.appendChild(card);
+      });
+    }
+
+    // Debounced semantic search. Kicks a 300ms timer; when it fires
+    // we embed the current query, bump a seq counter so stale
+    // responses are dropped, and re-render. A failure flips the
+    // mode back to Exact silently and surfaces a non-blocking toast.
+    function triggerSemanticEmbed() {
+      if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) {
+        // Key gone mid-session — quietly revert mode and re-render.
+        libState.searchMode = "exact";
+        setModeButton("exact");
+        updateGrid();
+        return;
+      }
+      if (semanticState.debounceTimer) clearTimeout(semanticState.debounceTimer);
+      const thisSeq = ++semanticState.seq;
+      semanticState.loading = true;
+      updateGrid(); // paint the loading tag while waiting
+      semanticState.debounceTimer = setTimeout(async () => {
+        semanticState.debounceTimer = null;
+        const q = libState.query;
+        if (!q) {
+          semanticState.loading = false;
+          semanticState.lastQueryText = "";
+          semanticState.lastQueryVec = null;
+          if (thisSeq === semanticState.seq) updateGrid();
+          return;
+        }
+        try {
+          const vec = await window.LumenEmbeddings.embedText(q);
+          if (thisSeq !== semanticState.seq) return; // stale
+          semanticState.lastQueryText = q;
+          semanticState.lastQueryVec = vec;
+          semanticState.loading = false;
+          updateGrid();
+        } catch (_err) {
+          if (thisSeq !== semanticState.seq) return;
+          semanticState.loading = false;
+          libState.searchMode = "exact";
+          setModeButton("exact");
+          updateGrid();
+          ui.toast("Semantic search unavailable — fell back to Exact");
+        }
+      }, 300);
     }
 
     setTimeout(updateGrid, 0);
