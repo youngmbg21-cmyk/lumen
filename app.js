@@ -315,7 +315,7 @@
     { id: "journal",      label: "Journal",       short: "Journal",  group: "personal", render: () => views.journal() },
     { id: "vault",        label: "Vault",         short: "Vault",    group: "personal", render: () => views.vault() },
     { id: "profile",      label: "Profile",       short: "Profile",  group: "settings", render: () => views.profile() },
-    { id: "settings",     label: "Settings",      short: "Settings", group: "settings", render: () => views.settings() },
+    { id: "settings",     label: "Admin",         short: "Admin",    group: "settings", render: () => views.settings() },
     { id: "transparency", label: "Transparency",  short: "Trust",    group: "settings", render: () => views.transparency() }
   ];
 
@@ -423,7 +423,7 @@
         // Let Sara acknowledge in the chat thread.
         try {
           if (window.LumenSara && window.LumenSara.post) {
-            window.LumenSara.post(`Noted — I won't surface **${book.title}** in picks again. Restore it any time from Settings → Rejected Daily Picks.`);
+            window.LumenSara.post(`Noted — I won't surface **${book.title}** in picks again. Restore it any time from Admin → Rejected Daily Picks.`);
           }
         } catch (e2) { /* ignore */ }
         renderView();
@@ -751,11 +751,12 @@
     category: "all",
     sort: "fit",
     minFit: 0,
-    // Session-only — not persisted to localStorage. Defaults to
-    // "exact" (current behavior). Semantic mode re-ranks the
-    // current filtered pool by cosine similarity to the query's
-    // Voyage embedding.
-    searchMode: "exact"
+    // Session-only — not persisted to localStorage. Default is
+    // "semantic" when a Voyage key is saved (so meaning-based search
+    // is the primary behaviour), falling back to "exact" otherwise
+    // so users without a key land in a working mode.
+    searchMode: (typeof window !== "undefined" && window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey())
+      ? "semantic" : "exact"
   };
 
   // Closure for the semantic-search async flow. Reset on reload
@@ -1303,8 +1304,8 @@
     const hasVoyageKey = !!(window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey());
     const modeSeg = util.el("div", { class: "segmented", "aria-label": "Search mode" });
     const modeOptions = [
-      { id: "exact",    label: "Exact" },
-      { id: "semantic", label: "Semantic" }
+      { id: "semantic", label: "Semantic" },
+      { id: "exact",    label: "Exact" }
     ];
     modeOptions.forEach(opt => {
       const b = util.el("button", Object.assign({
@@ -1320,7 +1321,7 @@
         }
       }, (opt.id === "semantic" && !hasVoyageKey) ? {
         disabled: true,
-        title: "Add a Voyage API key in Settings → Voyage API key to enable semantic search"
+        title: "Add a Voyage API key in Admin → Voyage API key to enable semantic search"
       } : {}), opt.label);
       modeSeg.appendChild(b);
     });
@@ -1456,7 +1457,7 @@
       } else if (isSemantic && semanticState.lastError) {
         const msg = semanticState.lastError === "quota"   ? "semantic · Voyage quota hit"
                  : semanticState.lastError === "network" ? "semantic · network error — check connection"
-                 : semanticState.lastError === "no-key"  ? "semantic · no Voyage key — add one in Settings"
+                 : semanticState.lastError === "no-key"  ? "semantic · no Voyage key — add one in Admin"
                  :                                         "semantic · embed failed — see console";
         stats.appendChild(util.el("span", { class: "tag tag-warn", title: "Semantic mode stays selected; re-edit the query to retry." }, msg));
       }
@@ -1468,7 +1469,7 @@
         if (allBooks.length === 0) {
           grid.appendChild(ui.empty({
             title: "Your library is empty",
-            message: "Lumen has nothing saved yet. Search the web from Discovery to add titles, or load the starter library of historical classics from Settings.",
+            message: "Lumen has nothing saved yet. Search the web from Discovery to add titles, or load the starter library of historical classics from Admin.",
             actions: [
               { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
               { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
@@ -1792,7 +1793,7 @@
       const q = searchInput.value.trim();
       if (!q) { ui.toast("Enter a title, author, or topic"); return; }
       if (!Disco.getApiKey()) {
-        ui.toast("Add your Claude API key in Settings first", {
+        ui.toast("Add your Claude API key in Admin first", {
           action: "Open Settings",
           onAction: () => router.go("settings"),
           duration: 4500
@@ -2516,7 +2517,7 @@
   async function enrichPending() {
     const Disco = window.LumenDiscovery;
     if (!Disco || !Disco.getApiKey()) {
-      ui.toast("Add your Claude API key before enriching — Settings → Claude API key");
+      ui.toast("Add your Claude API key before enriching — Admin → Claude API key");
       return;
     }
     catalogImport.enriching = true;
@@ -2863,8 +2864,8 @@
 
     wrap.appendChild(util.el("div", { class: "page-head settings-page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Settings" }),
-        util.el("h1", { html: "<em>Settings</em>" }),
+        util.el("div", { class: "t-eyebrow", text: "Admin" }),
+        util.el("h1", { html: "<em>Admin</em>" }),
         util.el("p", { class: "lede", text: "Keys and configuration. Everything here is stored locally on this device." })
       ])
     ]));
@@ -3228,6 +3229,41 @@
       util.el("a", { class: "btn btn-sm", href: "#/transparency" }, "Transparency & data")
     ]));
     wrap.appendChild(links);
+
+    // --- Danger zone: wipe the entire library ----------------------------
+    // Clears every book (discovered + seed + catalog override) plus any
+    // per-book state (reading status, tags, hidden, rejected picks, cached
+    // embeddings). Leaves API keys, the taste profile, journal, and
+    // vault alone. Followed by a reload so every view re-reads state.
+    const wipeCard = util.el("div", { class: "card settings-card stack" });
+    wipeCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Delete entire library" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Wipes every book from this device — Discovery saves, seed library, and the curated catalogue — along with their reading statuses, tags, and cached embeddings. Your profile, API keys, journal, and vault stay intact. Use this before uploading a new catalogue from scratch." })
+      ])
+    ]));
+    wipeCard.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)" } }, [
+      util.el("button", { class: "btn btn-sm", style: { color: "var(--danger)", borderColor: "var(--danger)" }, onclick: () => {
+        ui.modal({
+          title: "Delete the entire library?",
+          body: "<p class=\"t-muted\">This removes every book saved to this device and clears their states, tags, hidden flags, rejected picks, and embeddings. Your profile, API keys, journal, and vault are untouched. This cannot be undone.</p>",
+          primary: { label: "Delete everything", onClick: () => {
+            store.update(st => {
+              st.discovered = [];
+              st.bookStates = {};
+              st.tags = {};
+              st.hidden = {};
+              st.dailyPicksRejected = {};
+            });
+            try { localStorage.removeItem("lumen:catalog-override"); } catch (_) { /* ignore */ }
+            ui.toast("Library deleted — reloading…");
+            setTimeout(() => location.reload(), 500);
+          }},
+          secondary: { label: "Cancel" }
+        });
+      }}, "Delete entire library")
+    ]));
+    wrap.appendChild(wipeCard);
 
     return wrap;
   }
@@ -4183,7 +4219,7 @@
     const routeLabel = {
       discover: "Home", library: "Library", discovery: "Discovery",
       compare: "Compare", chat: "Connections", journal: "Journal",
-      vault: "Vault", profile: "Profile", settings: "Settings",
+      vault: "Vault", profile: "Profile", settings: "Admin",
       transparency: "Transparency"
     }[routeId] || routeId;
     chips.push({ label: routeLabel });
@@ -5345,7 +5381,7 @@
       if (!pool.length) {
         picksCard.appendChild(ui.empty({
           title: "Your library is empty",
-          message: "Lumen has no titles to rank yet. Search the web from Discovery, or load the starter library of historical classics from Settings.",
+          message: "Lumen has no titles to rank yet. Search the web from Discovery, or load the starter library of historical classics from Admin.",
           actions: [
             { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
             { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
@@ -5874,7 +5910,7 @@
     const groups = {
       main:     { label: "Read" },
       personal: { label: "You" },
-      settings: { label: "Settings" }
+      settings: { label: "Admin" }
     };
     const side = document.getElementById("side-nav");
     side.innerHTML = "";
