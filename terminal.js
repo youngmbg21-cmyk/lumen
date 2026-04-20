@@ -197,6 +197,22 @@
   }
   function rateClass(n) { return "rate-h" + Math.max(1, Math.min(5, n || 3)); }
 
+  // Google Books thumbnail URLs default to zoom=1 (~128px wide) and
+  // add a page-curl overlay via edge=curl. Those upscale poorly in the
+  // Terminal Selected Title cover (320px tall) and look grainy. Bump
+  // zoom and drop the curl so the server returns a larger, cleaner
+  // image. Non-Google URLs pass through unchanged.
+  function hiresCover(url) {
+    if (!url || typeof url !== "string") return url;
+    if (!/books\.google\.com\/books\/content/.test(url)) return url;
+    return url
+      .replace(/([?&])edge=curl(?=&|$)/, "$1")
+      .replace(/&&+/g, "&")
+      .replace(/\?&/, "?")
+      .replace(/([?&])zoom=\d+/, "$1zoom=2")
+      .replace(/^http:\/\//, "https://");
+  }
+
   // Sparkline SVG for KPI cells. Verbatim from reference.
   function sparklineSVG(data) {
     const w = 44, h = 18;
@@ -484,8 +500,13 @@
     coverEl.querySelectorAll("img").forEach(i => i.remove());
     if (book.cover_url) {
       const img = document.createElement("img");
-      img.src = book.cover_url;
-      img.onerror = () => img.remove();
+      const hi = hiresCover(book.cover_url);
+      img.src = hi;
+      // If the upgraded variant 404s, try the original before giving up.
+      img.onerror = () => {
+        if (img.src !== book.cover_url) { img.onerror = () => img.remove(); img.src = book.cover_url; }
+        else img.remove();
+      };
       coverEl.insertBefore(img, coverEl.firstChild);
     }
     const fitEl = $(root, "#detFit");
@@ -542,7 +563,7 @@
     list.innerHTML = scored.map(({ b, overlap }) => {
       const pct = Math.max(30, Math.min(95, 40 + overlap * 4));
       return `<div class="similar-item" data-id="${escapeHtml(b.id)}">
-        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(b.cover_url)}" onerror="this.style.display='none'"/>` : `<div class="similar-item-cover"></div>`}
+        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(hiresCover(b.cover_url))}" data-fallback="${escapeHtml(b.cover_url)}" onerror="if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}else{this.style.display='none';}"/>` : `<div class="similar-item-cover"></div>`}
         <div style="min-width:0;">
           <div class="similar-item-title">${escapeHtml(b.title)}</div>
           <div class="similar-item-author">${escapeHtml(b.author)}</div>
