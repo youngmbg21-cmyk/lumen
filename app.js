@@ -767,7 +767,12 @@
     lastQueryVec: null,
     loading: false,
     seq: 0,
-    debounceTimer: null
+    debounceTimer: null,
+    // Last embed error. We keep Semantic selected on failure and
+    // surface this in the stats bar so the user understands why
+    // the ordering hasn't changed — flipping them back to Exact
+    // silently made the button feel "broken".
+    lastError: null
   };
 
   function setReadingState(bookId, state) {
@@ -1448,6 +1453,12 @@
         stats.appendChild(util.el("span", { class: "tag" }, "semantic · embedding query…"));
       } else if (isSemantic && usableSemantic) {
         stats.appendChild(util.el("span", { class: "tag tag-accent" }, "semantic · top 30 by meaning"));
+      } else if (isSemantic && semanticState.lastError) {
+        const msg = semanticState.lastError === "quota"   ? "semantic · Voyage quota hit"
+                 : semanticState.lastError === "network" ? "semantic · network error — check connection"
+                 : semanticState.lastError === "no-key"  ? "semantic · no Voyage key — add one in Settings"
+                 :                                         "semantic · embed failed — see console";
+        stats.appendChild(util.el("span", { class: "tag tag-warn", title: "Semantic mode stays selected; re-edit the query to retry." }, msg));
       }
       if (excluded > 0)   stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
       if (hiddenCount)    stats.appendChild(util.el("a", { class: "tag tag-accent", href: "#/settings", style: { textDecoration: "none" } }, `${hiddenCount} dismissed — restore in Settings`));
@@ -1540,7 +1551,9 @@
     // mode back to Exact silently and surfaces a non-blocking toast.
     function triggerSemanticEmbed() {
       if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) {
-        // Key gone mid-session — quietly revert mode and re-render.
+        // Key actually gone (user cleared it mid-session). Only in
+        // this case do we revert mode — Semantic is impossible
+        // without a key.
         libState.searchMode = "exact";
         setModeButton("exact");
         updateGrid();
@@ -1549,6 +1562,7 @@
       if (semanticState.debounceTimer) clearTimeout(semanticState.debounceTimer);
       const thisSeq = ++semanticState.seq;
       semanticState.loading = true;
+      semanticState.lastError = null;
       updateGrid(); // paint the loading tag while waiting
       semanticState.debounceTimer = setTimeout(async () => {
         semanticState.debounceTimer = null;
@@ -1566,14 +1580,16 @@
           semanticState.lastQueryText = q;
           semanticState.lastQueryVec = vec;
           semanticState.loading = false;
+          semanticState.lastError = null;
           updateGrid();
-        } catch (_err) {
+        } catch (err) {
           if (thisSeq !== semanticState.seq) return;
           semanticState.loading = false;
-          libState.searchMode = "exact";
-          setModeButton("exact");
+          semanticState.lastError = err && err.code ? err.code : "unknown";
+          // Log full error to console for debugging but keep
+          // Semantic selected so the button "sticks" as expected.
+          try { console.warn("[Lumen] Semantic search failed:", err); } catch (_) { /* ignore */ }
           updateGrid();
-          ui.toast("Semantic search unavailable — fell back to Exact");
         }
       }, 300);
     }
