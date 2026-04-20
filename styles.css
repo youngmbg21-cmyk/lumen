@@ -4133,6 +4133,20 @@ body[data-privacy-blur="on"] .app-main::after {
   background: var(--bg-sunk);
   box-shadow: 0 2px 8px -4px rgba(60, 38, 22, 0.25);
 }
+/* Initials placeholder shown while the Google Books cover is
+   being fetched, or as a final fallback if no thumbnail is
+   available. Matches .cmp-slot-cover's geometry so the two can
+   swap without reflowing the slot card. */
+.cmp-slot-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--accent-deep);
+  background: linear-gradient(135deg, var(--accent-glow), var(--bg-sunk));
+}
 .cmp-slot-body {
   flex: 1 1 auto;
   min-width: 0;
