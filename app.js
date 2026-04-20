@@ -885,6 +885,12 @@
         st.discovered.push(Object.assign({}, b, { source: "seed", addedAt: Date.now() }));
       });
     });
+    // Queue each fresh seed book for silent embedding. The queue
+    // paces requests at 250ms to stay under Voyage rate limits.
+    fresh.forEach(b => {
+      const saved = (store.get().discovered || []).find(d => d.id === b.id);
+      if (saved) queueEmbedding(saved);
+    });
     return fresh.length;
   }
   function unloadStarterLibrary() {
@@ -1879,6 +1885,125 @@
     });
   }
 
+  /* ==================================================================
+     Embedding storage (Batch 3)
+     When a book enters the library via any of the three add-paths
+     (addDiscoveryToLibrary, loadStarterLibrary, applyCatalogOverride)
+     we fire a Voyage call in the background and write the vector
+     onto the book. The UI is never blocked and success is silent.
+
+     Book vectors live where the book itself lives:
+       · Discovered / seed books → state.discovered[i]._embedding
+       · Catalog books           → the override at lumen:catalog-override
+     The backfill pass on boot catches anything left behind, capped
+     at 20 per session to stay kind to the user's Voyage quota.
+     ================================================================== */
+  const embedQueue = [];
+  let embedTimer = null;
+  // Skip a book for this long after a failure before retrying on
+  // a subsequent backfill. Long enough to survive a transient quota
+  // bump, short enough to self-heal within a day.
+  const EMBED_RETRY_MS = 6 * 60 * 60 * 1000;
+
+  function composeEmbedText(b) {
+    if (!b) return "";
+    const title = b.title || "";
+    const desc  = b.description || b.short_summary || b.fit_notes || "";
+    const tags  = []
+      .concat(b.tropes || [])
+      .concat(b.trope_tags || b.trope || [])
+      .concat(b.tone || [])
+      .concat(b.relationship_dynamic || b.dynamic || [])
+      .concat(b.kink_tags || b.kink || [])
+      .concat(b.pacing || [])
+      .concat(b.literary_style || []);
+    return (title + "\n\n" + desc + "\n\n" + tags.join(" ")).trim();
+  }
+
+  // Find and mutate a single book wherever it lives. Returns true if
+  // it was touched, so the caller can persist the catalog override if
+  // the book wasn't in the main store.
+  function mutateBookEmbedding(bookId, mutator) {
+    let touched = false;
+    store.update(st => {
+      if (st.discovered) {
+        const d = st.discovered.find(x => x.id === bookId);
+        if (d) { mutator(d); touched = true; }
+      }
+    });
+    if (touched) return;
+    try {
+      const raw = localStorage.getItem("lumen:catalog-override");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.books)) return;
+      const b = parsed.books.find(x => x.id === bookId);
+      if (!b) return;
+      mutator(b);
+      localStorage.setItem("lumen:catalog-override", JSON.stringify(parsed));
+    } catch (e) { /* storage issues are non-fatal here */ }
+  }
+
+  function scheduleEmbedQueue() {
+    if (embedTimer || !embedQueue.length) return;
+    embedTimer = setTimeout(processEmbedQueue, 250);
+  }
+
+  async function processEmbedQueue() {
+    embedTimer = null;
+    const job = embedQueue.shift();
+    if (!job) return;
+    // Silent skip if the key disappeared mid-queue.
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) {
+      embedQueue.length = 0;
+      return;
+    }
+    const { id, text } = job;
+    try {
+      const vec = await window.LumenEmbeddings.embedText(text);
+      mutateBookEmbedding(id, b => {
+        b._embedding = vec;
+        b._embeddedAt = Date.now();
+        delete b._embeddingError;
+      });
+    } catch (err) {
+      const code = (err && err.code) || "unknown";
+      mutateBookEmbedding(id, b => { b._embeddingError = { code, at: Date.now() }; });
+      // Stop the queue on "no-key" — retrying would just fail again.
+      if (code === "no-key") { embedQueue.length = 0; return; }
+    }
+    if (embedQueue.length) scheduleEmbedQueue();
+  }
+
+  function queueEmbedding(book) {
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) return;
+    if (!book || !book.id) return;
+    // Skip if we already have an embedding and it's still fresh.
+    if (book._embedding) return;
+    // De-dupe — if the same id is already in the queue, skip it.
+    if (embedQueue.some(j => j.id === book.id)) return;
+    embedQueue.push({ id: book.id, text: composeEmbedText(book) });
+    scheduleEmbedQueue();
+  }
+
+  // Boot-time backfill: queue up to 20 books per session that are
+  // missing _embedding (and aren't in a recent-error cooldown).
+  // Silent if no Voyage key is set.
+  function backfillEmbeddings() {
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) return;
+    let queued = 0;
+    const CAP = 20;
+    const now = Date.now();
+    for (const b of listAllBooks()) {
+      if (queued >= CAP) break;
+      if (!b || !b.id) continue;
+      if (b._embedding) continue;
+      if (b._embeddingError && (now - (b._embeddingError.at || 0)) < EMBED_RETRY_MS) continue;
+      queueEmbedding(b);
+      queued += 1;
+    }
+  }
+
   function addDiscoveryToLibrary(book, enrich) {
     const s = store.get();
     const existing = (s.discovered || []).find(d => d.id === book.id);
@@ -1926,6 +2051,10 @@
     // button flips to "Open in Library", and if they navigate to Library
     // via the toast action the grid shows the new entry immediately.
     renderView();
+    // Silent background embedding (Batch 3). No toast on success; on
+    // failure the error tag stays on the book for the backfill to see.
+    const savedRecord = (store.get().discovered || []).find(d => d.id === book.id);
+    queueEmbedding(savedRecord || book);
     ui.toast(`Added ${book.title} to your library as "want to read"`, {
       action: "Open library",
       onAction: () => router.go("library"),
@@ -2330,6 +2459,10 @@
     try {
       localStorage.setItem("lumen:catalog-override",
         JSON.stringify({ version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books }));
+      // Silent background embedding of each committed catalog book
+      // (Batch 3). Queue is paced at 250ms to stay under Voyage rate
+      // limits; vectors are written back into the override.
+      books.forEach(b => queueEmbedding(b));
       ui.toast(`Applied ${books.length} curated book${books.length === 1 ? "" : "s"} — reload to see them everywhere`, {
         action: "Reload now",
         onAction: () => location.reload(),
@@ -5964,6 +6097,11 @@
     }
 
     adultGate();
+
+    // Boot-time embedding backfill (Batch 3). Silent if no Voyage
+    // key; capped at 20 books per session so a huge library doesn't
+    // burn quota on one visit.
+    backfillEmbeddings();
   }
 
   // Expose a small surface for later batches to hook into.
