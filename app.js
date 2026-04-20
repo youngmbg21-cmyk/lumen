@@ -41,6 +41,18 @@
         node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
       }
       return node;
+    },
+    // Upgrade a Google Books thumbnail URL to a larger, sharper variant
+    // (zoom=2 instead of the default zoom=1, and drops the page-curl
+    // overlay). Forces https. Non-Google URLs are returned untouched.
+    hiresCover: (url) => {
+      if (!url || typeof url !== "string") return url;
+      if (!/books\.google\.com\/books\/content/.test(url)) return url;
+      return url
+        .replace(/([?&])edge=curl(?=&|$)/, "$1")
+        .replace(/&&+/g, "&").replace(/\?&/, "?")
+        .replace(/([?&])zoom=\d+/, "$1zoom=2")
+        .replace(/^http:\/\//, "https://");
     }
   };
 
@@ -365,13 +377,24 @@
   function buildCoverBlock(book, { size = "md", showHeat = true } = {}) {
     const cover = util.el("div", { class: `book-cover book-cover-${size}` });
     if (book.thumbnail) {
-      const url = book.thumbnail.replace(/^http:/, "https:");
+      const original = book.thumbnail.replace(/^http:/, "https:");
+      const hi = util.hiresCover(original);
+      const showFallback = () => {
+        if (!cover.querySelector(".cover-fallback")) {
+          cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        }
+      };
       const img = util.el("img", {
-        src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+        src: hi, alt: `Cover of ${book.title}`, loading: "lazy",
         onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          // First try the original (zoom=1) URL; only fall back to
+          // initials when even that fails.
+          if (this.src !== original) {
+            this.onerror = function () { this.remove(); showFallback(); };
+            this.src = original;
+          } else {
+            this.remove();
+            showFallback();
           }
         }
       });
@@ -1015,13 +1038,22 @@
     // anchored along the bottom of the cover.
     const cover = util.el("div", { class: "lib-card-cover" });
     if (book.thumbnail) {
-      const url = book.thumbnail.replace(/^http:/, "https:");
+      const original = book.thumbnail.replace(/^http:/, "https:");
+      const hi = util.hiresCover(original);
+      const showFallback = () => {
+        if (!cover.querySelector(".cover-fallback")) {
+          cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        }
+      };
       const img = util.el("img", {
-        src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+        src: hi, alt: `Cover of ${book.title}`, loading: "lazy",
         onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          if (this.src !== original) {
+            this.onerror = function () { this.remove(); showFallback(); };
+            this.src = original;
+          } else {
+            this.remove();
+            showFallback();
           }
         }
       });
@@ -1700,13 +1732,22 @@
       // Cover frame — image if available, initials fallback otherwise
       const cover = util.el("div", { class: "disco-card-cover" });
       if (book.thumbnail) {
-        const url = book.thumbnail.replace(/^http:/, "https:");
+        const original = book.thumbnail.replace(/^http:/, "https:");
+        const hi = util.hiresCover(original);
+        const showFallback = () => {
+          if (!cover.querySelector(".cover-fallback")) {
+            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+          }
+        };
         const img = util.el("img", {
-          src: url, alt: `Cover of ${book.title}`, loading: "lazy",
+          src: hi, alt: `Cover of ${book.title}`, loading: "lazy",
           onerror: function () {
-            this.remove();
-            if (!cover.querySelector(".cover-fallback")) {
-              cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+            if (this.src !== original) {
+              this.onerror = function () { this.remove(); showFallback(); };
+              this.src = original;
+            } else {
+              this.remove();
+              showFallback();
             }
           }
         });
