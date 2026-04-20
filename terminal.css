@@ -291,15 +291,18 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .dashboard {
   display: grid;
   grid-template-columns: 280px 1fr 320px;
+  /* minmax(0,1fr) forces the single grid row to match dashboard's
+     definite height (no growing to the tallest column's natural
+     content), so each column is capped and its overflow-y: auto
+     actually engages instead of being silently clipped by the
+     dashboard. Without this the row stretches to left-col's tall
+     content and middle-column scrolling never triggers. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   padding: 14px;
   max-width: 1800px;
   margin: 0 auto;
   align-items: stretch;
-  /* Desktop: dashboard fills the viewport below the command bar and
-     each column manages its own scroll. On narrow widths the
-     dashboard collapses to one column via media queries, so this
-     only applies where we still have three-column real estate. */
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
