@@ -281,24 +281,8 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   padding: 14px;
   max-width: 1800px;
   margin: 0 auto;
-  align-items: start;
+  align-items: stretch;
 }
-
-/* Sticky side panels: Your Compass / Similar / Brief on the left and
-   Selected Title on the right stay visible while the middle column
-   scrolls past them. Top offset = command bar height (~52px). The
-   column caps at viewport − top offset so over-tall content gets its
-   own internal scroll, never the body. */
-.lumen-terminal .dashboard > aside {
-  position: sticky;
-  top: 52px;
-  align-self: start;
-  max-height: calc(100vh - 52px - 14px);
-  overflow-y: auto;
-  min-height: 0;
-}
-.lumen-terminal .dashboard > aside::-webkit-scrollbar       { width: 6px; }
-.lumen-terminal .dashboard > aside::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 
 /* ============================================================
    PANEL BASE
@@ -711,27 +695,6 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
    DATA GRID — Bloomberg-style dense table
    ============================================================ */
 .lumen-terminal .grid-panel .panel-body { padding: 0; }
-/* Once the user scrolls past the KPI strip + chart row, the grid
-   panel pins to the top of the centre-col so it stays visible while
-   its internal .grid-scroll handles the row overflow. Bounded to
-   the column's visible height so nothing gets clipped below. */
-/* Catalogue Grid pins just below the command bar once the user has
-   scrolled the middle content past it. Its inner .grid-scroll gets
-   a max-height so the row list has its own internal scroll while
-   the panel stays pinned. */
-.lumen-terminal .centre-col > .grid-panel {
-  position: sticky;
-  top: 52px;
-  z-index: 2;
-  max-height: calc(100vh - 52px - 14px);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.lumen-terminal .centre-col > .grid-panel > .grid-scroll {
-  flex: 1 1 auto;
-  min-height: 0;
-}
 .lumen-terminal .data-grid {
   width: 100%;
   font-family: 'DM Sans', sans-serif;
