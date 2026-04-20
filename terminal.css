@@ -98,22 +98,8 @@ body.theme-botanical .lumen-terminal {
   line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   position: relative;
-  /* Definite height = viewport − topbar(64) − app-main top+bottom
-     padding(48+48) so percentage heights inside (columns, sticky
-     grid) resolve. Without this fallback the terminal went auto-
-     height and the whole page scrolled as one instead of each
-     column scrolling on its own. */
-  height: calc(100vh - 160px);
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  min-height: 100%;
   transition: background-color 0.4s ease;
-}
-.lumen-terminal > .wrap {
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
 }
 .lumen-terminal *,
 .lumen-terminal *::before,
@@ -291,32 +277,28 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .dashboard {
   display: grid;
   grid-template-columns: 280px 1fr 320px;
-  /* minmax(0,1fr) forces the single grid row to match dashboard's
-     definite height (no growing to the tallest column's natural
-     content), so each column is capped and its overflow-y: auto
-     actually engages instead of being silently clipped by the
-     dashboard. Without this the row stretches to left-col's tall
-     content and middle-column scrolling never triggers. */
-  grid-template-rows: minmax(0, 1fr);
   gap: 14px;
   padding: 14px;
   max-width: 1800px;
   margin: 0 auto;
-  align-items: stretch;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
+  align-items: start;
 }
-.lumen-terminal .dashboard > aside,
-.lumen-terminal .dashboard > main {
+
+/* Sticky side panels: Your Compass / Similar / Brief on the left and
+   Selected Title on the right stay visible while the middle column
+   scrolls past them. Top offset = command bar height (~52px). The
+   column caps at viewport − top offset so over-tall content gets its
+   own internal scroll, never the body. */
+.lumen-terminal .dashboard > aside {
+  position: sticky;
+  top: 52px;
+  align-self: start;
+  max-height: calc(100vh - 52px - 14px);
   overflow-y: auto;
   min-height: 0;
-  max-height: 100%;
 }
-.lumen-terminal .dashboard > aside::-webkit-scrollbar,
-.lumen-terminal .dashboard > main::-webkit-scrollbar       { width: 6px; }
-.lumen-terminal .dashboard > aside::-webkit-scrollbar-thumb,
-.lumen-terminal .dashboard > main::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.lumen-terminal .dashboard > aside::-webkit-scrollbar       { width: 6px; }
+.lumen-terminal .dashboard > aside::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
 
 /* ============================================================
    PANEL BASE
@@ -733,11 +715,15 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
    panel pins to the top of the centre-col so it stays visible while
    its internal .grid-scroll handles the row overflow. Bounded to
    the column's visible height so nothing gets clipped below. */
+/* Catalogue Grid pins just below the command bar once the user has
+   scrolled the middle content past it. Its inner .grid-scroll gets
+   a max-height so the row list has its own internal scroll while
+   the panel stays pinned. */
 .lumen-terminal .centre-col > .grid-panel {
   position: sticky;
-  top: 0;
+  top: 52px;
   z-index: 2;
-  max-height: 100%;
+  max-height: calc(100vh - 52px - 14px);
   display: flex;
   flex-direction: column;
   min-height: 0;
