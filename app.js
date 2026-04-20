@@ -2578,6 +2578,82 @@
     ]));
     wrap.appendChild(keyCard);
 
+    // --- Voyage API key (for semantic search) ----------------------------
+    // Styled identically to the Claude card above. setApiKey("") in
+    // embeddings.js doubles as "clear" (removes the localStorage entry),
+    // so there's no separate clearApiKey() to call.
+    const Embed = window.LumenEmbeddings;
+    const hasVoyage = () => !!(Embed && Embed.getApiKey && Embed.getApiKey());
+    const voyageCard = util.el("div", { class: "card settings-card stack" });
+    voyageCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Voyage API key (for semantic search)" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Required for meaning-based search in your Library. Stored locally, never sent anywhere but Voyage AI." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (hasVoyage() ? "settings-badge-ok" : "settings-badge-missing"),
+        text: hasVoyage() ? "Key saved" : "Not set"
+      })
+    ]));
+
+    const voyageInput = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "pa-…",
+      value: hasVoyage() ? Embed.getApiKey() : "",
+      autocomplete: "off",
+      spellcheck: "false"
+    });
+    voyageCard.appendChild(voyageInput);
+
+    const voyageReveal = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)" } });
+    const voyageRevealInput = util.el("input", { type: "checkbox", onchange: (e) => {
+      voyageInput.setAttribute("type", e.target.checked ? "text" : "password");
+    }});
+    voyageReveal.appendChild(voyageRevealInput);
+    voyageReveal.appendChild(util.el("span", { class: "toggle-track" }));
+    voyageReveal.appendChild(util.el("span", { class: "toggle-label", text: "Show key" }));
+    voyageCard.appendChild(voyageReveal);
+
+    const voyageActions = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
+    voyageActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      if (!Embed || !Embed.setApiKey) { ui.toast("Embeddings module not loaded"); return; }
+      const val = voyageInput.value.trim();
+      if (!val) {
+        Embed.setApiKey("");
+        ui.toast("Voyage key cleared");
+        renderView();
+        return;
+      }
+      Embed.setApiKey(val);
+      ui.toast("Voyage key saved locally");
+      renderView();
+    }}, hasVoyage() ? "Update" : "Save"));
+    voyageActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", disabled: !hasVoyage() || null, onclick: () => {
+      ui.modal({
+        title: "Clear Voyage API key?",
+        body: "<p class=\"t-muted\">Removes the key from this device. You can paste it back in any time.</p>",
+        primary: { label: "Clear", onClick: () => {
+          if (Embed && Embed.setApiKey) Embed.setApiKey("");
+          voyageInput.value = "";
+          ui.toast("Voyage key cleared");
+          renderView();
+        }},
+        secondary: { label: "Cancel" }
+      });
+    }}, "Clear"));
+    voyageCard.appendChild(voyageActions);
+
+    voyageCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+      util.el("div", {}, [
+        util.el("strong", { text: "Heads up · " }),
+        "Calling Voyage from the browser exposes this key to any script loaded on this page. Use a personal key, set a spend limit in the Voyage console, and don't paste a team key here. Full detail in ",
+        util.el("a", { href: "#/transparency", style: { color: "var(--accent)", textDecoration: "underline" } }, "Transparency"),
+        "."
+      ])
+    ]));
+    wrap.appendChild(voyageCard);
+
     // --- Google Books API key (optional) ---------------------------------
     const gbCard = util.el("div", { class: "card settings-card stack" });
     gbCard.appendChild(util.el("div", { class: "settings-card-head" }, [
