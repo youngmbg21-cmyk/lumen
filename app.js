@@ -41,7 +41,13 @@
         node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
       }
       return node;
-    }
+    },
+    // Detect Google Books' "Image not available" placeholder. That
+    // response is a 200 OK image (~60×90 px) so <img> onerror never
+    // fires; real book covers at zoom=1 are ≥128 wide. Call this in
+    // img.onload to decide whether to keep the cover or swap in an
+    // initials fallback.
+    isLikelyNoCover: (img) => !!img && img.naturalWidth > 0 && img.naturalWidth < 128
   };
 
   /* -------------------- store -------------------- */
@@ -364,16 +370,17 @@
   // heat bar pinned to the bottom matches the existing library card.
   function buildCoverBlock(book, { size = "md", showHeat = true } = {}) {
     const cover = util.el("div", { class: `book-cover book-cover-${size}` });
+    const showInitialsFallback = () => {
+      if (!cover.querySelector(".cover-fallback")) {
+        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      }
+    };
     if (book.thumbnail) {
       const url = book.thumbnail.replace(/^http:/, "https:");
       const img = util.el("img", {
         src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-        onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-          }
-        }
+        onerror: function () { this.remove(); showInitialsFallback(); },
+        onload:  function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
       });
       cover.appendChild(img);
     } else {
@@ -1043,20 +1050,24 @@
     // a two-letter initials block otherwise. Steam Engine bar is
     // anchored along the bottom of the cover.
     const cover = util.el("div", { class: "lib-card-cover" });
+    const showInitialsFallback = () => {
+      if (!cover.querySelector(".cover-fallback")) {
+        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      }
+    };
     if (book.thumbnail) {
       const url = book.thumbnail.replace(/^http:/, "https:");
       const img = util.el("img", {
         src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-        onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-          }
-        }
+        onerror: function () { this.remove(); showInitialsFallback(); },
+        // Google Books' "image not available" placeholder is a 200 OK
+        // image (~60×90), so onerror never fires. Swap to initials if
+        // the loaded cover is too small to be real.
+        onload: function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
       });
       cover.appendChild(img);
     } else {
-      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      showInitialsFallback();
     }
     cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     card.appendChild(cover);
@@ -1934,20 +1945,21 @@
 
       // Cover frame — image if available, initials fallback otherwise
       const cover = util.el("div", { class: "disco-card-cover" });
+      const showInitialsFallback = () => {
+        if (!cover.querySelector(".cover-fallback")) {
+          cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        }
+      };
       if (book.thumbnail) {
         const url = book.thumbnail.replace(/^http:/, "https:");
         const img = util.el("img", {
           src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-          onerror: function () {
-            this.remove();
-            if (!cover.querySelector(".cover-fallback")) {
-              cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-            }
-          }
+          onerror: function () { this.remove(); showInitialsFallback(); },
+          onload:  function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
         });
         cover.appendChild(img);
       } else {
-        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        showInitialsFallback();
       }
       // Steam Engine bar at the bottom of the cover (reveals once analyzed)
       cover.appendChild(util.el("div", {
@@ -4981,6 +4993,10 @@
             else cover.replaceWith(placeholder);
           };
           cover.onload = () => {
+            // Google Books returns an "image not available" placeholder
+            // (~60×90) as a 200 OK image — onerror never fires. Detect
+            // by natural width and keep the initials fallback.
+            if (util.isLikelyNoCover(cover)) return;
             if (placeholder.parentNode) placeholder.replaceWith(cover);
             else filled.insertBefore(cover, filled.firstChild);
           };
@@ -5000,14 +5016,21 @@
             Disco.lookupBookMetadata({ title: b.title, author: b.author })
               .then(gb => {
                 if (!gb || !gb.thumbnail) return;
-                // Persist the thumbnail so the next render skips the
-                // lookup. mutateBookEmbedding already knows both
-                // locations (discovered + catalog override), so reuse
-                // it by writing a plain field.
-                try {
-                  mutateBookEmbedding(b.id, rec => { rec.thumbnail = gb.thumbnail; });
-                } catch (_) { /* persistence is best-effort */ }
-                mountCover(gb.thumbnail);
+                // Probe the URL before persisting — Google sometimes
+                // returns an "image not available" placeholder (~60×90)
+                // as a 200 OK image. Caching that would cement the bad
+                // cover across reloads. Check dimensions on a detached
+                // Image first.
+                const probe = new Image();
+                probe.onload = () => {
+                  if (util.isLikelyNoCover(probe)) return;
+                  try {
+                    mutateBookEmbedding(b.id, rec => { rec.thumbnail = gb.thumbnail; });
+                  } catch (_) { /* persistence is best-effort */ }
+                  mountCover(gb.thumbnail);
+                };
+                probe.onerror = () => { /* keep the placeholder */ };
+                probe.src = gb.thumbnail;
               })
               .catch(() => { /* keep the placeholder */ });
           }
