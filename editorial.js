@@ -11,10 +11,7 @@
    Model is claude-sonnet-4-6 — Haiku is used elsewhere for speed,
    but editorial writing rewards the sharper model.
 
-   No UI is wired in this module. Batch 4 consumes window.LumenEditorial.
-   A dev console hook (__LumenEditorialTest.generate) is attached so
-   Claude calls can be exercised before the Today view exists. The
-   whole hook object is removed in batch 5.
+   Consumed by the Today view in app.js via window.LumenEditorial.
    ============================================================ */
 (function () {
   "use strict";
@@ -311,13 +308,4 @@ ${candidatesFormatted}`
   }
 
   window.LumenEditorial = { generate };
-
-  // Extend the dev-only hook installed in app.js batch 2 so the
-  // whole pipeline can be driven from the console. Removed in
-  // batch 5. No-op if the hook isn't present yet for any reason.
-  if (window.__LumenEditorialTest) {
-    window.__LumenEditorialTest.generate = generate;
-    window.__LumenEditorialTest.profileToProse = profileToProse;
-    window.__LumenEditorialTest.buildPrompt = buildPrompt;
-  }
 })();

@@ -416,78 +416,6 @@
     return cover;
   }
 
-  // Daily Picks card — cover on the left, body in the middle, compact
-  // fit-score ring on the right. Whole card is an <a> so it's clickable
-  // AND keyboard-activatable (Enter/Space). Clicking or activating
-  // opens the richer detail modal.
-  function dailyPickCard(scored, onClick) {
-    const { book, fitScore, confidence, why } = scored;
-    const card = util.el("div", {
-      class: "daily-pick-card",
-      role: "button",
-      tabindex: "0",
-      "aria-label": `Open details for ${book.title}`,
-      onclick: () => { onClick && onClick(scored); },
-      onkeydown: (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick && onClick(scored);
-        }
-      }
-    });
-
-    card.appendChild(pinShareBtn(book.id));
-    // "Not for me" — pick-only rejection. Keeps the book in Library
-    // but replaces this slot with the next eligible match.
-    card.appendChild(util.el("button", {
-      class: "card-reject",
-      "aria-label": `Not for me — remove from Daily Picks`,
-      title: "Not for me — keep in Library but stop suggesting",
-      onclick: (e) => {
-        e.stopPropagation();
-        rejectDailyPick(book.id);
-        ui.toast(`Noted — I won't surface ${book.title} in picks`, {
-          action: "Undo",
-          onAction: () => { restoreDailyPick(book.id); renderView(); },
-          duration: 5500
-        });
-        // Let Sara acknowledge in the chat thread.
-        try {
-          if (window.LumenSara && window.LumenSara.post) {
-            window.LumenSara.post(`Noted — I won't surface **${book.title}** in picks again. Restore it any time from Admin → Rejected Daily Picks.`);
-          }
-        } catch (e2) { /* ignore */ }
-        renderView();
-      }
-    }, "×"));
-    card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
-
-    const body = util.el("div", { class: "daily-pick-body" });
-    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || book.category || "") }));
-    body.appendChild(util.el("h4", { class: "daily-pick-title", text: book.title }));
-    body.appendChild(util.el("div", { class: "daily-pick-author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
-    body.appendChild(util.el("p", { class: "daily-pick-blurb", text: (book.description || "").slice(0, 180) + ((book.description || "").length > 180 ? "…" : "") }));
-    if (why && why.reasons && why.reasons.length) {
-      const tags = util.el("div", { class: "daily-pick-tags" });
-      why.reasons.slice(0, 2).forEach(r => tags.appendChild(ui.tag(r, "accent")));
-      body.appendChild(tags);
-    }
-    body.appendChild(util.el("div", { class: "daily-pick-expand-hint", text: "Click to read full summary →" }));
-    card.appendChild(body);
-
-    const aside = util.el("div", { class: "daily-pick-aside" });
-    const fitFill = Math.max(0, Math.min(1, fitScore / 100));
-    aside.appendChild(util.el("div", { class: "daily-pick-ring" }, [
-      kpiRing(fitFill, String(fitScore), kpiToneFromFraction(fitFill))
-    ]));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-label", text: "Fit" }));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-sub", text: kpiDescriptorFit(fitScore) }));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-conf", text: `${confidence}% conf.` }));
-    card.appendChild(aside);
-
-    return card;
-  }
-
   function bookCardMini(scored, onClick) {
     const { book, fitScore, confidence, why } = scored;
     const card = util.el("div", {
@@ -981,29 +909,15 @@
     return (store.get().discovered || []).some(d => d.source === "seed");
   }
 
-  // Daily-Pick-only rejection. Unlike dismissFromLibrary, the book
-  // stays in the library — it just won't be chosen for the Home
-  // top-3 until restored. State lives at s.dailyPicksRejected so
-  // the Home view's ranker consumer can filter it cheaply.
-  function rejectDailyPick(bookId) {
-    if (!bookId) return;
-    store.update(st => {
-      st.dailyPicksRejected = st.dailyPicksRejected || {};
-      st.dailyPicksRejected[bookId] = { rejectedAt: Date.now() };
-    });
-  }
-
+  // Restore a previously rejected Daily Pick. The reject-from-card
+  // path is gone with the new Today view, but the Admin list still
+  // shows legacy rejections and offers per-row restore.
   function restoreDailyPick(bookId) {
     if (!bookId) return;
     store.update(st => {
       st.dailyPicksRejected = st.dailyPicksRejected || {};
       delete st.dailyPicksRejected[bookId];
     });
-  }
-
-  function isDailyPickRejected(bookId) {
-    const m = store.get().dailyPicksRejected || {};
-    return !!m[bookId];
   }
 
   function dismissFromLibrary(bookId) {
@@ -5658,15 +5572,6 @@
       return renderEditorial();
     },
 
-    /* === Legacy Home / Daily Picks body — commented out in batch 4.
-          Will be removed entirely in batch 5 if the new Today view
-          holds up in testing.
-    discoverLegacy() {
-      const s = store.get();
-      // …original body elided for brevity, still in git history…
-    },
-    === */
-
     library() {
       return renderLibrary();
     },
@@ -6619,10 +6524,6 @@
        Returns one of six fixed editorial angles at random, avoiding
        whatever angle the most recent history entry used. Shape:
        { id, label }.
-
-     Both helpers are exposed on window.__LumenEditorialTest so the
-     console can drive them before the UI exists. That export is
-     removed in batch 5.
      ================================================================== */
   const EDITORIAL_ANGLES = [
     { id: "deepen",     label: "Three books that would deepen what you're already drawn to" },
@@ -6689,15 +6590,6 @@
     return list[Math.floor(Math.random() * list.length)];
   }
 
-  // Dev console hook — batches 2 and 3 can be exercised before any
-  // UI exists. Removed in batch 5.
-  window.__LumenEditorialTest = {
-    selectEditorialCandidates,
-    chooseEditorialAngle,
-    ANGLES: EDITORIAL_ANGLES
-  };
-
-  // Expose a small surface for later batches to hook into.
   // Public surface for sara.js — keep this list small and intentional.
   window.Lumen = {
     store, router, ui, util, views, ROUTES, saraRespond,
