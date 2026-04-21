@@ -201,22 +201,28 @@
   function applyAppearance() {
     if (!panel) return;
     const a = readAppearance();
-    // Clear any prior inline background + dark flag.
+    // Clear any prior inline background + class flags. `has-custom-bg`
+    // makes the inner containers transparent so the panel's background
+    // (gradient or image) actually shows through; `is-dark-bg` only
+    // swaps text/bubble colors for legibility on dark backdrops.
     panel.style.background = "";
     panel.style.backgroundImage = "";
     panel.style.backgroundSize = "";
     panel.style.backgroundPosition = "";
     panel.classList.remove("is-dark-bg");
+    panel.classList.remove("has-custom-bg");
     if (a.kind === "custom" && a.image) {
       panel.style.backgroundImage = `url(${JSON.stringify(a.image)})`;
       panel.style.backgroundSize = "cover";
       panel.style.backgroundPosition = "center";
+      panel.classList.add("has-custom-bg");
       if (a.dark) panel.classList.add("is-dark-bg");
       return;
     }
     const preset = APPEARANCE_PRESETS.find(p => p.id === a.kind);
     if (preset && preset.bg) {
       panel.style.background = preset.bg;
+      panel.classList.add("has-custom-bg");
       if (preset.dark) panel.classList.add("is-dark-bg");
     }
   }
