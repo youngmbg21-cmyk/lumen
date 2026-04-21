@@ -3287,7 +3287,7 @@
     // Privacy
     const privacy = util.el("div", { class: "card stack" }, [
       util.el("h3", { text: "What stays on your device" }),
-      util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Sara conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
+      util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Bianca conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
       util.el("h3", { text: "What the vault passcode does and does not do" }),
       util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." }),
       util.el("h3", { text: "About the Discovery tab — calling Claude from your browser" }),
@@ -3370,7 +3370,7 @@
         shortcutRow("Go to Profile",        "G then P"),
         shortcutRow("Toggle theme",         "T"),
         shortcutRow("Toggle discreet",      "D"),
-        shortcutRow("Toggle Sara",          "S")
+        shortcutRow("Toggle Bianca",        "S")
       ])
     ]);
     wrap.appendChild(keys);
@@ -4418,7 +4418,7 @@
     const s = store.get();
     if (s.chats.sara.length === 0) {
       appendChatMessage("sara", null, "sara",
-        `Hi — I'm Sara. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare three titles, or to help you journal a reaction. Everything here is private.`);
+        `Hi — I'm Bianca. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare three titles, or to help you journal a reaction. Everything here is private.`);
     }
   }
 
@@ -4440,11 +4440,11 @@
     saraCard.appendChild(util.el("div", { class: "card-head" }, [
       util.el("h3", { text: "Bianca · conversation history" }),
       util.el("div", { class: "row" }, [
-        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Sara"),
+        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Bianca"),
         util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
           ui.modal({
-            title: "Clear Sara's memory?",
-            body: "<p class=\"t-muted\">Deletes every message between you and Sara on this device. A fresh greeting will replace it.</p>",
+            title: "Clear Bianca's memory?",
+            body: "<p class=\"t-muted\">Deletes every message between you and Bianca on this device. A fresh greeting will replace it.</p>",
             primary: { label: "Clear", onClick: () => {
               store.update(s => { s.chats.sara = []; });
               ensureSeedSara();
@@ -5082,7 +5082,7 @@
       if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
         cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, fresh.profile);
         ui.toast("Deep analysis ready · scroll down to read it", {
-          action: "Open in Sara",
+          action: "Open in Bianca",
           onAction: () => openInSara(cmpState.lastDeepAnalysis),
           duration: 5000
         });
@@ -5121,7 +5121,7 @@
       util.el("h3", { text: "Deep analysis" }),
       util.el("div", { class: "row" }, [
         util.el("span", { class: "card-sub t-subtle", text: new Date(payload.timestamp).toLocaleString() }),
-        util.el("button", { class: "btn btn-sm", onclick: () => openInSara(payload) }, "Open in Sara"),
+        util.el("button", { class: "btn btn-sm", onclick: () => openInSara(payload) }, "Open in Bianca"),
         util.el("button", { class: "btn btn-sm", onclick: () => {
           saveAnalysis({
             titleA: payload.titles[0],
@@ -5692,7 +5692,7 @@
         { label: "Literary", value: "literary" },
         { label: "Academic", value: "academic" }
       ]));
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "Guides Sara's vocabulary and sentence rhythm. Casual = a friend over coffee; Academic = a seminar aside." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Guides Bianca's vocabulary and sentence rhythm. Casual = a friend over coffee; Academic = a seminar aside." }));
 
       companionCard.appendChild(buildFieldLabel("Format preference", "medium"));
       companionCard.appendChild(segmented("formatPreference", [
@@ -5702,7 +5702,7 @@
         { label: "Hardcover", value: "hardcover" },
         { label: "Paperback", value: "paperback" }
       ]));
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "If you pick Audiobook, Sara leads with narrator quality when she names a book." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "If you pick Audiobook, Bianca leads with narrator quality when she names a book." }));
 
       const spoilersToggle = util.el("label", { class: "toggle", style: { marginTop: "var(--s-3)" } });
       const spoilerInput = util.el("input", {
@@ -5718,7 +5718,7 @@
       spoilersToggle.appendChild(util.el("span", { class: "toggle-track" }));
       spoilersToggle.appendChild(util.el("span", { class: "toggle-label", text: "Allow plot spoilers" }));
       companionCard.appendChild(spoilersToggle);
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "Off by default — Sara will name themes and beats but not twists. Flip on if you prefer a full read-out." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Off by default — Bianca will name themes and beats but not twists. Flip on if you prefer a full read-out." }));
 
       col.appendChild(companionCard);
 
@@ -6101,8 +6101,8 @@
 
     const saraLauncher = util.el("button", {
       class: "sara-launcher",
-      "aria-label": "Open Sara",
-      title: "Open Sara (your reading companion)",
+      "aria-label": "Open Bianca",
+      title: "Open Bianca (your reading companion)",
       onclick: () => window.LumenSara && window.LumenSara.toggle()
     }, [
       util.el("span", { class: "dot" }),
@@ -6356,8 +6356,8 @@
       } },
       { label: "Open Transparency", hint: "", run: () => router.go("transparency") },
       { label: "Open Settings",     hint: "", run: () => router.go("settings") },
-      { label: "Open Sara",          hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
-      { label: "Close Sara",         hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
+      { label: "Open Bianca",        hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
+      { label: "Close Bianca",       hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
     ];
 
     if (cmpState.slots && cmpState.slots.filter(Boolean).length >= 2) {
