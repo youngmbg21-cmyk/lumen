@@ -500,12 +500,30 @@
     coverEl.querySelectorAll("img").forEach(i => i.remove());
     if (book.cover_url) {
       const img = document.createElement("img");
-      const hi = hiresCover(book.cover_url);
+      const original = book.cover_url;
+      const hi = hiresCover(original);
+      // Some Google Books covers have no zoom=2 variant — the server
+      // returns an "image not available" placeholder (~60×90 px) as a
+      // valid 200 OK image, so onerror never fires. Detect that via
+      // naturalWidth at onload and fall back to the original URL
+      // (zoom=1) — the exact URL the Library tile uses.
+      const isNoCover = (el) => (window.Lumen && window.Lumen.util && window.Lumen.util.isLikelyNoCover)
+        ? window.Lumen.util.isLikelyNoCover(el)
+        : (!!el && el.naturalWidth > 0 && el.naturalWidth < 128);
       img.src = hi;
-      // If the upgraded variant 404s, try the original before giving up.
       img.onerror = () => {
-        if (img.src !== book.cover_url) { img.onerror = () => img.remove(); img.src = book.cover_url; }
+        if (img.src !== original) { img.onerror = () => img.remove(); img.src = original; }
         else img.remove();
+      };
+      img.onload = () => {
+        if (!isNoCover(img)) return;
+        // zoom=2 was a placeholder — try zoom=1.
+        if (img.src !== original) {
+          img.onload = () => { if (isNoCover(img)) img.remove(); };
+          img.src = original;
+        } else {
+          img.remove();
+        }
       };
       coverEl.insertBefore(img, coverEl.firstChild);
     }
@@ -560,10 +578,23 @@
       return { b, overlap };
     }).sort((x, y) => y.overlap - x.overlap).slice(0, 5);
 
+    // onload handler for similar-item covers: if the zoom=2 upgrade
+    // loaded Google's "image not available" placeholder (~60×90),
+    // fall back to the original zoom=1 URL (which Library uses); if
+    // that's also a placeholder, hide the <img>. Inline so the
+    // innerHTML-generated nodes can wire it up from the onload attr.
+    const noCoverHandler =
+      "var U=(window.Lumen&&window.Lumen.util)||{};" +
+      "var tiny=function(el){return !!el&&el.naturalWidth>0&&el.naturalWidth<128;};" +
+      "var check=U.isLikelyNoCover||tiny;" +
+      "if(check(this)){" +
+        "if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}" +
+        "else{this.style.display='none';}" +
+      "}";
     list.innerHTML = scored.map(({ b, overlap }) => {
       const pct = Math.max(30, Math.min(95, 40 + overlap * 4));
       return `<div class="similar-item" data-id="${escapeHtml(b.id)}">
-        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(hiresCover(b.cover_url))}" data-fallback="${escapeHtml(b.cover_url)}" onerror="if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}else{this.style.display='none';}"/>` : `<div class="similar-item-cover"></div>`}
+        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(hiresCover(b.cover_url))}" data-fallback="${escapeHtml(b.cover_url)}" onerror="if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}else{this.style.display='none';}" onload="${escapeHtml(noCoverHandler)}"/>` : `<div class="similar-item-cover"></div>`}
         <div style="min-width:0;">
           <div class="similar-item-title">${escapeHtml(b.title)}</div>
           <div class="similar-item-author">${escapeHtml(b.author)}</div>
