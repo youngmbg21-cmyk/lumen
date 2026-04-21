@@ -75,6 +75,18 @@
       // excluded from the Home top-3 but stay in the Library — a
       // pick-only signal, not a dismissal. { [bookId]: { rejectedAt } }.
       dailyPicksRejected: {},
+      // Editorial AI feature (replaces Daily Picks in the Today tab).
+      // currentPick is the last-generated piece; history keeps the
+      // last 10 for recall. generationsToday is a rolling list of
+      // ISO timestamps used for the 5-per-24h rate limit. lastError
+      // tracks the most recent failure so the Today view can
+      // surface a recoverable state without wiping currentPick.
+      editorial: {
+        currentPick: null,
+        history: [],
+        generationsToday: [],
+        lastError: null
+      },
       ui: {
         theme: "rose",
         discreet: false,
@@ -101,6 +113,13 @@
       // dailyPicksRejected) exist on upgrade.
       merged.chats = Object.assign({ sara: [], saraPinned: [], friends: [] }, merged.chats || {});
       if (!merged.dailyPicksRejected) merged.dailyPicksRejected = {};
+      // Editorial feature state — back-fill the shape on older stores
+      // so rendering code can read merged.editorial.currentPick etc.
+      // without null-checking the parent.
+      merged.editorial = Object.assign(
+        { currentPick: null, history: [], generationsToday: [], lastError: null },
+        merged.editorial || {}
+      );
       return merged;
     } catch (e) {
       return initialState();
@@ -317,7 +336,7 @@
 
   /* -------------------- router -------------------- */
   const ROUTES = [
-    { id: "discover",     label: "Home",          short: "Home",     group: "main",     render: () => views.discover() },
+    { id: "discover",     label: "Today",         short: "Today",    group: "main",     render: () => views.discover() },
     { id: "terminal",     label: "Terminal",      short: "Terminal", group: "main",     render: () => views.terminal() },
     { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
@@ -4277,7 +4296,7 @@
     // Chips preserved for the top strip.
     const chips = [];
     const routeLabel = {
-      discover: "Home", library: "Library", discovery: "Discovery",
+      discover: "Today", library: "Library", discovery: "Discovery",
       compare: "Compare", chat: "Connections", journal: "Journal",
       vault: "Vault", profile: "Profile", settings: "Admin",
       transparency: "Transparency"
