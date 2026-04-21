@@ -6454,6 +6454,102 @@
     backfillEmbeddings();
   }
 
+  /* ==================================================================
+     Editorial feature — Batch 2: selection helpers only.
+
+     selectEditorialCandidates(profile, pool, options)
+       Ranks the pool via LumenEngine, keeps the top `topN` (default
+       20), then draws `pickCount` (default 3) via weighted-random
+       sampling without replacement. Weight = fitScore^2 — squaring
+       biases toward higher-fit titles without being deterministic
+       across generations. If the pool has fewer than pickCount
+       eligible items, returns what's available (no fabrication).
+       Each returned entry is { book, fitScore, confidence,
+       contributions }. contributions falls back to the engine's
+       `why` field when available, else null.
+
+     chooseEditorialAngle()
+       Returns one of six fixed editorial angles at random, avoiding
+       whatever angle the most recent history entry used. Shape:
+       { id, label }.
+
+     Both helpers are exposed on window.__LumenEditorialTest so the
+     console can drive them before the UI exists. That export is
+     removed in batch 5.
+     ================================================================== */
+  const EDITORIAL_ANGLES = [
+    { id: "deepen",     label: "Three books that would deepen what you're already drawn to" },
+    { id: "stretch",    label: "Three books that would stretch you somewhere new" },
+    { id: "comfort",    label: "Three books for when you want something familiar and easy" },
+    { id: "mood",       label: "Three books that share a mood your library keeps returning to" },
+    { id: "overlook",   label: "Three books you might have overlooked" },
+    { id: "complement", label: "Three books that pair with what you've been reading lately" }
+  ];
+
+  function selectEditorialCandidates(profile, pool, options) {
+    const opts = options || {};
+    const topN = typeof opts.topN === "number" ? opts.topN : 20;
+    const pickCount = typeof opts.pickCount === "number" ? opts.pickCount : 3;
+    if (!Array.isArray(pool) || !pool.length) return [];
+    const Engine = window.LumenEngine;
+    if (!Engine || typeof Engine.rankRecommendations !== "function") return [];
+    const st = store.get() || {};
+    const weights = st.weights || {};
+    const ranked = Engine.rankRecommendations(profile, weights, pool) || {};
+    const scored = Array.isArray(ranked.scored) ? ranked.scored : [];
+    const shape = (s) => ({
+      book: s.book,
+      fitScore: typeof s.fitScore === "number" ? s.fitScore : 0,
+      confidence: typeof s.confidence === "number" ? s.confidence : 0,
+      contributions: s.contributions || s.why || null
+    });
+    const top = scored.slice(0, topN);
+    if (top.length <= pickCount) return top.map(shape);
+
+    // Weighted-random without replacement. Weight = fitScore^2.
+    // Falls back to uniform when every weight collapses to zero.
+    const remaining = top.slice();
+    const picks = [];
+    while (picks.length < pickCount && remaining.length) {
+      const ws = remaining.map(s => {
+        const f = Math.max(0, typeof s.fitScore === "number" ? s.fitScore : 0);
+        return f * f;
+      });
+      const total = ws.reduce((a, b) => a + b, 0);
+      let idx;
+      if (total <= 0) {
+        idx = Math.floor(Math.random() * remaining.length);
+      } else {
+        let r = Math.random() * total;
+        idx = 0;
+        for (; idx < ws.length; idx++) {
+          r -= ws[idx];
+          if (r <= 0) break;
+        }
+        if (idx >= remaining.length) idx = remaining.length - 1;
+      }
+      picks.push(remaining.splice(idx, 1)[0]);
+    }
+    return picks.map(shape);
+  }
+
+  function chooseEditorialAngle() {
+    const st = store.get() || {};
+    const history = (st.editorial && st.editorial.history) || [];
+    const lastAngleId = history[0] && history[0].angle && history[0].angle.id;
+    const pool = EDITORIAL_ANGLES.filter(a => a.id !== lastAngleId);
+    const list = pool.length ? pool : EDITORIAL_ANGLES; // defensive
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // Dev console hook — batches 2 and 3 can be exercised before any
+  // UI exists. Removed in batch 5.
+  window.__LumenEditorialTest = {
+    selectEditorialCandidates,
+    chooseEditorialAngle,
+    ANGLES: EDITORIAL_ANGLES
+  };
+
   // Expose a small surface for later batches to hook into.
   // Public surface for sara.js — keep this list small and intentional.
   window.Lumen = {
