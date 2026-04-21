@@ -2820,6 +2820,37 @@ body[data-privacy-blur="on"] .app-main::after {
 @media (hover: none) {
   .card-dismiss { opacity: 0.7; }
 }
+/* Favourite star — top-left of the library card. Always visible
+   (unlike .card-dismiss which hides until hover), because the
+   filled vs empty state is content users should read at a glance. */
+.card-favorite {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+  z-index: 2;
+}
+.card-favorite[aria-pressed="true"] {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.card-favorite:hover {
+  background: var(--primary-soft);
+  color: var(--gold);
+  border-color: var(--gold);
+}
 .book-card h4 {
   font-family: var(--font-serif);
   font-weight: 500;
