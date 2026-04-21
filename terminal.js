@@ -197,22 +197,6 @@
   }
   function rateClass(n) { return "rate-h" + Math.max(1, Math.min(5, n || 3)); }
 
-  // Google Books thumbnail URLs default to zoom=1 (~128px wide) and
-  // add a page-curl overlay via edge=curl. Those upscale poorly in the
-  // Terminal Selected Title cover (320px tall) and look grainy. Bump
-  // zoom and drop the curl so the server returns a larger, cleaner
-  // image. Non-Google URLs pass through unchanged.
-  function hiresCover(url) {
-    if (!url || typeof url !== "string") return url;
-    if (!/books\.google\.com\/books\/content/.test(url)) return url;
-    return url
-      .replace(/([?&])edge=curl(?=&|$)/, "$1")
-      .replace(/&&+/g, "&")
-      .replace(/\?&/, "?")
-      .replace(/([?&])zoom=\d+/, "$1zoom=2")
-      .replace(/^http:\/\//, "https://");
-  }
-
   // Sparkline SVG for KPI cells. Verbatim from reference.
   function sparklineSVG(data) {
     const w = 44, h = 18;
@@ -499,31 +483,18 @@
     const coverEl = $(root, "#detailCover");
     coverEl.querySelectorAll("img").forEach(i => i.remove());
     if (book.cover_url) {
+      // Match the Library tile exactly: use the URL as-is (only an
+      // http→https nudge), no zoom-upgrade, no cascade. If the image
+      // fails or loads as Google's no-cover placeholder, drop the
+      // <img> — same behaviour the Library card uses via
+      // util.isLikelyNoCover.
+      const url = String(book.cover_url).replace(/^http:/, "https:");
       const img = document.createElement("img");
-      const original = book.cover_url;
-      const hi = hiresCover(original);
-      // Some Google Books covers have no zoom=2 variant — the server
-      // returns an "image not available" placeholder (~60×90 px) as a
-      // valid 200 OK image, so onerror never fires. Detect that via
-      // naturalWidth at onload and fall back to the original URL
-      // (zoom=1) — the exact URL the Library tile uses.
-      const isNoCover = (el) => (window.Lumen && window.Lumen.util && window.Lumen.util.isLikelyNoCover)
-        ? window.Lumen.util.isLikelyNoCover(el)
-        : (!!el && el.naturalWidth > 0 && el.naturalWidth < 128);
-      img.src = hi;
-      img.onerror = () => {
-        if (img.src !== original) { img.onerror = () => img.remove(); img.src = original; }
-        else img.remove();
-      };
+      img.src = url;
+      img.onerror = () => img.remove();
       img.onload = () => {
-        if (!isNoCover(img)) return;
-        // zoom=2 was a placeholder — try zoom=1.
-        if (img.src !== original) {
-          img.onload = () => { if (isNoCover(img)) img.remove(); };
-          img.src = original;
-        } else {
-          img.remove();
-        }
+        const U = window.Lumen && window.Lumen.util;
+        if (U && U.isLikelyNoCover && U.isLikelyNoCover(img)) img.remove();
       };
       coverEl.insertBefore(img, coverEl.firstChild);
     }
@@ -578,23 +549,21 @@
       return { b, overlap };
     }).sort((x, y) => y.overlap - x.overlap).slice(0, 5);
 
-    // onload handler for similar-item covers: if the zoom=2 upgrade
-    // loaded Google's "image not available" placeholder (~60×90),
-    // fall back to the original zoom=1 URL (which Library uses); if
-    // that's also a placeholder, hide the <img>. Inline so the
-    // innerHTML-generated nodes can wire it up from the onload attr.
+    // Match the Library tile: render b.cover_url as-is (only an
+    // http→https nudge), no zoom-upgrade, no cascade. onload checks
+    // util.isLikelyNoCover to hide Google's "no cover" placeholder;
+    // onerror hides the <img> on hard failure. Inline string handler
+    // so the innerHTML-generated <img> can wire them up via attrs.
     const noCoverHandler =
       "var U=(window.Lumen&&window.Lumen.util)||{};" +
       "var tiny=function(el){return !!el&&el.naturalWidth>0&&el.naturalWidth<128;};" +
       "var check=U.isLikelyNoCover||tiny;" +
-      "if(check(this)){" +
-        "if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}" +
-        "else{this.style.display='none';}" +
-      "}";
+      "if(check(this))this.style.display='none';";
     list.innerHTML = scored.map(({ b, overlap }) => {
       const pct = Math.max(30, Math.min(95, 40 + overlap * 4));
+      const coverUrl = b.cover_url ? String(b.cover_url).replace(/^http:/, "https:") : "";
       return `<div class="similar-item" data-id="${escapeHtml(b.id)}">
-        ${b.cover_url ? `<img class="similar-item-cover" src="${escapeHtml(hiresCover(b.cover_url))}" data-fallback="${escapeHtml(b.cover_url)}" onerror="if(this.src!==this.dataset.fallback){this.src=this.dataset.fallback;}else{this.style.display='none';}" onload="${escapeHtml(noCoverHandler)}"/>` : `<div class="similar-item-cover"></div>`}
+        ${coverUrl ? `<img class="similar-item-cover" src="${escapeHtml(coverUrl)}" onerror="this.style.display='none'" onload="${escapeHtml(noCoverHandler)}"/>` : `<div class="similar-item-cover"></div>`}
         <div style="min-width:0;">
           <div class="similar-item-title">${escapeHtml(b.title)}</div>
           <div class="similar-item-author">${escapeHtml(b.author)}</div>
