@@ -62,6 +62,11 @@
       bookStates: {},
       tags: {},
       hidden: {},
+      // User-flagged favourites — keyed by bookId → timestamp. Used
+      // by the Library "Favorites" filter and by Daily Picks
+      // reweighting (a taste signal layered on top of the engine
+      // score).
+      favorites: {},
       discovered: [],
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
@@ -344,9 +349,9 @@
     const pinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
     const btn = util.el("button", {
       class: "card-pin" + (pinned ? " is-pinned" : "") + (opts.size === "lg" ? " card-pin-lg" : ""),
-      "aria-label": pinned ? "Unpin from Sara" : "Pin to Sara — share in chat",
+      "aria-label": pinned ? "Unpin from Bianca" : "Pin to Bianca — share in chat",
       "aria-pressed": pinned ? "true" : "false",
-      title: pinned ? "Unpin from Sara" : "Pin to Sara",
+      title: pinned ? "Unpin from Bianca" : "Pin to Bianca",
       onclick: (e) => {
         e.stopPropagation();
         if (!Sara) return;
@@ -794,6 +799,22 @@
     return store.get().bookStates[bookId] || "none";
   }
 
+  // Favourites are orthogonal to reading state — a user can
+  // "favourite" something they've never read and something
+  // they've read multiple times. Stored as { [bookId]: timestamp }
+  // so Daily Picks can later weight recent favourites higher.
+  function isFavorite(bookId) {
+    return !!(store.get().favorites || {})[bookId];
+  }
+  function toggleFavorite(bookId) {
+    if (!bookId) return;
+    store.update(s => {
+      s.favorites = s.favorites || {};
+      if (s.favorites[bookId]) delete s.favorites[bookId];
+      else s.favorites[bookId] = Date.now();
+    });
+  }
+
   function addCustomTag(bookId, tag) {
     const clean = tag.trim().toLowerCase().replace(/\s+/g, "-");
     if (!clean) return;
@@ -1029,6 +1050,21 @@
       onclick: () => openBookDetail(book.id)
     });
     card.appendChild(pinShareBtn(book.id));
+    // Favourite toggle — star in the top-left. Filled when favourited.
+    // Click toggles; rerender redraws the filter chip count if we're
+    // looking at the Favorites filter.
+    const favBtn = util.el("button", {
+      class: "card-favorite",
+      "aria-pressed": isFavorite(book.id) ? "true" : "false",
+      "aria-label": (isFavorite(book.id) ? "Unfavorite " : "Favorite ") + book.title,
+      title: isFavorite(book.id) ? "Remove from favorites" : "Mark as favorite",
+      onclick: (e) => {
+        e.stopPropagation();
+        toggleFavorite(book.id);
+        renderView();
+      }
+    }, isFavorite(book.id) ? "★" : "☆");
+    card.appendChild(favBtn);
     // Dismiss control — top-right. Confirmation is handled inline via undo toast.
     card.appendChild(util.el("button", {
       class: "card-dismiss",
@@ -1243,7 +1279,7 @@
         closeOnClick: false
       },
       {
-        label: saraPinned ? "Unpin from Sara" : "Share with Sara",
+        label: saraPinned ? "Unpin from Bianca" : "Share with Bianca",
         onClick: () => {
           if (!Sara) return;
           if (Sara.isPinned(bookId)) Sara.unpinBook(bookId); else Sara.pinBook(bookId);
@@ -1342,7 +1378,15 @@
         x.setAttribute("aria-pressed", x.dataset.v === id ? "true" : "false"));
     }
 
-    const rfOptions = [{ id: "all", label: "All" }, ...READING_STATES.filter(r => r.id !== "none")];
+    // "Favorites" appears right after the last reading state ("already
+    // read") so the filter reads All → want → reading → read → Favorites.
+    // It's a distinct filter (books flagged via the star on each card),
+    // not a reading state.
+    const rfOptions = [
+      { id: "all", label: "All" },
+      ...READING_STATES.filter(r => r.id !== "none"),
+      { id: "favorites", label: "Favorites" }
+    ];
     const rfSegmented = util.el("div", { class: "segmented" });
     rfOptions.forEach(opt => {
       const b = util.el("button", {
@@ -1412,7 +1456,11 @@
       // and ordering are branched below by searchMode.
       const basePool = allBooks.filter(b => {
         if (libState.category !== "all" && b.category !== libState.category) return false;
-        if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
+        if (libState.readingFilter === "favorites") {
+          if (!isFavorite(b.id)) return false;
+        } else if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) {
+          return false;
+        }
         return true;
       });
 
@@ -4183,7 +4231,7 @@
       `--- daily picks on screen ---`,
       ...(pickLines.length ? pickLines : ["(none)"]),
       ``,
-      `--- pinned to Sara ---`,
+      `--- pinned to Bianca ---`,
       ...(pinnedLines.length ? pinnedLines : ["(none)"]),
       ``,
       `--- rejected (never recommend as a daily pick) ---`,
@@ -4358,7 +4406,7 @@
     {
       id: "save-focus",
       match: (t, ctx) => ctx.focus.book && /\b(save|add|want|pin)\b/i.test(t),
-      handler: (ctx) => `**${ctx.focus.book.title}** is already in your library. Use **Pin to Vault** on the detail sheet to keep it for quick access, or **Share with Sara** to pin it here.`
+      handler: (ctx) => `**${ctx.focus.book.title}** is already in your library. Use **Pin to Vault** on the detail sheet to keep it for quick access, or **Share with Bianca** to pin it here.`
     },
     {
       id: "dismiss-focus",
@@ -4448,7 +4496,7 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Connections" }),
         util.el("h1", { html: "Your private <em>social</em> layer" }),
-        util.el("p", { class: "lede", text: "Sara lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
+        util.el("p", { class: "lede", text: "Bianca lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
       ])
     ]));
 
@@ -4457,7 +4505,7 @@
     const lastMsg = saraMsgs[saraMsgs.length - 1];
     const saraCard = util.el("div", { class: "card" });
     saraCard.appendChild(util.el("div", { class: "card-head" }, [
-      util.el("h3", { text: "Sara · conversation history" }),
+      util.el("h3", { text: "Bianca · conversation history" }),
       util.el("div", { class: "row" }, [
         util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Sara"),
         util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
@@ -4467,7 +4515,7 @@
             primary: { label: "Clear", onClick: () => {
               store.update(s => { s.chats.sara = []; });
               ensureSeedSara();
-              ui.toast("Sara's memory cleared");
+              ui.toast("Bianca's memory cleared");
               renderView();
             }},
             secondary: { label: "Cancel" }
@@ -4482,7 +4530,7 @@
       const transcript = util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-4)", maxHeight: "320px", overflowY: "auto", padding: "var(--s-3)", background: "var(--bg-sunken)", borderRadius: "var(--r-2)", border: "1px solid var(--border)" } });
       saraMsgs.slice(-10).forEach(m => {
         transcript.appendChild(util.el("div", { style: { padding: "6px 0", borderBottom: "1px dashed var(--border)" } }, [
-          util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Sara"} · ${new Date(m.ts).toLocaleTimeString()}` }),
+          util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Bianca"} · ${new Date(m.ts).toLocaleTimeString()}` }),
           util.el("div", { class: "t-small", style: { marginTop: "2px" }, text: (m.text || "").replace(/\*\*(.+?)\*\*/g, "$1") })
         ]));
       });
@@ -5381,11 +5429,11 @@
 
       // Sara check-in
       wrap.appendChild(util.el("div", { class: "card card-accent" }, [
-        util.el("div", { class: "t-eyebrow", text: "Sara · your guide" }),
+        util.el("div", { class: "t-eyebrow", text: "Bianca · your guide" }),
         util.el("h3", { class: "t-serif", style: { marginTop: "4px" }, text: "What are you in the mood for today?" }),
         util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: "I can help you narrow down by mood, compare three titles side by side, or reflect on what you just read." }),
         util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } }, [
-          util.el("button", { class: "btn btn-sm", onclick: () => router.go("chat") }, "Talk with Sara"),
+          util.el("button", { class: "btn btn-sm", onclick: () => router.go("chat") }, "Talk with Bianca"),
           util.el("button", { class: "btn btn-sm", onclick: () => router.go("compare") }, "Compare three titles"),
           util.el("button", { class: "btn btn-sm", onclick: () => router.go("journal") }, "Write a reflection")
         ])
@@ -5564,7 +5612,7 @@
       const companionCard = util.el("div", { class: "card stack" });
       companionCard.appendChild(util.el("div", { class: "card-head" }, [
         util.el("h3", { html: "Companion <em>preferences</em>" }),
-        util.el("span", { class: "card-sub t-subtle", text: "Sara reads these on every turn" })
+        util.el("span", { class: "card-sub t-subtle", text: "Bianca reads these on every turn" })
       ]));
 
       companionCard.appendChild(buildFieldLabel("Reading level", "register"));
@@ -5987,7 +6035,7 @@
       onclick: () => window.LumenSara && window.LumenSara.toggle()
     }, [
       util.el("span", { class: "dot" }),
-      util.el("span", { text: "Ask Sara" })
+      util.el("span", { text: "Ask Bianca" })
     ]);
 
     top.appendChild(saraLauncher);

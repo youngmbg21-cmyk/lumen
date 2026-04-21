@@ -491,7 +491,7 @@
     while (clean.length && clean[0].role !== "user") clean.shift();
     if (!clean.length) throw new Error("empty-conversation");
 
-    setStatus("reading", "Sara is thinking…");
+    setStatus("reading", "Bianca is thinking…");
     let res;
     try {
       res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -525,7 +525,7 @@
       .join("\n")
       .trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
-    setStatus("online", "Sara is here");
+    setStatus("online", "Bianca is here");
     return out;
   }
 

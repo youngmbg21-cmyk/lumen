@@ -36,14 +36,14 @@
     panel.dataset.width = width;
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "false");
-    panel.setAttribute("aria-label", "Sara, your reading companion");
+    panel.setAttribute("aria-label", "Bianca, your reading companion");
 
     const head = document.createElement("div");
     head.className = "sara-head";
     const title = document.createElement("div");
     title.className = "sara-head-title";
     title.innerHTML =
-      '<div class="sara-title"><span class="sara-title-serif">Sara</span> <span class="sara-title-sub">whispers</span></div>' +
+      '<div class="sara-title"><span class="sara-title-serif">Bianca</span> <span class="sara-title-sub">whispers</span></div>' +
       '<div class="sara-sub">Your reading companion <span class="sara-privacy-pill" title="Nothing leaves this device">Local</span></div>';
     const actions = document.createElement("div");
     actions.className = "sara-head-actions";
@@ -92,7 +92,7 @@
     body.className = "sara-body";
     body.setAttribute("role", "log");
     body.setAttribute("aria-live", "polite");
-    body.setAttribute("aria-label", "Conversation with Sara");
+    body.setAttribute("aria-label", "Conversation with Bianca");
     panel.appendChild(body);
 
     // Mood chips — first-person, audience-appropriate primary entry
@@ -105,7 +105,7 @@
     const compose = document.createElement("form");
     compose.className = "sara-compose";
     composeTA = document.createElement("textarea");
-    composeTA.placeholder = "Message Sara… try /picks, /swap, /why, /compare, /library, /profile";
+    composeTA.placeholder = "Message Bianca… try /picks, /swap, /why, /compare, /library, /profile";
     composeTA.rows = 1;
     // Auto-grow up to 5 rows so longer messages don't feel cramped.
     composeTA.addEventListener("input", autosizeCompose);
@@ -133,7 +133,7 @@
 
     fab = document.createElement("button");
     fab.className = "sara-fab";
-    fab.setAttribute("aria-label", "Open Sara");
+    fab.setAttribute("aria-label", "Open Bianca");
     // Open-book glyph — softer than a generic "S" for the audience.
     fab.innerHTML = '<span aria-hidden="true">❦</span>';
     fab.addEventListener("click", toggle);
@@ -334,9 +334,9 @@
       return `I see you're searching for _${ctxState.discovery.lastQuery}_. Want me to weigh in on the results once they land?`;
     }
     if (picks.length) {
-      return `Hi — I'm Sara. Your three picks are up there; I can explain why any of them made the cut, or swap one if the mood isn't right. What are you in the mood for?`;
+      return `Hi — I'm Bianca. Your three picks are up there; I can explain why any of them made the cut, or swap one if the mood isn't right. What are you in the mood for?`;
     }
-    return `Hi — I'm Sara. Tell me what you're in the mood for tonight, and I'll read it with you.`;
+    return `Hi — I'm Bianca. Tell me what you're in the mood for tonight, and I'll read it with you.`;
   }
 
   function ensureSeed() {
@@ -876,7 +876,7 @@
         localStorage.setItem(NUDGE_KEY, "1");
         const L = window.Lumen;
         if (L && L.ui && L.ui.toast) {
-          L.ui.toast("Pinned to Sara. Tap the bookmark on any card to share more.");
+          L.ui.toast("Pinned to Bianca. Tap the bookmark on any card to share more.");
         }
       }
     } catch (e) { /* ignore */ }
