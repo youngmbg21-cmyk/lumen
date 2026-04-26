@@ -4720,16 +4720,140 @@ body[data-privacy-blur="on"] .app-main::after {
    column; gaps tighten for a denser feel.
    ============================================================ */
 .settings-page {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
+  align-items: stretch;
+}
+.settings-page > .settings-card { max-width: none; }
+
+/* ── Settings redesign: single-column, structured sections ──── */
+
+/* Operator card — prominent, full width */
+.settings-op-card { }          /* inherits full-width from grid below */
+.settings-op-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.settings-op-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
   align-items: start;
 }
-.settings-page > .settings-page-head,
-.settings-page > .page-head { grid-column: 1 / -1; }
-.settings-page > .settings-card { max-width: none; }
-@media (max-width: 1024px) {
-  .settings-page { grid-template-columns: 1fr; }
+@media (max-width: 680px) {
+  .settings-op-body { grid-template-columns: 1fr; }
+}
+.settings-op-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.settings-field-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+.settings-reveal-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.settings-op-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-op-control-row:first-of-type {
+  border-top: 1px solid var(--border);
+}
+.settings-op-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+/* Library management — single card with row-based list */
+.settings-mgmt-card { }
+.settings-mgmt-title {
+  margin: 0 0 var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.settings-mgmt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.settings-mgmt-row:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-mgmt-row-info { flex: 1; min-width: 160px; }
+.settings-mgmt-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  flex-shrink: 0;
+}
+.settings-mgmt-expand {
+  flex-basis: 100%;
+  margin-top: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.settings-mgmt-expand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  background: var(--bg-sunken, var(--bg-raised));
+}
+
+/* Footer nav — inline links, no card */
+.settings-footer-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+}
+
+/* Danger zone — section with red accent border, no card chrome */
+.settings-danger-zone {
+  border-top: 2px solid color-mix(in srgb, #ef4444 30%, var(--border));
+  padding-top: var(--s-4);
+  margin-top: var(--s-2);
+}
+.settings-danger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+/* Extra-small button variant for compact list rows */
+.btn-xs {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  line-height: 1.5;
 }
 
 /* ── Developer / Advanced collapsible ────────────────────────── */
