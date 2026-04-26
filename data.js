@@ -413,7 +413,7 @@
   };
 
   const DEFAULT_PROFILE = {
-    heat: 3, explicit: 3, emotion: 3, consent: 5, taboo: 2, plot: 3,
+    heat: 3, explicit: 3, emotion: 3, consent: 3, taboo: 3, plot: 3,
     tone: [], pacing: [], style: [], dynamic: [], trope: [], kink: [],
     orientation: [], exclude: [],
     warnStrict: "moderate",

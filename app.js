@@ -109,6 +109,14 @@
       // undefined. Applied to profile only — everything else is
       // already handled by the shallow Object.assign above.
       merged.profile = Object.assign({}, DEFAULT_PROFILE, merged.profile || {});
+      // Migration v2: old DEFAULT_PROFILE had consent:5 and taboo:2 which
+      // compressed most scores below 65%. Reset to neutral 3 on first load
+      // after this release so existing users see meaningful score signal.
+      if (!merged._profileMigrated_v2) {
+        if (merged.profile.consent === 5) merged.profile.consent = 3;
+        if (merged.profile.taboo   === 2) merged.profile.taboo   = 3;
+        merged._profileMigrated_v2 = true;
+      }
       // Same for the chats submap so newer arrays (saraPinned,
       // dailyPicksRejected) exist on upgrade.
       merged.chats = Object.assign({ sara: [], saraPinned: [], friends: [] }, merged.chats || {});

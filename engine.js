@@ -50,9 +50,9 @@
   }
 
   function tagOverlap(userSet, bookArr, isPartial) {
-    if (userSet.size === 0) return { credit: 0.5, matched: [] };
+    if (userSet.size === 0) return { credit: 0.75, matched: [] };
     if (!bookArr || bookArr.length === 0) {
-      return { credit: isPartial ? 0.5 : 0, matched: [] };
+      return { credit: isPartial ? 0.75 : 0, matched: [] };
     }
     const matched = bookArr.filter(t => userSet.has(t));
     if (matched.length === 0) return { credit: 0, matched: [] };
