@@ -2923,10 +2923,99 @@
       ])
     ]));
 
+    // --- Operator controls (Master Key / Demo Mode / Session Cap) --------
+    const opCard = util.el("div", { class: "card settings-card stack" });
+    opCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Operator controls" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" },
+          text: "Discovery Phase admin settings. Only visible via the secret trapdoor — never shown to regular visitors." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (Disco && Disco.getMasterKey && Disco.getMasterKey() ? "settings-badge-ok" : "settings-badge-missing"),
+        text: Disco && Disco.getMasterKey && Disco.getMasterKey() ? "Key set" : "No key"
+      })
+    ]));
+
+    // Master key field
+    opCard.appendChild(util.el("div", { class: "t-eyebrow", style: { marginTop: "var(--s-3)" }, text: "Master Claude API Key" }));
+    const masterInput = util.el("input", {
+      type: "password", class: "input",
+      placeholder: "sk-ant-…",
+      value: (Disco && Disco.getMasterKey) ? Disco.getMasterKey() : "",
+      autocomplete: "off", spellcheck: "false",
+      style: { marginTop: "var(--s-1)" }
+    });
+    opCard.appendChild(masterInput);
+    const masterReveal = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)", marginTop: "var(--s-1)" } });
+    const masterRevealCb = util.el("input", { type: "checkbox", onchange: e => masterInput.setAttribute("type", e.target.checked ? "text" : "password") });
+    masterReveal.appendChild(masterRevealCb);
+    masterReveal.appendChild(util.el("span", { class: "toggle-track" }));
+    masterReveal.appendChild(util.el("span", { class: "toggle-label", text: "Reveal key" }));
+    opCard.appendChild(masterReveal);
+
+    // Demo Mode toggle
+    const demoRow = util.el("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--s-4)" } });
+    const demoOn  = Disco && Disco.getDemoMode && Disco.getDemoMode();
+    demoRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "Demo Mode" }),
+      util.el("div", { class: "t-tiny t-subtle", text: "When ON, Bianca works for every visitor immediately — no API key prompt." })
+    ]));
+    const demoToggle = util.el("label", { class: "toggle" });
+    const demoCb     = util.el("input", { type: "checkbox" });
+    demoCb.checked   = !!demoOn;
+    demoToggle.appendChild(demoCb);
+    demoToggle.appendChild(util.el("span", { class: "toggle-track" }));
+    demoRow.appendChild(demoToggle);
+    opCard.appendChild(demoRow);
+
+    // Session cap
+    const capRow = util.el("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--s-3)" } });
+    const currentCap = (Disco && Disco.getSessionCap) ? Disco.getSessionCap() : 10;
+    const remaining  = (Disco && Disco.throttleRemaining) ? Disco.throttleRemaining() : "—";
+    capRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "AI calls per visitor / hour" }),
+      util.el("div", { class: "t-tiny t-subtle", text: `${remaining} remaining in current session.` })
+    ]));
+    const capInput = util.el("input", {
+      type: "number", class: "input",
+      min: "1", max: "100", value: String(currentCap),
+      style: { width: "72px", textAlign: "center" }
+    });
+    capRow.appendChild(capInput);
+    opCard.appendChild(capRow);
+
+    // Save button
+    const opActions = util.el("div", { class: "row", style: { gap: "var(--s-2)", marginTop: "var(--s-3)" } });
+    opActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      const keyVal = masterInput.value.trim();
+      const capVal = parseInt(capInput.value, 10);
+      if (Disco.setMasterKey)  Disco.setMasterKey(keyVal);
+      if (Disco.setDemoMode)   Disco.setDemoMode(demoCb.checked);
+      if (Disco.setSessionCap && Number.isFinite(capVal) && capVal > 0) Disco.setSessionCap(capVal);
+      if (keyVal && demoCb.checked) {
+        store.update(s => { s.ui.adultConfirmed = true; });
+        ui.toast("Demo Mode ON · Bianca is live for all visitors");
+      } else if (keyVal) {
+        ui.toast("Master key saved");
+      } else {
+        ui.toast("Master key cleared");
+      }
+      renderView();
+    }}, "Save"));
+    const hasMaster = Disco && Disco.getMasterKey && Disco.getMasterKey();
+    if (hasMaster) {
+      opActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
+        if (Disco.clearMasterKey) Disco.clearMasterKey();
+        if (Disco.setDemoMode)    Disco.setDemoMode(false);
+        ui.toast("Master key cleared · Demo Mode off");
+        renderView();
+      }}, "Clear key"));
+    }
+    opCard.appendChild(opActions);
+    wrap.appendChild(opCard);
+
     // --- Developer / Advanced (collapsible) ------------------------------
-    // Hidden by default during the Discovery Phase. Testers use the
-    // admin key set via the secret logo-click modal; only power users
-    // need to supply their own keys here.
     const devDetails = document.createElement("details");
     devDetails.className = "settings-advanced-section";
     const devSummary = util.el("summary", { class: "settings-advanced-summary" }, [
@@ -6123,95 +6212,6 @@
   /* -------------------- shell rendering -------------------- */
   // Secret admin dashboard — opened by clicking the Lumen logo 5 times.
   // Never linked from the UI. All operator controls live here only.
-  function showSecretAdmin() {
-    const Disco = window.LumenDiscovery;
-    if (!Disco) return;
-
-    const currentKey  = Disco.getMasterKey ? Disco.getMasterKey() : "";
-    const demoOn      = Disco.getDemoMode  ? Disco.getDemoMode()  : false;
-    const currentCap  = Disco.getSessionCap ? Disco.getSessionCap() : 10;
-    const remaining   = Disco.throttleRemaining ? Disco.throttleRemaining() : "—";
-
-    // ── Master key field ──────────────────────────────────────────
-    const keyInput = util.el("input", {
-      type: "password", class: "input",
-      placeholder: "sk-ant-…", value: currentKey,
-      autocomplete: "off", spellcheck: "false",
-      style: { width: "100%", marginTop: "var(--s-2)" }
-    });
-    const revealRow = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)", marginTop: "var(--s-1)" } });
-    const revealCb  = util.el("input", { type: "checkbox", onchange: e => keyInput.setAttribute("type", e.target.checked ? "text" : "password") });
-    revealRow.appendChild(revealCb);
-    revealRow.appendChild(util.el("span", { class: "toggle-track" }));
-    revealRow.appendChild(util.el("span", { class: "toggle-label", text: "Reveal key" }));
-
-    // ── Demo Mode toggle ──────────────────────────────────────────
-    const demoRow   = util.el("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--s-4)" } });
-    const demoLabel = util.el("div", {}, [
-      util.el("div", { class: "t-small", text: "Demo Mode" }),
-      util.el("div", { class: "t-tiny t-subtle", text: "When ON, master key is used for all visitors automatically." })
-    ]);
-    const demoToggle = util.el("label", { class: "toggle" });
-    const demoCb     = util.el("input", { type: "checkbox" });
-    demoCb.checked   = demoOn;
-    demoToggle.appendChild(demoCb);
-    demoToggle.appendChild(util.el("span", { class: "toggle-track" }));
-    demoRow.appendChild(demoLabel);
-    demoRow.appendChild(demoToggle);
-
-    // ── Session cap ───────────────────────────────────────────────
-    const capRow   = util.el("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "var(--s-3)" } });
-    const capLabel = util.el("div", {}, [
-      util.el("div", { class: "t-small", text: "AI calls per visitor / hour" }),
-      util.el("div", { class: "t-tiny t-subtle", text: `Currently: ${remaining} remaining this session.` })
-    ]);
-    const capInput = util.el("input", {
-      type: "number", class: "input",
-      min: "1", max: "100", value: String(currentCap),
-      style: { width: "70px", textAlign: "center" }
-    });
-    capRow.appendChild(capLabel);
-    capRow.appendChild(capInput);
-
-    // ── Body ──────────────────────────────────────────────────────
-    const body = util.el("div", { class: "stack", style: { gap: "0" } });
-    body.appendChild(util.el("p", { class: "t-small t-muted", text: "Operator controls. Stored locally on this device only." }));
-    body.appendChild(util.el("div", { class: "t-eyebrow", style: { marginTop: "var(--s-4)" }, text: "Master Claude API Key" }));
-    body.appendChild(keyInput);
-    body.appendChild(revealRow);
-    body.appendChild(demoRow);
-    body.appendChild(capRow);
-
-    ui.modal({
-      title: "⚙ Admin · Discovery Phase",
-      body,
-      primary: { label: "Save", onClick: () => {
-        const keyVal = keyInput.value.trim();
-        const capVal = parseInt(capInput.value, 10);
-
-        if (Disco.setMasterKey) Disco.setMasterKey(keyVal);
-        if (Disco.setDemoMode)  Disco.setDemoMode(demoCb.checked);
-        if (Disco.setSessionCap && Number.isFinite(capVal) && capVal > 0) Disco.setSessionCap(capVal);
-
-        if (keyVal && demoCb.checked) {
-          store.update(s => { s.ui.adultConfirmed = true; });
-          ui.toast("Demo Mode ON · Bianca is live for all visitors");
-        } else if (keyVal) {
-          ui.toast("Master key saved · Demo Mode is off");
-        } else {
-          ui.toast("Master key cleared");
-        }
-        renderView();
-      }},
-      secondary: currentKey ? { label: "Clear key", onClick: () => {
-        if (Disco.clearMasterKey) Disco.clearMasterKey();
-        if (Disco.setDemoMode)    Disco.setDemoMode(false);
-        ui.toast("Master key cleared · Demo Mode off");
-        renderView();
-      }} : { label: "Cancel" }
-    });
-  }
-
   function renderSidebar() {
     const current = router.current();
     const groups = {
@@ -6228,7 +6228,7 @@
       clearTimeout(_adminClickTimer);
       if (_adminClickCount >= 5) {
         _adminClickCount = 0;
-        showSecretAdmin();
+        router.go("settings");
         return;
       }
       _adminClickTimer = setTimeout(() => { _adminClickCount = 0; }, 2000);
