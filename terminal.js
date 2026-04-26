@@ -128,11 +128,17 @@
     return {
       heat: p.heat, explicit: p.explicit, emotion: p.emotion,
       consent: p.consent, taboo: p.taboo, plot: p.plot,
-      tone:        [...(p.tone    || [])],
-      pacing:      [],
-      style:       [...(p.style   || [])],
-      dynamic:     [...(p.dynamic || [])],
-      trope:       [], kink: [], orientation: [],
+      // tone/dynamic: use live terminal chips if the user has toggled any,
+      // otherwise fall back to store so scores match Library on first open.
+      tone:        (p.tone    && p.tone.size)    ? [...p.tone]    : (storeProfile.tone    || []),
+      dynamic:     (p.dynamic && p.dynamic.size) ? [...p.dynamic] : (storeProfile.dynamic || []),
+      // pacing/style/trope/kink/orientation have no terminal UI controls;
+      // always read from store so all 13 dimensions score identically.
+      pacing:      storeProfile.pacing      || [],
+      style:       storeProfile.style       || [],
+      trope:       storeProfile.trope       || [],
+      kink:        storeProfile.kink        || [],
+      orientation: storeProfile.orientation || [],
       exclude:     storeProfile.exclude     || [],
       warnStrict:  storeProfile.warnStrict  || "moderate"
     };
