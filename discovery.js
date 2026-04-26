@@ -37,10 +37,15 @@
     statusSubs.forEach(fn => { try { fn(state); } catch (e) { /* ignore */ } });
   }
   function defaultMessage(status) {
+    if (status === "idle") {
+      const { via } = resolveProvider();
+      if (via === "admin") return "Sara is online";
+      if (via === "user")  return "Sara is online · your key";
+      return "Waiting for API key";
+    }
     return {
-      idle:    "Ready",
-      reading: "Claude is reading…",
-      online:  "Analysis complete",
+      reading: "Sara is reading…",
+      online:  "Sara is online",
       error:   "Analysis failed"
     }[status] || "";
   }
@@ -598,9 +603,13 @@
     const out = (payload.content || [])
       .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
-    setStatus("online", "Bianca is here");
+    setStatus("online", "Sara is online");
     return out;
   }
+
+  // Seed the initial status badge based on whichever provider is active.
+  // Runs after all functions are defined so resolveProvider() is available.
+  setStatus("idle");
 
   window.LumenDiscovery = {
     // User key
