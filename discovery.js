@@ -2,22 +2,32 @@
    Lumen — Discovery (Web search + Claude enrichment)
    Exposes window.LumenDiscovery with:
      setApiKey(key), getApiKey(),
+     setAdminKey(key), getAdminKey(),
      searchBooks(query) -> Promise<rawGoogleItems[]>
      analyzeWithClaude(book) -> Promise<enrichedBook>
      onStatus(fn) -> unsubscribe; status in
        { idle | reading | online | error }
-   API key is stored in its own localStorage namespace (lumen:claude-key)
-   so users can clear it independently of app state.
+
+   Discovery Phase architecture — three-tier provider fallback:
+     Priority 1: Edge proxy at /api/analyze
+     Priority 2: Admin key (set by operator, stored in lumen:admin-key)
+     Priority 3: User key (lumen:claude-key) for power users
+   Session throttle: 10 AI calls per rolling 60-minute window.
    ============================================================ */
 (function () {
   "use strict";
 
-  const KEY_STORAGE = "lumen:claude-key";
+  const KEY_STORAGE        = "lumen:claude-key";
+  const ADMIN_KEY_STORAGE  = "lumen:admin-key";
   const GBOOKS_KEY_STORAGE = "lumen:gbooks-key";
+  const THROTTLE_KEY       = "lumen:throttle";   // sessionStorage
+  const PROXY_URL          = "/api/analyze";
+  const THROTTLE_LIMIT     = 10;   // max AI calls per hour per session
+  const THROTTLE_WINDOW_MS = 60 * 60 * 1000;
 
   const state = {
-    status: "idle",   // idle | reading | online | error
-    lastMessage: "Waiting for API key…"
+    status:      "idle",  // idle | reading | online | error
+    lastMessage: "Ready"
   };
   const statusSubs = new Set();
 
@@ -28,7 +38,7 @@
   }
   function defaultMessage(status) {
     return {
-      idle:    "Waiting for API key",
+      idle:    "Ready",
       reading: "Claude is reading…",
       online:  "Analysis complete",
       error:   "Analysis failed"
@@ -41,32 +51,83 @@
     return () => statusSubs.delete(fn);
   }
 
+  // ── User key ──────────────────────────────────────────────────
   function setApiKey(key) {
     if (key && key.trim()) {
       localStorage.setItem(KEY_STORAGE, key.trim());
       setStatus("idle", "API key saved · ready");
     } else {
       localStorage.removeItem(KEY_STORAGE);
-      setStatus("idle", "Waiting for API key");
+      setStatus("idle", "Ready");
     }
   }
-  function getApiKey() {
-    return localStorage.getItem(KEY_STORAGE) || "";
-  }
+  function getApiKey()  { return localStorage.getItem(KEY_STORAGE)  || ""; }
   function clearApiKey() {
     localStorage.removeItem(KEY_STORAGE);
     setStatus("idle", "API key cleared");
   }
 
+  // ── Admin key (operator-supplied for Discovery Phase) ─────────
+  function setAdminKey(key) {
+    if (key && key.trim()) {
+      localStorage.setItem(ADMIN_KEY_STORAGE, key.trim());
+      setStatus("idle", "Admin key saved · ready");
+    } else {
+      localStorage.removeItem(ADMIN_KEY_STORAGE);
+      setStatus("idle", "Admin key cleared");
+    }
+  }
+  function getAdminKey()  { return localStorage.getItem(ADMIN_KEY_STORAGE)  || ""; }
+  function clearAdminKey() { localStorage.removeItem(ADMIN_KEY_STORAGE); }
+
+  // ── Google Books key ──────────────────────────────────────────
   function setGoogleKey(key) {
     if (key && key.trim()) localStorage.setItem(GBOOKS_KEY_STORAGE, key.trim());
     else localStorage.removeItem(GBOOKS_KEY_STORAGE);
   }
-  function getGoogleKey() {
-    return localStorage.getItem(GBOOKS_KEY_STORAGE) || "";
+  function getGoogleKey()  { return localStorage.getItem(GBOOKS_KEY_STORAGE) || ""; }
+  function clearGoogleKey() { localStorage.removeItem(GBOOKS_KEY_STORAGE); }
+
+  // ── Provider resolution: proxy → admin key → user key ────────
+  // Returns { via: "proxy"|"admin"|"user"|"none", key: string|null }
+  function resolveProvider() {
+    const admin = getAdminKey();
+    if (admin) return { via: "admin", key: admin };
+    const user  = getApiKey();
+    if (user)  return { via: "user",  key: user };
+    return { via: "none", key: null };
   }
-  function clearGoogleKey() {
-    localStorage.removeItem(GBOOKS_KEY_STORAGE);
+
+  // ── Session throttle ──────────────────────────────────────────
+  // Tracks timestamps of AI calls in sessionStorage. Drops entries
+  // older than THROTTLE_WINDOW_MS so the limit is a rolling window,
+  // not a hard session cap.
+  function _readThrottle() {
+    try {
+      const raw = sessionStorage.getItem(THROTTLE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function _writeThrottle(list) {
+    try { sessionStorage.setItem(THROTTLE_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
+  }
+  function throttleRemaining() {
+    const now  = Date.now();
+    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
+    return Math.max(0, THROTTLE_LIMIT - recent.length);
+  }
+  function _recordThrottledCall() {
+    const now    = Date.now();
+    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
+    recent.push(now);
+    _writeThrottle(recent);
+  }
+  function _checkThrottle() {
+    if (throttleRemaining() <= 0) {
+      const err = new Error("session-throttled");
+      err.code = "throttled";
+      throw err;
+    }
   }
 
   // 1) Google Books search. Unauthenticated requests share a low daily quota;
