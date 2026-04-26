@@ -2,22 +2,32 @@
    Lumen — Discovery (Web search + Claude enrichment)
    Exposes window.LumenDiscovery with:
      setApiKey(key), getApiKey(),
+     setAdminKey(key), getAdminKey(),
      searchBooks(query) -> Promise<rawGoogleItems[]>
      analyzeWithClaude(book) -> Promise<enrichedBook>
      onStatus(fn) -> unsubscribe; status in
        { idle | reading | online | error }
-   API key is stored in its own localStorage namespace (lumen:claude-key)
-   so users can clear it independently of app state.
+
+   Discovery Phase architecture — three-tier provider fallback:
+     Priority 1: Edge proxy at /api/analyze
+     Priority 2: Admin key (set by operator, stored in lumen:admin-key)
+     Priority 3: User key (lumen:claude-key) for power users
+   Session throttle: 10 AI calls per rolling 60-minute window.
    ============================================================ */
 (function () {
   "use strict";
 
-  const KEY_STORAGE = "lumen:claude-key";
+  const KEY_STORAGE        = "lumen:claude-key";
+  const ADMIN_KEY_STORAGE  = "lumen:admin-key";
   const GBOOKS_KEY_STORAGE = "lumen:gbooks-key";
+  const THROTTLE_KEY       = "lumen:throttle";   // sessionStorage
+  const PROXY_URL          = "/api/analyze";
+  const THROTTLE_LIMIT     = 10;   // max AI calls per hour per session
+  const THROTTLE_WINDOW_MS = 60 * 60 * 1000;
 
   const state = {
-    status: "idle",   // idle | reading | online | error
-    lastMessage: "Waiting for API key…"
+    status:      "idle",  // idle | reading | online | error
+    lastMessage: "Ready"
   };
   const statusSubs = new Set();
 
@@ -28,7 +38,7 @@
   }
   function defaultMessage(status) {
     return {
-      idle:    "Waiting for API key",
+      idle:    "Ready",
       reading: "Claude is reading…",
       online:  "Analysis complete",
       error:   "Analysis failed"
@@ -41,32 +51,83 @@
     return () => statusSubs.delete(fn);
   }
 
+  // ── User key ──────────────────────────────────────────────────
   function setApiKey(key) {
     if (key && key.trim()) {
       localStorage.setItem(KEY_STORAGE, key.trim());
       setStatus("idle", "API key saved · ready");
     } else {
       localStorage.removeItem(KEY_STORAGE);
-      setStatus("idle", "Waiting for API key");
+      setStatus("idle", "Ready");
     }
   }
-  function getApiKey() {
-    return localStorage.getItem(KEY_STORAGE) || "";
-  }
+  function getApiKey()  { return localStorage.getItem(KEY_STORAGE)  || ""; }
   function clearApiKey() {
     localStorage.removeItem(KEY_STORAGE);
     setStatus("idle", "API key cleared");
   }
 
+  // ── Admin key (operator-supplied for Discovery Phase) ─────────
+  function setAdminKey(key) {
+    if (key && key.trim()) {
+      localStorage.setItem(ADMIN_KEY_STORAGE, key.trim());
+      setStatus("idle", "Admin key saved · ready");
+    } else {
+      localStorage.removeItem(ADMIN_KEY_STORAGE);
+      setStatus("idle", "Admin key cleared");
+    }
+  }
+  function getAdminKey()  { return localStorage.getItem(ADMIN_KEY_STORAGE)  || ""; }
+  function clearAdminKey() { localStorage.removeItem(ADMIN_KEY_STORAGE); }
+
+  // ── Google Books key ──────────────────────────────────────────
   function setGoogleKey(key) {
     if (key && key.trim()) localStorage.setItem(GBOOKS_KEY_STORAGE, key.trim());
     else localStorage.removeItem(GBOOKS_KEY_STORAGE);
   }
-  function getGoogleKey() {
-    return localStorage.getItem(GBOOKS_KEY_STORAGE) || "";
+  function getGoogleKey()  { return localStorage.getItem(GBOOKS_KEY_STORAGE) || ""; }
+  function clearGoogleKey() { localStorage.removeItem(GBOOKS_KEY_STORAGE); }
+
+  // ── Provider resolution: proxy → admin key → user key ────────
+  // Returns { via: "proxy"|"admin"|"user"|"none", key: string|null }
+  function resolveProvider() {
+    const admin = getAdminKey();
+    if (admin) return { via: "admin", key: admin };
+    const user  = getApiKey();
+    if (user)  return { via: "user",  key: user };
+    return { via: "none", key: null };
   }
-  function clearGoogleKey() {
-    localStorage.removeItem(GBOOKS_KEY_STORAGE);
+
+  // ── Session throttle ──────────────────────────────────────────
+  // Tracks timestamps of AI calls in sessionStorage. Drops entries
+  // older than THROTTLE_WINDOW_MS so the limit is a rolling window,
+  // not a hard session cap.
+  function _readThrottle() {
+    try {
+      const raw = sessionStorage.getItem(THROTTLE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) { return []; }
+  }
+  function _writeThrottle(list) {
+    try { sessionStorage.setItem(THROTTLE_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
+  }
+  function throttleRemaining() {
+    const now  = Date.now();
+    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
+    return Math.max(0, THROTTLE_LIMIT - recent.length);
+  }
+  function _recordThrottledCall() {
+    const now    = Date.now();
+    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
+    recent.push(now);
+    _writeThrottle(recent);
+  }
+  function _checkThrottle() {
+    if (throttleRemaining() <= 0) {
+      const err = new Error("session-throttled");
+      err.code = "throttled";
+      throw err;
+    }
   }
 
   // 1) Google Books search. Unauthenticated requests share a low daily quota;
@@ -136,15 +197,65 @@
     return items.slice(0, maxResults);
   }
 
-  // 2) Claude analysis
-  // Returns { heat: 1-5, tropes: string[], insight: string }
-  async function analyzeWithClaude(book) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setStatus("error", "No API key set");
-      throw new Error("missing-api-key");
+  // ── Low-level Claude POST helper ─────────────────────────────
+  // Shared by analyzeWithClaude, enrichCatalogEntry, chatWithSara.
+  // Tries the edge proxy first when a proxyPayload is supplied;
+  // falls back to direct Anthropic API using the resolved key.
+  async function _claudePost({ directPayload, proxyPayload = null }) {
+    // Proxy attempt — fire-and-forget on 404/network so local dev
+    // works without a running server.
+    if (proxyPayload) {
+      try {
+        const pr = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(proxyPayload)
+        });
+        if (pr.ok) return await pr.json();
+        if (pr.status !== 404 && pr.status !== 405) {
+          const txt = await pr.text().catch(() => "");
+          throw new Error(`proxy-${pr.status}: ${txt.slice(0, 200)}`);
+        }
+        // 404/405 = no proxy deployed; fall through to direct call.
+      } catch (netErr) {
+        if (netErr.message && netErr.message.startsWith("proxy-")) throw netErr;
+        // Network error (no server at all) → fall through silently.
+      }
     }
 
+    // Direct Anthropic API — requires a key.
+    const { via, key } = resolveProvider();
+    if (!key) {
+      setStatus("error", "No API key — add one in Admin");
+      const err = new Error("missing-api-key");
+      err.code  = "missing-api-key";
+      throw err;
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(directPayload)
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const label = via === "admin" ? "Admin key" : "API key";
+      setStatus("error", `${label} · Claude returned ${res.status}`);
+      throw new Error(`claude-${res.status}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  // ── 2) Quick analysis: heat + tropes + insight ────────────────
+  // Returns { heat: 1-5, tropes: string[], insight: string }
+  async function analyzeWithClaude(book) {
+    _checkThrottle();
     setStatus("reading", `Claude is reading · ${book.title}`);
 
     const prompt = [
@@ -162,39 +273,27 @@
       `Description: ${(book.description || "").slice(0, 1500)}`
     ].join("\n");
 
-    let res;
+    const directPayload = {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }]
+    };
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 400,
-          messages: [{ role: "user", content: prompt }]
-        })
+      payload = await _claudePost({
+        directPayload,
+        proxyPayload: { action: "analyze", book: { title: book.title, author: book.author, description: (book.description || "").slice(0, 1500) } }
       });
     } catch (err) {
-      setStatus("error", "Network call failed");
+      setStatus("error", "Analysis failed");
       throw err;
     }
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
+    _recordThrottledCall();
 
-    const payload = await res.json();
     const textOut = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
     const parsed = parseAnalysis(textOut);
     if (!parsed) {
@@ -278,8 +377,7 @@
   // what is safe to overwrite vs. what the human has edited.
   // ----------------------------------------------------------------
   async function enrichCatalogEntry(input) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
+    _checkThrottle();
     if (!input || !input.title) throw new Error("missing-title");
 
     // 1) Look up cover + year + description on Google Books.
@@ -343,33 +441,22 @@
       effectiveDescription ? `Description: ${String(effectiveDescription).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
     ].join("\n");
 
-    let res;
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
+      payload = await _claudePost({
+        directPayload: {
           model: "claude-haiku-4-5-20251001",
           max_tokens: 900,
           messages: [{ role: "user", content: prompt }]
-        })
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
 
-    const payload = await res.json();
+    _recordThrottledCall();
+
     const textOut = (payload.content || [])
       .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
@@ -471,13 +558,12 @@
   // both land in Claude's `system` field.
   // ----------------------------------------------------------------
   async function chatWithSara({ systemContext = "", messages = [] } = {}) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
+    _checkThrottle();
+
     const persona = (window.LumenSaraPersona && window.LumenSaraPersona.PERSONA_PROMPT) || "";
-    const system = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
-    // Sanitize messages: must alternate user/assistant and start on
-    // user; Claude rejects other shapes. We filter out empty/non-
-    // text messages and coalesce consecutive same-role turns.
+    const system  = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
+
+    // Sanitize: must alternate user/assistant starting with user.
     const clean = [];
     for (const m of messages) {
       if (!m || !m.content) continue;
@@ -487,62 +573,52 @@
       if (last && last.role === role) last.content += "\n\n" + String(m.content);
       else clean.push({ role, content: String(m.content) });
     }
-    // Drop leading assistant turn if present.
     while (clean.length && clean[0].role !== "user") clean.shift();
     if (!clean.length) throw new Error("empty-conversation");
 
     setStatus("reading", "Bianca is thinking…");
-    let res;
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
+      payload = await _claudePost({
+        directPayload: {
           model: "claude-haiku-4-5-20251001",
-          max_tokens: 600,
+          max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
           system,
           messages: clean
-        })
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const payload = await res.json();
+
+    _recordThrottledCall();
+
     const out = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
     setStatus("online", "Bianca is here");
     return out;
   }
 
   window.LumenDiscovery = {
-    setApiKey,
-    getApiKey,
-    clearApiKey,
-    setGoogleKey,
-    getGoogleKey,
-    clearGoogleKey,
+    // User key
+    setApiKey, getApiKey, clearApiKey,
+    // Admin / operator key (Discovery Phase)
+    setAdminKey, getAdminKey, clearAdminKey,
+    // Google Books key
+    setGoogleKey, getGoogleKey, clearGoogleKey,
+    // Throttle introspection
+    throttleRemaining,
+    // Core API
     searchBooks,
     analyzeWithClaude,
     enrichCatalogEntry,
     lookupBookMetadata,
     chatWithSara,
     onStatus,
-    get status() { return state.status; },
+    get status()  { return state.status; },
     get message() { return state.lastMessage; }
   };
 })();
