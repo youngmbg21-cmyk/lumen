@@ -445,7 +445,7 @@
     try {
       payload = await _claudePost({
         directPayload: {
-          model: "claude-haiku-4-5-20251001",
+          model: "claude-sonnet-4-6",
           max_tokens: 900,
           messages: [{ role: "user", content: prompt }]
         }
@@ -582,7 +582,7 @@
     try {
       payload = await _claudePost({
         directPayload: {
-          model: "claude-haiku-4-5-20251001",
+          model: "claude-sonnet-4-6",
           max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
           system,
           messages: clean
