@@ -2353,17 +2353,7 @@ body[data-privacy-blur="on"] .app-main::after {
   max-height: min(900px, calc(100vh - var(--shell-topbar) - var(--s-4)));
 }
 
-/* Reflow the main content as soon as Bianca is desktop-sized. Lowered
-   from 1100px to the 880px mobile breakpoint so focus mode doesn't
-   overlay content on mid-size laptops. Mobile keeps the overlay
-   (now fullscreen) behaviour since its content isn't visible
-   alongside the panel anyway. */
-@media (min-width: 881px) {
-  body[data-bianca-width="focus"] .app-main {
-    padding-right: calc(min(50vw, 760px) + var(--s-5));
-    transition: padding-right var(--dur-2) var(--ease);
-  }
-}
+/* Focus mode — panel floats over content; no page reflow. */
 
 @media (max-width: 880px) {
   .bianca-panel {

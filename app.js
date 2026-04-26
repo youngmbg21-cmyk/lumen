@@ -3678,9 +3678,14 @@
         const book = findBook(p.bookId);
         if (!book) return;
         const tile = util.el("div", { class: "vault-tile" });
-        tile.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
-        tile.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: book.title }));
-        tile.appendChild(util.el("div", { class: "t-small t-subtle", text: book.author }));
+        const tileTop = util.el("div", { style: { display: "flex", gap: "var(--s-3)", alignItems: "flex-start" } });
+        tileTop.appendChild(buildCoverBlock(book, { size: "sm", showHeat: false }));
+        const tileMeta = util.el("div", { style: { minWidth: 0, flex: "1" } });
+        tileMeta.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+        tileMeta.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: book.title }));
+        tileMeta.appendChild(util.el("div", { class: "t-small t-subtle", text: book.author }));
+        tileTop.appendChild(tileMeta);
+        tile.appendChild(tileTop);
         if (p.note) tile.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: p.note }));
         tile.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-3)", justifyContent: "space-between" } }, [
           util.el("button", { class: "btn btn-sm", onclick: () => openBookDetail(book.id) }, "Open"),
@@ -3990,6 +3995,19 @@
         ])
       ]));
 
+      // Linked book — at the top so it frames the entry context immediately
+      card.appendChild(util.el("div", { class: "field-label", text: "Linked book" }));
+      const bookSel = util.el("select", { class: "select", style: { maxWidth: "360px" }, onchange: (e) => {
+        store.update(s => {
+          const it = s.journal.find(x => x.id === entry.id);
+          if (it) it.bookId = e.target.value || null;
+        });
+        paintList();
+      }});
+      bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
+      listAllBooks().forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
+      card.appendChild(bookSel);
+
       if (entry.prompt) {
         card.appendChild(util.el("div", { class: "journal-prompt" }, entry.prompt));
       }
@@ -4035,19 +4053,6 @@
         }
       })));
       card.appendChild(moodRow);
-
-      // Linked book
-      card.appendChild(util.el("div", { class: "field-label", text: "Linked book" }));
-      const bookSel = util.el("select", { class: "select", style: { maxWidth: "360px" }, onchange: (e) => {
-        store.update(s => {
-          const it = s.journal.find(x => x.id === entry.id);
-          if (it) it.bookId = e.target.value || null;
-        });
-        paintList();
-      }});
-      bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
-      listAllBooks().forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
-      card.appendChild(bookSel);
 
       editorSide.appendChild(card);
     }
