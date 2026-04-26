@@ -119,45 +119,57 @@
     return { credit: matched.length / userSet.size, matched };
   }
 
+  // Converts the terminal's live profile (short numeric keys + Sets)
+  // into the shape engine.normalizeProfile() expects so that fit and
+  // confidence scores are identical to what Library and Compare show.
+  function terminalProfileForEngine() {
+    const p = termState.profile;
+    const storeProfile = (window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get().profile) || {};
+    return {
+      heat: p.heat, explicit: p.explicit, emotion: p.emotion,
+      consent: p.consent, taboo: p.taboo, plot: p.plot,
+      tone:        [...(p.tone    || [])],
+      pacing:      [],
+      style:       [...(p.style   || [])],
+      dynamic:     [...(p.dynamic || [])],
+      trope:       [], kink: [], orientation: [],
+      exclude:     storeProfile.exclude     || [],
+      warnStrict:  storeProfile.warnStrict  || "moderate"
+    };
+  }
+
   function scoreBook(b) {
-    const W = { heat: 1.0, explicit: 1.0, emotion: 1.0, consent: 1.5, taboo: 1.2, plot: 0.8, tone: 1.0, dynamic: 1.1 };
+    const LumenEngine = window.LumenEngine;
+    const storeState  = window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get();
+    if (LumenEngine && b._raw) {
+      const nProfile = LumenEngine.normalizeProfile(terminalProfileForEngine());
+      const weights  = (storeState && storeState.weights) || {};
+      const s = LumenEngine.scoreBook(LumenEngine.withDefaults(b._raw), nProfile, weights);
+      return { fit: s.fitScore, confidence: s.confidence, contributions: s.contributions };
+    }
+    // Fallback: local scoring when engine is unavailable (e.g. load order issue).
+    const W = { heat: 1, explicit: 1, emotion: 1, consent: 1, taboo: 1, plot: 1, tone: 1, dynamic: 1 };
     const p = termState.profile;
     let raw = 0, max = 0;
     const contributions = {};
     for (const k of ["heat", "explicit", "emotion", "plot"]) {
       const s = numMatch(p[k], b[k]);
-      raw += s * W[k]; max += W[k];
-      contributions[k] = s;
+      raw += s * W[k]; max += W[k]; contributions[k] = s;
     }
-    // Consent: floor (book ≥ user → full credit)
     const consentScore = b.consent >= p.consent ? 1 : numMatch(p.consent, b.consent);
-    raw += consentScore * W.consent; max += W.consent;
-    contributions.consent = consentScore;
-    // Taboo: ceiling (book ≤ user → full credit)
+    raw += consentScore * W.consent; max += W.consent; contributions.consent = consentScore;
     const tabooScore = b.taboo <= p.taboo ? 1 : numMatch(p.taboo, b.taboo);
-    raw += tabooScore * W.taboo; max += W.taboo;
-    contributions.taboo = tabooScore;
+    raw += tabooScore * W.taboo; max += W.taboo; contributions.taboo = tabooScore;
     const toneO = setOverlap(p.tone,    b.tone);
     raw += toneO.credit * W.tone; max += W.tone;
     const dynO  = setOverlap(p.dynamic, b.dynamic);
-    raw += dynO.credit  * W.dynamic; max += W.dynamic;
-    const fit = Math.round((raw / max) * 100);
-    // Delegate confidence to the canonical engine using the original
-    // book shape (_raw) so it matches what Library and Compare show.
-    const LumenEngine = window.LumenEngine;
-    const storeState  = window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get();
-    let confidence;
-    if (LumenEngine && b._raw && storeState) {
-      confidence = LumenEngine.scoreBook(
-        LumenEngine.withDefaults(b._raw),
-        LumenEngine.normalizeProfile(storeState.profile),
-        storeState.weights || {}
-      ).confidence;
-    } else {
-      const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
-      confidence = Math.min(100, 30 + Math.round(tagSignals * 7));
-    }
-    return { fit, confidence, contributions, toneMatched: toneO.matched, dynMatched: dynO.matched };
+    raw += dynO.credit * W.dynamic; max += W.dynamic;
+    const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
+    return {
+      fit: Math.round((raw / max) * 100),
+      confidence: Math.min(100, 30 + Math.round(tagSignals * 7)),
+      contributions
+    };
   }
 
   // Apply subgenre + search filter, score every survivor, then sort.
