@@ -55,7 +55,13 @@
       return { credit: isPartial ? 0.5 : 0, matched: [] };
     }
     const matched = bookArr.filter(t => userSet.has(t));
-    return { credit: matched.length / userSet.size, matched };
+    if (matched.length === 0) return { credit: 0, matched: [] };
+    // Base 0.5 credit for any match; additional 0.5 scales with how many
+    // of the user's preferences the book satisfies. This prevents a large
+    // wishlist from unfairly collapsing scores when books only carry a
+    // subset of the user's tags (which is normal for real catalog metadata).
+    const credit = 0.5 + 0.5 * (matched.length / userSet.size);
+    return { credit, matched };
   }
 
   function evaluateBookFit(book, nProfile) {
