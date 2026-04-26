@@ -17,13 +17,25 @@
 (function () {
   "use strict";
 
-  const KEY_STORAGE        = "lumen:claude-key";
-  const ADMIN_KEY_STORAGE  = "lumen:admin-key";
-  const GBOOKS_KEY_STORAGE = "lumen:gbooks-key";
-  const THROTTLE_KEY       = "lumen:throttle";   // sessionStorage
-  const PROXY_URL          = "/api/analyze";
-  const THROTTLE_LIMIT     = 10;   // max AI calls per hour per session
-  const THROTTLE_WINDOW_MS = 60 * 60 * 1000;
+  const KEY_STORAGE          = "lumen:claude-key";
+  const MASTER_KEY_STORAGE   = "lumen:master-key";
+  const DEMO_MODE_STORAGE    = "lumen:demo-mode";
+  const SESSION_CAP_STORAGE  = "lumen:session-cap";
+  const GBOOKS_KEY_STORAGE   = "lumen:gbooks-key";
+  const THROTTLE_KEY         = "lumen:throttle";   // sessionStorage
+  const PROXY_URL            = "/api/analyze";
+  const DEFAULT_THROTTLE_CAP = 10;
+  const THROTTLE_WINDOW_MS   = 60 * 60 * 1000;
+
+  // Migrate legacy lumen:admin-key → lumen:master-key on first load.
+  (function _migrateLegacyAdminKey() {
+    try {
+      const legacy = localStorage.getItem("lumen:admin-key");
+      if (legacy && !localStorage.getItem(MASTER_KEY_STORAGE)) {
+        localStorage.setItem(MASTER_KEY_STORAGE, legacy);
+      }
+    } catch (e) { /* storage unavailable */ }
+  })();
 
   const state = {
     status:      "idle",  // idle | reading | online | error
@@ -72,18 +84,40 @@
     setStatus("idle", "API key cleared");
   }
 
-  // ── Admin key (operator-supplied for Discovery Phase) ─────────
-  function setAdminKey(key) {
+  // ── Master key + Demo Mode + Session Cap (operator, Discovery Phase) ──
+  function setMasterKey(key) {
     if (key && key.trim()) {
-      localStorage.setItem(ADMIN_KEY_STORAGE, key.trim());
-      setStatus("idle", "Admin key saved · ready");
+      localStorage.setItem(MASTER_KEY_STORAGE, key.trim());
+      setStatus("idle");
     } else {
-      localStorage.removeItem(ADMIN_KEY_STORAGE);
-      setStatus("idle", "Admin key cleared");
+      localStorage.removeItem(MASTER_KEY_STORAGE);
+      setStatus("idle");
     }
   }
-  function getAdminKey()  { return localStorage.getItem(ADMIN_KEY_STORAGE)  || ""; }
-  function clearAdminKey() { localStorage.removeItem(ADMIN_KEY_STORAGE); }
+  function getMasterKey()  { return localStorage.getItem(MASTER_KEY_STORAGE) || ""; }
+  function clearMasterKey() { localStorage.removeItem(MASTER_KEY_STORAGE); setStatus("idle"); }
+
+  function setDemoMode(on) {
+    if (on) localStorage.setItem(DEMO_MODE_STORAGE, "1");
+    else    localStorage.removeItem(DEMO_MODE_STORAGE);
+    setStatus("idle");
+  }
+  function getDemoMode() { return !!localStorage.getItem(DEMO_MODE_STORAGE); }
+
+  function setSessionCap(n) {
+    const v = parseInt(n, 10);
+    if (Number.isFinite(v) && v > 0) localStorage.setItem(SESSION_CAP_STORAGE, String(v));
+    else localStorage.removeItem(SESSION_CAP_STORAGE);
+  }
+  function getSessionCap() {
+    const v = parseInt(localStorage.getItem(SESSION_CAP_STORAGE), 10);
+    return (Number.isFinite(v) && v > 0) ? v : DEFAULT_THROTTLE_CAP;
+  }
+
+  // Back-compat aliases so any existing call sites in app.js still work.
+  const setAdminKey   = setMasterKey;
+  const getAdminKey   = getMasterKey;
+  const clearAdminKey = clearMasterKey;
 
   // ── Google Books key ──────────────────────────────────────────
   function setGoogleKey(key) {
@@ -93,13 +127,16 @@
   function getGoogleKey()  { return localStorage.getItem(GBOOKS_KEY_STORAGE) || ""; }
   function clearGoogleKey() { localStorage.removeItem(GBOOKS_KEY_STORAGE); }
 
-  // ── Provider resolution: proxy → admin key → user key ────────
-  // Returns { via: "proxy"|"admin"|"user"|"none", key: string|null }
+  // ── Provider resolution: master (demo) → master (any) → user → none ──
+  // When Demo Mode is ON the master key is used unconditionally so
+  // visitors never see a "Waiting for API key" prompt. When Demo Mode
+  // is OFF the master key still works but only for the operator.
   function resolveProvider() {
-    const admin = getAdminKey();
-    if (admin) return { via: "admin", key: admin };
-    const user  = getApiKey();
-    if (user)  return { via: "user",  key: user };
+    const master = getMasterKey();
+    if (master && getDemoMode()) return { via: "admin", key: master };
+    if (master)                  return { via: "admin", key: master };
+    const user = getApiKey();
+    if (user)                    return { via: "user",  key: user };
     return { via: "none", key: null };
   }
 
@@ -119,7 +156,7 @@
   function throttleRemaining() {
     const now  = Date.now();
     const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
-    return Math.max(0, THROTTLE_LIMIT - recent.length);
+    return Math.max(0, getSessionCap() - recent.length);
   }
   function _recordThrottledCall() {
     const now    = Date.now();
@@ -614,7 +651,11 @@
   window.LumenDiscovery = {
     // User key
     setApiKey, getApiKey, clearApiKey,
-    // Admin / operator key (Discovery Phase)
+    // Master key + Demo Mode + Session Cap (operator, Discovery Phase)
+    setMasterKey, getMasterKey, clearMasterKey,
+    setDemoMode, getDemoMode,
+    setSessionCap, getSessionCap,
+    // Back-compat aliases
     setAdminKey, getAdminKey, clearAdminKey,
     // Google Books key
     setGoogleKey, getGoogleKey, clearGoogleKey,
