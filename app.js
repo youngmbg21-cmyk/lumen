@@ -1690,10 +1690,11 @@
     const hint = util.el("div", { class: "disco-hero-hint" });
     const modeHint = util.el("span", { class: "disco-hero-mode", text: "" });
     const hintLead = util.el("span");
-    if (!Disco.getApiKey()) {
+    const hasAiKey = !!(Disco.getAdminKey && Disco.getAdminKey()) || !!Disco.getApiKey();
+    if (!hasAiKey) {
       hintLead.textContent = "Heads up — ";
       hint.appendChild(hintLead);
-      hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
+      hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Admin"));
       hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
       hintLead.textContent = "Up to six Google Books results · Claude reads each for heat, tropes, and a one-line insight.";
@@ -1762,10 +1763,23 @@
     // Initial paint from cached results (if any)
     if (discoveryState.raw.length) paintGrid();
     else {
-      grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a title, author, or theme and Claude will read each blurb as it arrives. Set your API key in Settings first." })
-      ]));
+      const catalogSuggestions = (window.LumenData && window.LumenData.CATALOG || []).slice(0, 3);
+      const emptyChildren = [
+        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "What are you in the mood for?" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a title, author, or theme — Claude reads each result for heat, tropes, and a one-line insight." })
+      ];
+      if (catalogSuggestions.length) {
+        const chips = util.el("div", { class: "row", style: { flexWrap: "wrap", gap: "var(--s-2)", marginTop: "var(--s-3)" } });
+        catalogSuggestions.forEach(b => {
+          chips.appendChild(util.el("button", {
+            class: "chip",
+            type: "button",
+            onclick: () => { searchInput.value = b.title; runSearch(); }
+          }, b.title));
+        });
+        emptyChildren.push(chips);
+      }
+      grid.appendChild(util.el("div", { class: "discovery-empty" }, emptyChildren));
     }
 
     function paintGrid() {
@@ -1784,7 +1798,8 @@
     async function runSearch() {
       const q = searchInput.value.trim();
       if (!q) { ui.toast("Enter a title, author, or topic"); return; }
-      if (!Disco.getApiKey()) {
+      const hasKey = !!(Disco.getAdminKey && Disco.getAdminKey()) || !!Disco.getApiKey();
+      if (!hasKey) {
         ui.toast("Add your Claude API key in Admin first", {
           action: "Open Settings",
           onAction: () => router.go("settings"),
@@ -2845,8 +2860,11 @@
     preview.appendChild(buildImporterPreview());
     card.appendChild(preview);
 
-    if (!Disco || !Disco.getApiKey()) {
-      card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs your API key set above. CSV-full imports work without it." }));
+    const hasAnyKey = Disco && (
+      (Disco.getAdminKey && Disco.getAdminKey()) || Disco.getApiKey()
+    );
+    if (!hasAnyKey) {
+      card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs an API key configured. CSV-full imports work without it." }));
     }
     return card;
   }
@@ -2862,6 +2880,23 @@
         util.el("p", { class: "lede", text: "Keys and configuration. Everything here is stored locally on this device." })
       ])
     ]));
+
+    // --- Developer / Advanced (collapsible) ------------------------------
+    // Hidden by default during the Discovery Phase. Testers use the
+    // admin key set via the secret logo-click modal; only power users
+    // need to supply their own keys here.
+    const devDetails = document.createElement("details");
+    devDetails.className = "settings-advanced-section";
+    const devSummary = util.el("summary", { class: "settings-advanced-summary" }, [
+      util.el("span", { class: "t-eyebrow", text: "Developer / Advanced" }),
+      util.el("span", { class: "t-small t-subtle", style: { marginLeft: "var(--s-2)" }, text: "API keys for direct access" })
+    ]);
+    devDetails.appendChild(devSummary);
+    // Open automatically only when a user key is already saved so it
+    // remains visible without the user having to expand it again.
+    if (Disco.getApiKey() || (window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey())) {
+      devDetails.open = true;
+    }
 
     // --- Claude API key ---------------------------------------------------
     const keyCard = util.el("div", { class: "card settings-card stack" });
@@ -2931,7 +2966,7 @@
         "."
       ])
     ]));
-    wrap.appendChild(keyCard);
+    devDetails.appendChild(keyCard);
 
     // --- Voyage API key (for semantic search) ----------------------------
     // Styled identically to the Claude card above. setApiKey("") in
@@ -3007,7 +3042,7 @@
         "."
       ])
     ]));
-    wrap.appendChild(voyageCard);
+    devDetails.appendChild(voyageCard);
 
     // --- Google Books API key (optional) ---------------------------------
     const gbCard = util.el("div", { class: "card settings-card stack" });
@@ -3062,7 +3097,8 @@
         "Google Cloud console → APIs & Services → Enable \"Books API\" → Credentials → Create API key. The Books API is free. Restrict the key to HTTP referrers if you want belt-and-braces safety."
       ])
     ]));
-    wrap.appendChild(gbCard);
+    devDetails.appendChild(gbCard);
+    wrap.appendChild(devDetails);
 
     // --- Starter library -------------------------------------------------
     const starterLoaded = hasStarterLibraryLoaded();
@@ -6043,6 +6079,63 @@
   }
 
   /* -------------------- shell rendering -------------------- */
+  // Admin key modal — opened by clicking the Lumen logo 5 times.
+  // Lets the operator configure the master key in the demo environment
+  // without it being visible in the normal Settings UI.
+  function openAdminKeyModal() {
+    const Disco = window.LumenDiscovery;
+    const current = Disco && Disco.getAdminKey ? Disco.getAdminKey() : "";
+    const inputEl = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "sk-ant-…",
+      value: current,
+      autocomplete: "off",
+      spellcheck: "false",
+      style: { marginTop: "var(--s-3)", width: "100%" }
+    });
+    const reveal = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)", marginTop: "var(--s-2)" } });
+    const revealCb = util.el("input", { type: "checkbox", onchange: (e) => {
+      inputEl.setAttribute("type", e.target.checked ? "text" : "password");
+    }});
+    reveal.appendChild(revealCb);
+    reveal.appendChild(util.el("span", { class: "toggle-track" }));
+    reveal.appendChild(util.el("span", { class: "toggle-label", text: "Show key" }));
+
+    const throttleInfo = Disco && Disco.throttleRemaining
+      ? util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-2)" },
+          text: `Session budget: ${Disco.throttleRemaining()} / 10 AI calls remaining this hour.` })
+      : null;
+
+    const body = util.el("div");
+    body.appendChild(util.el("p", { class: "t-small t-muted", text: "Enter the master API key for the Discovery Phase demo. Stored locally, used as the operator-level fallback when no user key is set." }));
+    body.appendChild(inputEl);
+    body.appendChild(reveal);
+    if (throttleInfo) body.appendChild(throttleInfo);
+
+    ui.modal({
+      title: "Admin · Master API key",
+      body,
+      primary: { label: current ? "Update" : "Save", onClick: () => {
+        const val = inputEl.value.trim();
+        if (!Disco) return;
+        Disco.setAdminKey(val);
+        if (val) {
+          store.update(s => { s.ui.adultConfirmed = true; });
+          ui.toast("Admin key saved · testers can use the app immediately");
+        } else {
+          ui.toast("Admin key cleared");
+        }
+        renderView();
+      }},
+      secondary: current ? { label: "Clear", onClick: () => {
+        if (Disco) Disco.clearAdminKey();
+        ui.toast("Admin key cleared");
+        renderView();
+      }} : { label: "Cancel" }
+    });
+  }
+
   function renderSidebar() {
     const current = router.current();
     const groups = {
@@ -6052,10 +6145,22 @@
     };
     const side = document.getElementById("side-nav");
     side.innerHTML = "";
-    side.appendChild(util.el("div", { class: "app-brand" }, [
+    // Secret admin login: click the "Lumen" mark 5 times within 4 s.
+    let _adminClickCount = 0, _adminClickTimer = null;
+    const brand = util.el("div", { class: "app-brand", onclick: () => {
+      _adminClickCount++;
+      clearTimeout(_adminClickTimer);
+      if (_adminClickCount >= 5) {
+        _adminClickCount = 0;
+        openAdminKeyModal();
+        return;
+      }
+      _adminClickTimer = setTimeout(() => { _adminClickCount = 0; }, 4000);
+    }}, [
       util.el("span", { class: "mark", text: "Lumen" }),
       util.el("span", { class: "tag", text: "Private" })
-    ]));
+    ]);
+    side.appendChild(brand);
 
     for (const [gid, g] of Object.entries(groups)) {
       const group = util.el("div", { class: "nav-group" });
@@ -6322,6 +6427,14 @@
 
   function adultGate() {
     if (store.get().ui.adultConfirmed) return;
+    // Discovery Phase: operator has pre-vouched for the environment
+    // when an admin key is configured — skip the gate so testers
+    // land directly on the app without any blocking prompt.
+    const Disco = window.LumenDiscovery;
+    if (Disco && Disco.getAdminKey && Disco.getAdminKey()) {
+      store.update(s => { s.ui.adultConfirmed = true; });
+      return;
+    }
     ui.modal({
       title: "Before you begin",
       body: `<p class="t-muted">Lumen discusses adult literature — erotic classics, sexuality texts, and works with mature themes. Please confirm you are an adult and understand the material may include historically problematic content.</p>

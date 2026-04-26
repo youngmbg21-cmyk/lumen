@@ -197,15 +197,65 @@
     return items.slice(0, maxResults);
   }
 
-  // 2) Claude analysis
-  // Returns { heat: 1-5, tropes: string[], insight: string }
-  async function analyzeWithClaude(book) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setStatus("error", "No API key set");
-      throw new Error("missing-api-key");
+  // ── Low-level Claude POST helper ─────────────────────────────
+  // Shared by analyzeWithClaude, enrichCatalogEntry, chatWithSara.
+  // Tries the edge proxy first when a proxyPayload is supplied;
+  // falls back to direct Anthropic API using the resolved key.
+  async function _claudePost({ directPayload, proxyPayload = null }) {
+    // Proxy attempt — fire-and-forget on 404/network so local dev
+    // works without a running server.
+    if (proxyPayload) {
+      try {
+        const pr = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(proxyPayload)
+        });
+        if (pr.ok) return await pr.json();
+        if (pr.status !== 404 && pr.status !== 405) {
+          const txt = await pr.text().catch(() => "");
+          throw new Error(`proxy-${pr.status}: ${txt.slice(0, 200)}`);
+        }
+        // 404/405 = no proxy deployed; fall through to direct call.
+      } catch (netErr) {
+        if (netErr.message && netErr.message.startsWith("proxy-")) throw netErr;
+        // Network error (no server at all) → fall through silently.
+      }
     }
 
+    // Direct Anthropic API — requires a key.
+    const { via, key } = resolveProvider();
+    if (!key) {
+      setStatus("error", "No API key — add one in Admin");
+      const err = new Error("missing-api-key");
+      err.code  = "missing-api-key";
+      throw err;
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(directPayload)
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const label = via === "admin" ? "Admin key" : "API key";
+      setStatus("error", `${label} · Claude returned ${res.status}`);
+      throw new Error(`claude-${res.status}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  // ── 2) Quick analysis: heat + tropes + insight ────────────────
+  // Returns { heat: 1-5, tropes: string[], insight: string }
+  async function analyzeWithClaude(book) {
+    _checkThrottle();
     setStatus("reading", `Claude is reading · ${book.title}`);
 
     const prompt = [
@@ -223,39 +273,27 @@
       `Description: ${(book.description || "").slice(0, 1500)}`
     ].join("\n");
 
-    let res;
+    const directPayload = {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }]
+    };
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 400,
-          messages: [{ role: "user", content: prompt }]
-        })
+      payload = await _claudePost({
+        directPayload,
+        proxyPayload: { action: "analyze", book: { title: book.title, author: book.author, description: (book.description || "").slice(0, 1500) } }
       });
     } catch (err) {
-      setStatus("error", "Network call failed");
+      setStatus("error", "Analysis failed");
       throw err;
     }
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
+    _recordThrottledCall();
 
-    const payload = await res.json();
     const textOut = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
     const parsed = parseAnalysis(textOut);
     if (!parsed) {
@@ -339,8 +377,7 @@
   // what is safe to overwrite vs. what the human has edited.
   // ----------------------------------------------------------------
   async function enrichCatalogEntry(input) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
+    _checkThrottle();
     if (!input || !input.title) throw new Error("missing-title");
 
     // 1) Look up cover + year + description on Google Books.
@@ -404,33 +441,22 @@
       effectiveDescription ? `Description: ${String(effectiveDescription).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
     ].join("\n");
 
-    let res;
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
+      payload = await _claudePost({
+        directPayload: {
           model: "claude-haiku-4-5-20251001",
           max_tokens: 900,
           messages: [{ role: "user", content: prompt }]
-        })
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
 
-    const payload = await res.json();
+    _recordThrottledCall();
+
     const textOut = (payload.content || [])
       .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
@@ -532,13 +558,12 @@
   // both land in Claude's `system` field.
   // ----------------------------------------------------------------
   async function chatWithSara({ systemContext = "", messages = [] } = {}) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
+    _checkThrottle();
+
     const persona = (window.LumenSaraPersona && window.LumenSaraPersona.PERSONA_PROMPT) || "";
-    const system = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
-    // Sanitize messages: must alternate user/assistant and start on
-    // user; Claude rejects other shapes. We filter out empty/non-
-    // text messages and coalesce consecutive same-role turns.
+    const system  = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
+
+    // Sanitize: must alternate user/assistant starting with user.
     const clean = [];
     for (const m of messages) {
       if (!m || !m.content) continue;
@@ -548,62 +573,52 @@
       if (last && last.role === role) last.content += "\n\n" + String(m.content);
       else clean.push({ role, content: String(m.content) });
     }
-    // Drop leading assistant turn if present.
     while (clean.length && clean[0].role !== "user") clean.shift();
     if (!clean.length) throw new Error("empty-conversation");
 
     setStatus("reading", "Bianca is thinking…");
-    let res;
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
+      payload = await _claudePost({
+        directPayload: {
           model: "claude-haiku-4-5-20251001",
-          max_tokens: 600,
+          max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
           system,
           messages: clean
-        })
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const payload = await res.json();
+
+    _recordThrottledCall();
+
     const out = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
     setStatus("online", "Bianca is here");
     return out;
   }
 
   window.LumenDiscovery = {
-    setApiKey,
-    getApiKey,
-    clearApiKey,
-    setGoogleKey,
-    getGoogleKey,
-    clearGoogleKey,
+    // User key
+    setApiKey, getApiKey, clearApiKey,
+    // Admin / operator key (Discovery Phase)
+    setAdminKey, getAdminKey, clearAdminKey,
+    // Google Books key
+    setGoogleKey, getGoogleKey, clearGoogleKey,
+    // Throttle introspection
+    throttleRemaining,
+    // Core API
     searchBooks,
     analyzeWithClaude,
     enrichCatalogEntry,
     lookupBookMetadata,
     chatWithSara,
     onStatus,
-    get status() { return state.status; },
+    get status()  { return state.status; },
     get message() { return state.lastMessage; }
   };
 })();

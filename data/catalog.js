@@ -53,7 +53,6 @@
       if (!raw) return CATALOG_BUILTIN;
       const parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;
-      // Override wins — the importer is responsible for normalizing.
       return parsed.books;
     } catch (e) {
       console.warn("[Lumen] catalog override unreadable, falling back to built-in:", e);
@@ -61,10 +60,40 @@
     }
   }
 
+  // Pagination helper for large catalogs (up to 500+ entries).
+  // Returns one page of results without slicing the live array so
+  // callers don't need a copy. pageSize defaults to 50.
+  function getCatalogPage(catalog, page, pageSize) {
+    const size  = (typeof pageSize === "number" && pageSize > 0) ? pageSize : 50;
+    const start = Math.max(0, (page || 0)) * size;
+    return catalog.slice(start, start + size);
+  }
+
+  // Lightweight search across the full catalog by title/author/tags.
+  // Returns a filtered subset — no scoring, just substring matching.
+  // Intended for the Discovery view's "from catalog" suggestions and
+  // for quick "do we already have this?" checks in the importer.
+  function searchCatalog(catalog, query) {
+    if (!query || !query.trim()) return catalog.slice(0, 50);
+    const q = query.trim().toLowerCase();
+    return catalog.filter(b => {
+      const title  = (b.title  || "").toLowerCase();
+      const author = (b.author || "").toLowerCase();
+      const tags   = [
+        ...(b.trope_tags || []),
+        ...(b.kink_tags  || []),
+        ...(b.tone       || [])
+      ].join(" ").toLowerCase();
+      return title.includes(q) || author.includes(q) || tags.includes(q);
+    });
+  }
+
   // Expose on LumenData so the rest of the app can pick it up
   // without a fetch() (which wouldn't work under file://).
   window.LumenData = window.LumenData || {};
-  window.LumenData.CATALOG = resolveCatalog();
+  window.LumenData.CATALOG         = resolveCatalog();
   window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;
   window.LumenData.CATALOG_VERSION = CATALOG_VERSION;
+  window.LumenData.getCatalogPage  = getCatalogPage;
+  window.LumenData.searchCatalog   = searchCatalog;
 })();
