@@ -720,11 +720,10 @@
     sort: "fit",
     minFit: 0,
     // Session-only — not persisted to localStorage. Default is
-    // "semantic" when a Voyage key is saved (so meaning-based search
-    // is the primary behaviour), falling back to "exact" otherwise
-    // so users without a key land in a working mode.
-    searchMode: (typeof window !== "undefined" && window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey())
-      ? "semantic" : "exact"
+    // Exact is always the default — it works without any API key and
+    // is the expected starting point for most searches. Semantic is
+    // opt-in once a Voyage key is configured.
+    searchMode: "exact"
   };
 
   // Closure for the semantic-search async flow. Reset on reload
@@ -1293,8 +1292,8 @@
     const hasVoyageKey = !!(window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey());
     const modeSeg = util.el("div", { class: "segmented", "aria-label": "Search mode" });
     const modeOptions = [
-      { id: "semantic", label: "Semantic" },
-      { id: "exact",    label: "Exact" }
+      { id: "exact",    label: "Exact" },
+      { id: "semantic", label: "Semantic" }
     ];
     modeOptions.forEach(opt => {
       const b = util.el("button", Object.assign({
@@ -2051,13 +2050,13 @@
       }
       body.appendChild(status);
 
-      // Icon-only action row — primary is "Add to library", source
+      // Icon-only action row — primary is "Add to your library", source
       // link tucked behind a second icon. Labels exposed via tooltips
       // so the card stays visually quiet at rest.
       const actions = util.el("div", { class: "disco-card-actions" });
       actions.appendChild(util.el("button", {
         class: "disco-card-iconbtn disco-card-iconbtn-primary",
-        title: "Add to library", "aria-label": "Add to library",
+        title: "Add to your library", "aria-label": "Add to your library",
         onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book, enrich); }
       }, "+"));
       if (book.sourceUrl) {
@@ -2148,7 +2147,7 @@
       book.sourceUrl ? { label: "View source", href: book.sourceUrl } : null,
       inLibrary
         ? { label: "Open in Library", variant: "btn-primary", onClick: () => router.go("library") }
-        : { label: "Add to library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book, enrich) }
+        : { label: "Add to your library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book, enrich) }
     ].filter(Boolean);
 
     ui.detailSheet({
@@ -2792,7 +2791,7 @@
     card.appendChild(util.el("div", { class: "settings-card-head" }, [
       util.el("div", {}, [
         util.el("h3", { text: "Curated catalog" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Import your 100-book corpus. Paste a title list or a CSV with any subset of the schema — the only required columns are title and author. Claude fills every other field on Enrich; anything you did provide is kept and marked human-sourced. See data/CATALOG.md for the full column list." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `Import your catalog${currentCount ? ` (${currentCount} books currently loaded)` : ""}. Paste a title list or a CSV with any subset of the schema — the only required columns are title and author. Claude fills every other field on Enrich; anything you did provide is kept and marked human-sourced. See data/CATALOG.md for the full column list.` })
       ]),
       util.el("span", {
         class: "settings-badge " + (currentCount ? "settings-badge-ok" : "settings-badge-missing"),
@@ -5546,7 +5545,7 @@
     if (inLibrary) {
       actions.appendChild(util.el("button", { class: "btn btn-sm", onclick: () => openBookDetail(book.id) }, "Open"));
     } else {
-      actions.appendChild(util.el("button", { class: "btn btn-sm btn-primary", onclick: () => { setReadingState(book.id, "want"); renderView(); } }, "Add to library"));
+      actions.appendChild(util.el("button", { class: "btn btn-sm btn-primary", onclick: () => { setReadingState(book.id, "want"); renderView(); } }, "Add to your library"));
     }
     body.appendChild(actions);
 
