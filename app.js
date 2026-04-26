@@ -805,10 +805,10 @@
       category: "web-discovered",
       subgenre: "",
       heat_level: d.heat || 3,
-      explicitness: d.heat || 3,
+      explicitness: 3,
       emotional_intensity: 3,
       consent_clarity: 3,
-      taboo_level: 2,
+      taboo_level: 3,
       plot_weight: 3,
       tone: [], pacing: [], literary_style: [],
       relationship_dynamic: [], trope_tags: d.tropes || [],
@@ -818,7 +818,8 @@
       source_url: d.sourceUrl || null,
       thumbnail: d.thumbnail || null,
       aiInsight: d.aiInsight || null,
-      _discovered: true
+      _discovered: true,
+      _isPartial: true
     };
   }
   // Normalize an entry from the curated catalog (data/catalog.js).

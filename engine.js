@@ -49,9 +49,11 @@
     return 0;
   }
 
-  function tagOverlap(userSet, bookArr) {
+  function tagOverlap(userSet, bookArr, isPartial) {
     if (userSet.size === 0) return { credit: 0.5, matched: [] };
-    if (!bookArr || bookArr.length === 0) return { credit: 0, matched: [] };
+    if (!bookArr || bookArr.length === 0) {
+      return { credit: isPartial ? 0.5 : 0, matched: [] };
+    }
     const matched = bookArr.filter(t => userSet.has(t));
     return { credit: matched.length / userSet.size, matched };
   }
@@ -59,6 +61,7 @@
   function evaluateBookFit(book, nProfile) {
     const n = nProfile.numeric;
     const s = nProfile.sets;
+    const partial = !!book._isPartial;
     const numericResults = {
       heat:    numericMatch(n.heat, book.heat_level),
       explicit: numericMatch(n.explicit, book.explicitness),
@@ -68,13 +71,13 @@
       plot:    numericMatch(n.plot, book.plot_weight)
     };
     const tagResults = {
-      tone:        tagOverlap(s.tone, book.tone),
-      pacing:      tagOverlap(s.pacing, book.pacing),
-      style:       tagOverlap(s.style, book.literary_style),
-      dynamic:     tagOverlap(s.dynamic, book.relationship_dynamic),
-      trope:       tagOverlap(s.trope, book.trope_tags),
-      kink:        tagOverlap(s.kink, book.kink_tags),
-      orientation: tagOverlap(s.orientation, book.orientation_tags)
+      tone:        tagOverlap(s.tone, book.tone, partial),
+      pacing:      tagOverlap(s.pacing, book.pacing, partial),
+      style:       tagOverlap(s.style, book.literary_style, partial),
+      dynamic:     tagOverlap(s.dynamic, book.relationship_dynamic, partial),
+      trope:       tagOverlap(s.trope, book.trope_tags, partial),
+      kink:        tagOverlap(s.kink, book.kink_tags, partial),
+      orientation: tagOverlap(s.orientation, book.orientation_tags, partial)
     };
     return { numericResults, tagResults };
   }
