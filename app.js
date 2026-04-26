@@ -352,10 +352,19 @@
   const router = {
     current() {
       const hash = location.hash.replace(/^#\/?/, "");
-      return ROUTES.find(r => r.id === hash) || ROUTES[0];
+      return ROUTES.find(r => r.id === hash) || ROUTES.find(r => r.id === "discovery") || ROUTES[0];
     },
     go(id) { location.hash = `#/${id}`; }
   };
+
+  // Discovery Phase: on a bare load (no hash) redirect to the
+  // Discovery view so testers land on the search experience, not
+  // the empty Today editorial tab.
+  (function setDiscoveryDefault() {
+    if (!location.hash || location.hash === "#" || location.hash === "#/") {
+      location.replace("#/discovery");
+    }
+  })();
 
   /* -------------------- view helpers -------------------- */
   // Bookmark / share-with-Sara button used on every book-card surface.
@@ -1808,6 +1817,15 @@
         return;
       }
 
+      // Check session budget before fetching anything — avoids burning
+      // a Google Books call when we know Claude can't follow up.
+      if (Disco.throttleRemaining && Disco.throttleRemaining() <= 0) {
+        grid.innerHTML = "";
+        resultsLabel.textContent = "Session limit reached";
+        grid.appendChild(buildThrottleCard());
+        return;
+      }
+
       discoveryState.lastQuery = q;
       discoveryState.raw = [];
       discoveryState.enrichments = {};
@@ -1856,16 +1874,25 @@
       discoveryState.originalOrder = items.map(b => b.id);
       paintGrid();
 
-      // Analyse sequentially so the status badge narrates progress.
-      // In Tailored mode we re-sort the whole list every time a new
       // Enrich each result with Claude — heat, tropes, one calm
       // insight. No category filter is applied; users are free to
       // add any Google Books result to their Library.
       for (const book of items) {
+        // Stop enriching if the session budget ran out mid-batch.
+        if (Disco.throttleRemaining && Disco.throttleRemaining() <= 0) {
+          resultsLabel.textContent += " · session limit reached";
+          ui.toast("Hourly AI limit reached — results shown without full analysis", { duration: 5000 });
+          break;
+        }
         try {
           const result = await Disco.analyzeWithClaude(book);
           discoveryState.enrichments[book.id] = result;
         } catch (err) {
+          if (err && err.code === "throttled") {
+            resultsLabel.textContent += " · session limit reached";
+            ui.toast("Hourly AI limit reached — results shown without full analysis", { duration: 5000 });
+            break;
+          }
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
         }
         if (discoveryState.mode === "tailored") {
@@ -1881,6 +1908,19 @@
           if (node) node.replaceWith(renderDiscoCard(book));
         }
       }
+    }
+
+    function buildThrottleCard() {
+      const remaining = Disco.throttleRemaining ? Disco.throttleRemaining() : 0;
+      const node = util.el("div", { class: "discovery-empty discovery-throttle" }, [
+        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
+          text: "Hourly limit reached" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" },
+          text: `This session has used all ${10} AI analyses for this hour. The limit resets on a rolling 60-minute window — come back shortly and it will lift automatically.` }),
+        util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" },
+          text: `Remaining this hour: ${remaining}` })
+      ]);
+      return node;
     }
 
     function renderDiscoCard(book) {

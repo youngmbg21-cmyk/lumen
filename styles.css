@@ -4742,6 +4742,54 @@ body[data-privacy-blur="on"] .app-main::after {
   .settings-page { grid-template-columns: 1fr; }
 }
 
+/* ── Developer / Advanced collapsible ────────────────────────── */
+.settings-advanced-section {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.settings-advanced-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-raised);
+  list-style: none;          /* hide default triangle in Firefox */
+}
+.settings-advanced-summary::-webkit-details-marker { display: none; }
+.settings-advanced-summary::before {
+  content: "›";
+  display: inline-block;
+  font-size: 1.1em;
+  color: var(--text-subtle);
+  transition: transform 180ms ease;
+  transform-origin: center;
+}
+details[open] .settings-advanced-summary::before {
+  transform: rotate(90deg);
+}
+.settings-advanced-summary:hover {
+  background: var(--surface-hover, var(--surface-raised));
+}
+.settings-advanced-section > .card,
+.settings-advanced-section > details,
+.settings-advanced-section .settings-card {
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  margin: 0;
+}
+
+/* Throttle limit card in Discovery ─────────────────────────────── */
+.discovery-throttle {
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
+}
+
 /* ============================================================
    Sara appearance menu — preset swatches + upload.
    Pops under the "✦" icon in the Sara head. Tight popover, not
