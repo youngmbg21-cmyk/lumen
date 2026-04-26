@@ -561,12 +561,7 @@
     if (value >= 2) return "Cautious";
     return "Safe-first";
   }
-  function kpiDescriptorFit(value) {
-    if (value >= 75) return "Strong";
-    if (value >= 55) return "Moderate";
-    if (value >= 35) return "Loose";
-    return "Thin";
-  }
+  function kpiDescriptorFit(value) { return Engine.fitLabel(value); }
 
   // Small radial ring used by each KPI card. Takes a 0..1 fill and a
   // short inner text. Styled via .kpi-ring in CSS — stroke colour shifts
@@ -1104,7 +1099,7 @@
       const confCell = util.el("div", { class: "detail-ring-cell" });
       confCell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
       confCell.appendChild(util.el("div", { class: "detail-ring-label", text: "Confidence" }));
-      confCell.appendChild(util.el("div", { class: "detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
+      confCell.appendChild(util.el("div", { class: "detail-ring-sub", text: Engine.confLabel(scored.confidence) }));
       aside.appendChild(confCell);
       headerAside = aside;
     }
@@ -1613,27 +1608,17 @@
   //   - trope overlap with user profile's trope + kink sets
   //   - hard-exclusion penalty if any Claude trope matches a user exclude
   // Returns 0-100. Missing/error enrichments collapse to 50 (neutral).
-  function tailoredScore(enrich, profile) {
-    if (!enrich || enrich.error) return 50;
-    const userHeat = profile.heat || 3;
-    const heatDiff = Math.abs((enrich.heat || 3) - userHeat);
-    const heatScore = Math.max(0, 100 - heatDiff * 18);
-
-    const normalise = (s) => String(s || "").toLowerCase().replace(/\s+/g, "-");
-    const userWanted = new Set(
-      (profile.trope || []).concat(profile.kink || []).map(normalise)
+  // Routes every Discovery score through the canonical engine so the
+  // number shown on a search result card matches exactly what the
+  // user will see if they add the book to their Library.
+  // book = raw Google Books item; enrich = Claude enrichment or null.
+  function tailoredScore(book, enrich, profile) {
+    const s = Engine.scoreBook(
+      Engine.fromDiscovery(book, enrich),
+      Engine.normalizeProfile(profile),
+      store.get().weights || {}
     );
-    const userExcluded = new Set((profile.exclude || []).map(normalise));
-    const claudeTropes = (enrich.tropes || []).map(normalise);
-
-    const overlap = claudeTropes.filter(t => userWanted.has(t)).length;
-    const tropeScore = userWanted.size
-      ? Math.min(100, Math.round((overlap / Math.max(userWanted.size, 2)) * 120))
-      : 60;
-
-    const exclusionHit = claudeTropes.some(t => userExcluded.has(t));
-    const base = Math.round(heatScore * 0.6 + tropeScore * 0.4);
-    return Math.max(0, exclusionHit ? base - 50 : base);
+    return s.fitScore;
   }
 
   function steamClass(heat) {
@@ -1747,8 +1732,8 @@
       } else {
         // Tailored: sort by computed fit against the user profile.
         discoveryState.raw.sort((a, b) => {
-          const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
-          const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
+          const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
+          const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
           return sb - sa;
         });
       }
@@ -1897,8 +1882,8 @@
         if (discoveryState.mode === "tailored") {
           const fresh = store.get();
           discoveryState.raw.sort((a, b) => {
-            const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
-            const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
+            const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
+            const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
             return sb - sa;
           });
           paintGrid();
@@ -2016,7 +2001,7 @@
       // alignment. Inline with the title rather than full-width banner.
       if (discoveryState.mode === "tailored" && enrich && !enrich.error) {
         const fresh = store.get();
-        const fit = tailoredScore(enrich, fresh.profile);
+        const fit = tailoredScore(book, enrich, fresh.profile);
         if (fit < 45) {
           head.appendChild(util.el("span", { class: "disco-fit-chip tone-low", text: "low fit" }));
         } else if (fit >= 75) {
@@ -5936,7 +5921,7 @@
     fitRow.appendChild(donutSVG(fitScore, "Fit"));
     fitRow.appendChild(util.el("div", { class: "donut-meta" }, [
       "Fit",
-      util.el("div", { class: "donut-note", text: fitScore >= 70 ? "strong match" : fitScore >= 45 ? "moderate fit" : "loose fit" })
+      util.el("div", { class: "donut-note", text: Engine.fitLabel(fitScore).toLowerCase() })
     ]));
     aside.appendChild(fitRow);
 
@@ -5944,7 +5929,7 @@
     confRow.appendChild(donutSVG(confidence, "Confidence"));
     confRow.appendChild(util.el("div", { class: "donut-meta" }, [
       "Confidence",
-      util.el("div", { class: "donut-note", text: confidence >= 70 ? "signal-rich" : confidence >= 45 ? "moderate signal" : "thin data" })
+      util.el("div", { class: "donut-note", text: Engine.confLabel(confidence).toLowerCase() })
     ]));
     aside.appendChild(confRow);
 

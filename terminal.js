@@ -142,8 +142,21 @@
     const dynO  = setOverlap(p.dynamic, b.dynamic);
     raw += dynO.credit  * W.dynamic; max += W.dynamic;
     const fit = Math.round((raw / max) * 100);
-    const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
-    const confidence = Math.min(100, 30 + Math.round(tagSignals * 7));
+    // Delegate confidence to the canonical engine using the original
+    // book shape (_raw) so it matches what Library and Compare show.
+    const LumenEngine = window.LumenEngine;
+    const storeState  = window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get();
+    let confidence;
+    if (LumenEngine && b._raw && storeState) {
+      confidence = LumenEngine.scoreBook(
+        LumenEngine.withDefaults(b._raw),
+        LumenEngine.normalizeProfile(storeState.profile),
+        storeState.weights || {}
+      ).confidence;
+    } else {
+      const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
+      confidence = Math.min(100, 30 + Math.round(tagSignals * 7));
+    }
     return { fit, confidence, contributions, toneMatched: toneO.matched, dynMatched: dynO.matched };
   }
 

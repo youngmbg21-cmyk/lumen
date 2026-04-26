@@ -235,68 +235,18 @@
   // catalog importer for books that haven't been Claude-enriched yet.
   //
   // Scoring breakdown (weights sum to 1.0):
-  //   0.30  numeric proximity (heat, explicitness, emotion, consent, taboo, plot)
-  //   0.40  wanted-tag overlap  (trope + kink + tone + dynamic)
-  //   0.20  exclusion penalty   (any excluded warning present)
-  //   0.10  orientation/pairing bonus
+  // Delegates to engine.scoreBook via withDefaults so the score
+  // is identical to what Library and Compare show for the same book.
   function heuristicFitScore(book, profile) {
     if (!book || !profile) return 50;
-
-    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v || 0));
-    const norm  = (s) => String(s || "").toLowerCase().replace(/\s+/g, "-");
-
-    // 1. Numeric proximity (each field contributes equally).
-    const numPairs = [
-      [book.heat_level,         profile.heat    || 3],
-      [book.explicitness,       profile.explicit || 3],
-      [book.emotional_intensity,profile.emotion  || 3],
-      [book.consent_clarity,    profile.consent  || 3],
-      [book.taboo_level,        profile.taboo    || 3],
-      [book.plot_weight,        profile.plot     || 3]
-    ].filter(([bv]) => Number.isFinite(Number(bv)));
-
-    const numScore = numPairs.length
-      ? numPairs.reduce((acc, [bv, pv]) => {
-          const delta = Math.abs(clamp(Number(bv), 1, 5) - clamp(Number(pv), 1, 5));
-          return acc + (1 - delta / 4);   // 0 delta = 1.0, 4 delta = 0.0
-        }, 0) / numPairs.length
-      : 0.5;
-
-    // 2. Tag overlap — wanted tags the profile expressed.
-    const wanted = new Set([
-      ...(profile.trope   || []),
-      ...(profile.kink    || []),
-      ...(profile.tone    || []),
-      ...(profile.dynamic || [])
-    ].map(norm));
-
-    const bookTags = [
-      ...(book.trope_tags           || []),
-      ...(book.kink_tags            || []),
-      ...(book.tone                 || []),
-      ...(book.relationship_dynamic || [])
-    ].map(norm);
-
-    const overlap = bookTags.filter(t => wanted.has(t)).length;
-    const tagScore = wanted.size
-      ? Math.min(1, overlap / Math.max(1, Math.min(wanted.size, 4)))
-      : 0.5;
-
-    // 3. Exclusion penalty — any excluded warning halves the score.
-    const excluded = new Set((profile.exclude || []).map(norm));
-    const warnings = (book.content_warnings || []).map(norm);
-    const hasExcluded = warnings.some(w => excluded.has(w));
-
-    // 4. Orientation/pairing bonus.
-    const wantedOrient = new Set((profile.orientation || []).map(norm));
-    const bookOrient   = [...(book.orientation_tags || []), ...(book.gender_pairing || [])].map(norm);
-    const orientHit    = wantedOrient.size
-      ? bookOrient.some(o => wantedOrient.has(o)) ? 1 : 0
-      : 0.5;
-
-    const raw = (numScore * 0.30) + (tagScore * 0.40) + (orientHit * 0.10) + 0.20;
-    const penalised = hasExcluded ? raw * 0.3 : raw;
-    return Math.round(clamp(penalised, 0, 1) * 100);
+    const Engine = window.LumenEngine;
+    if (!Engine) return 50;
+    const st = window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get();
+    return Engine.scoreBook(
+      Engine.withDefaults(book),
+      Engine.normalizeProfile(profile),
+      (st && st.weights) || {}
+    ).fitScore;
   }
 
   window.LumenAnalysis = { deepAnalysis, heuristicFitScore, CATEGORIES };
