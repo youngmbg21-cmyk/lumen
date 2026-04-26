@@ -70,7 +70,7 @@
       discovered: [],
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
-      chats: { sara: [], saraPinned: [], friends: [] },
+      chats: { bianca: [], biancaPinned: [], friends: [] },
       // Daily Picks the user has rejected via "Not for me". These are
       // excluded from the Home top-3 but stay in the Library — a
       // pick-only signal, not a dismissal. { [bookId]: { rejectedAt } }.
@@ -117,9 +117,18 @@
         if (merged.profile.taboo   === 2) merged.profile.taboo   = 3;
         merged._profileMigrated_v2 = true;
       }
-      // Same for the chats submap so newer arrays (saraPinned,
+      // Same for the chats submap so newer arrays (biancaPinned,
       // dailyPicksRejected) exist on upgrade.
-      merged.chats = Object.assign({ sara: [], saraPinned: [], friends: [] }, merged.chats || {});
+      // Migration: rename legacy sara/saraPinned keys to bianca/biancaPinned.
+      if (merged.chats && merged.chats.sara !== undefined) {
+        if (!merged.chats.bianca || !merged.chats.bianca.length) merged.chats.bianca = merged.chats.sara;
+        delete merged.chats.sara;
+      }
+      if (merged.chats && merged.chats.saraPinned !== undefined) {
+        if (!merged.chats.biancaPinned || !merged.chats.biancaPinned.length) merged.chats.biancaPinned = merged.chats.saraPinned;
+        delete merged.chats.saraPinned;
+      }
+      merged.chats = Object.assign({ bianca: [], biancaPinned: [], friends: [] }, merged.chats || {});
       if (!merged.dailyPicksRejected) merged.dailyPicksRejected = {};
       // Editorial feature state — back-fill the shape on older stores
       // so rendering code can read merged.editorial.currentPick etc.
@@ -190,13 +199,13 @@
       const close = () => {
         host.classList.remove("open");
         setTimeout(() => (host.innerHTML = ""), 220);
-        // Clear Sara's focus-on-book so the head status line stops
+        // Clear Bianca's focus-on-book so the head status line stops
         // saying "Reading <title> with you" once the sheet is gone.
         try {
           if (typeof libState !== "undefined" && libState) libState.focusBookId = null;
-          if (window.LumenSara && window.LumenSara.setContext) {
+          if (window.LumenBianca && window.LumenBianca.setContext) {
             const r = router.current();
-            window.LumenSara.setContext(computeSaraContext(r.id));
+            window.LumenBianca.setContext(computeBiancaContext(r.id));
           }
         } catch (e) { /* ignore */ }
       };
@@ -375,14 +384,14 @@
   })();
 
   /* -------------------- view helpers -------------------- */
-  // Bookmark / share-with-Sara button used on every book-card surface.
-  // Toggling it opens Sara, drops the book into the chat as a rich
+  // Bookmark / share-with-Bianca button used on every book-card surface.
+  // Toggling it opens Bianca, drops the book into the chat as a rich
   // shared-card message, and adds it to the pinned tray. Tapping again
   // unpins. Stops event propagation so the card's own onclick (open
   // detail) doesn't also fire.
   function pinShareBtn(bookId, opts = {}) {
-    const Sara = window.LumenSara;
-    const pinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const Bianca = window.LumenBianca;
+    const pinned = !!(Bianca && Bianca.isPinned && Bianca.isPinned(bookId));
     const btn = util.el("button", {
       class: "card-pin" + (pinned ? " is-pinned" : "") + (opts.size === "lg" ? " card-pin-lg" : ""),
       "aria-label": pinned ? "Unpin from Bianca" : "Pin to Bianca — share in chat",
@@ -390,9 +399,9 @@
       title: pinned ? "Unpin from Bianca" : "Pin to Bianca",
       onclick: (e) => {
         e.stopPropagation();
-        if (!Sara) return;
-        if (Sara.isPinned(bookId)) Sara.unpinBook(bookId);
-        else Sara.pinBook(bookId);
+        if (!Bianca) return;
+        if (Bianca.isPinned(bookId)) Bianca.unpinBook(bookId);
+        else Bianca.pinBook(bookId);
         // Re-render the host view so other pin icons in the same view
         // also reflect the new pinned state.
         try { renderView(); } catch (e2) { /* ignore */ }
@@ -1075,16 +1084,16 @@
   function openBookDetail(bookId) {
     const book = findBook(bookId);
     if (!book) return;
-    // Signal focus to Sara so the panel's head reads "Reading <title>
+    // Signal focus to Bianca so the panel's head reads "Reading <title>
     // with you" while the sheet is open. libState.focusBookId is
-    // consumed by buildSaraContext; the direct setContext push is a
-    // fast path so Sara updates immediately without waiting for the
+    // consumed by buildBiancaContext; the direct setContext push is a
+    // fast path so Bianca updates immediately without waiting for the
     // store-subscription round trip.
     try {
       if (typeof libState !== "undefined" && libState) libState.focusBookId = bookId;
-      if (window.LumenSara && window.LumenSara.setContext) {
+      if (window.LumenBianca && window.LumenBianca.setContext) {
         const r = router.current();
-        window.LumenSara.setContext(computeSaraContext(r.id));
+        window.LumenBianca.setContext(computeBiancaContext(r.id));
       }
     } catch (e) { /* ignore */ }
     const s = store.get();
@@ -1214,8 +1223,8 @@
     sections.push({ label: "Your notes", content: notes });
 
     // Actions — consolidated into the sticky footer of the detail sheet.
-    const Sara = window.LumenSara;
-    const saraPinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const Bianca = window.LumenBianca;
+    const biancaPinned = !!(Bianca && Bianca.isPinned && Bianca.isPinned(bookId));
     const actions = [
       {
         label: "Pin to Vault",
@@ -1224,13 +1233,13 @@
         closeOnClick: false
       },
       {
-        label: saraPinned ? "Unpin from Bianca" : "Share with Bianca",
+        label: biancaPinned ? "Unpin from Bianca" : "Share with Bianca",
         onClick: () => {
-          if (!Sara) return;
-          if (Sara.isPinned(bookId)) Sara.unpinBook(bookId); else Sara.pinBook(bookId);
+          if (!Bianca) return;
+          if (Bianca.isPinned(bookId)) Bianca.unpinBook(bookId); else Bianca.pinBook(bookId);
           openBookDetail(bookId);
         },
-        variant: saraPinned ? "btn-primary" : "btn-ghost",
+        variant: biancaPinned ? "btn-primary" : "btn-ghost",
         closeOnClick: false
       },
       book.source_url ? { label: "View source", href: book.source_url } : null,
@@ -1939,7 +1948,7 @@
         }
       });
 
-      // Pin / share with Sara — sits next to the dismiss control.
+      // Pin / share with Bianca — sits next to the dismiss control.
       card.appendChild(pinShareBtn(book.id));
 
       // Dismiss — drops this card from the current results feed
@@ -3958,8 +3967,8 @@
     return wrap;
   }
 
-  /* -------------------- chat (Sara + Friends) -------------------- */
-  const chatState = { active: "sara", friendId: null };
+  /* -------------------- chat (Bianca + Friends) -------------------- */
+  const chatState = { active: "bianca", friendId: null };
 
   function saraContextSummary() {
     const s = store.get();
@@ -3977,13 +3986,13 @@
   }
 
   // ============================================================
-  // Sara context model — single source of truth for what Sara
+  // Bianca context model — single source of truth for what Bianca
   // knows about the app. Rebuilt on renderView() and on every
-  // store update, then pushed to LumenSara.setContext(). Shape
+  // store update, then pushed to LumenBianca.setContext(). Shape
   // is documented in the batch plan; intent handlers below
   // depend on these fields being stable.
   // ============================================================
-  function buildSaraContext(routeId) {
+  function buildBiancaContext(routeId) {
     const s = store.get();
     const hidden = s.hidden || {};
     const rejectedPicks = s.dailyPicksRejected || {};
@@ -3993,7 +4002,7 @@
     const ranked = Engine.rankRecommendations(s.profile, s.weights, visible);
 
     // Daily picks = top 3 of ranked-and-not-rejected (mirror of
-    // views.discover()'s logic so Sara sees the same list).
+    // views.discover()'s logic so Bianca sees the same list).
     const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
     const picks = eligible.slice(0, 3).map(x => ({
       id: x.book.id, title: x.book.title, author: x.book.author,
@@ -4051,7 +4060,7 @@
         };
       });
 
-    const saraPinnedDetail = ((s.chats && s.chats.saraPinned) || [])
+    const biancaPinnedDetail = ((s.chats && s.chats.biancaPinned) || [])
       .map(p => { const b = findBook(p.bookId); return b ? { id: b.id, title: b.title } : null; })
       .filter(Boolean);
 
@@ -4088,7 +4097,7 @@
         hasDeepAnalysis: !!(cmpState && cmpState.lastDeepAnalysis)
       },
       focus,
-      saraPinned: saraPinnedDetail,
+      biancaPinned: biancaPinnedDetail,
       vault: {
         pinnedCount: ((s.vault || {}).pinned || []).length,
         analysesCount: ((s.vault || {}).analyses || []).length,
@@ -4112,19 +4121,19 @@
     };
   }
 
-  // Back-compat — old callers of computeSaraContext(routeId) get
+  // Back-compat — old callers of computeBiancaContext(routeId) get
   // the same shape, but we discard everything except route/chips.
   // The richer data lives on the context object now.
   // ============================================================
-  // Sara system context — flattens buildSaraContext() into the
+  // Bianca system context — flattens buildBiancaContext() into the
   // prompt-ready string that's appended to the persona in
-  // chatWithSara(). Format is readable JSON-ish plain text so the
+  // chatWithBianca(). Format is readable JSON-ish plain text so the
   // model can cite fields back verbatim. Kept short — hard
   // constraints land loud, soft constraints read as hints, big
   // lists are truncated.
   // ============================================================
-  function buildSaraSystemContext(routeId) {
-    const ctx = buildSaraContext(routeId);
+  function buildBiancaSystemContext(routeId) {
+    const ctx = buildBiancaContext(routeId);
     const s = store.get();
     const now = new Date();
 
@@ -4146,7 +4155,7 @@
     // the model has usable ids to emit in ENHANCED_BOOK_CARD markers
     // without bloating the prompt.
     const topLibrary = (ctx.dailyPicks || []).concat(
-      ctx.saraPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
+      ctx.biancaPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
     );
     const rosterIds = new Set(topLibrary.map(b => b.id));
     for (const b of listAllBooks().slice(0, 12)) {
@@ -4208,7 +4217,7 @@
     const rosterLines = topLibrary.slice(0, 14).map(b =>
       `- ${b.title}${b.author ? " by " + b.author : ""} (id=${b.id})`);
 
-    const pinnedLines = (ctx.saraPinned || []).map(p => `- ${p.title} (id=${p.id})`);
+    const pinnedLines = (ctx.biancaPinned || []).map(p => `- ${p.title} (id=${p.id})`);
     const compareLines = (ctx.compare.slots || []).filter(Boolean).map(c => `- ${c.title} (id=${c.id}, fit=${c.fit})`);
 
     return [
@@ -4251,7 +4260,7 @@
   }
 
   // Snapshot the Lumen Terminal's local view filters + selection so
-  // Sara can answer questions like "what am I filtering?" and "why
+  // Bianca can answer questions like "what am I filtering?" and "why
   // is this title in front of me?" without re-querying the engine.
   // Returns `(none)` lines when the Terminal module hasn't booted.
   function terminalContextLines() {
@@ -4274,8 +4283,8 @@
     return lines;
   }
 
-  function computeSaraContext(routeId) {
-    const ctx = buildSaraContext(routeId);
+  function computeBiancaContext(routeId) {
+    const ctx = buildBiancaContext(routeId);
     // Chips preserved for the top strip.
     const chips = [];
     const routeLabel = {
@@ -4303,7 +4312,7 @@
   }
 
   // ============================================================
-  // Sara intent registry — replaces the old regex-chain
+  // Bianca intent registry — replaces the old regex-chain
   // responder. Each intent has a match predicate and a handler
   // that composes a reply from the structured context. The
   // first intent that wants the message handles it; a default
@@ -4452,9 +4461,9 @@
     }
   ];
 
-  function saraRespond(userText, saraCtx) {
+  function saraRespond(userText, biancaCtx) {
     const text = String(userText || "");
-    const ctx = saraCtx && saraCtx.library ? saraCtx : buildSaraContext(saraCtx && saraCtx.route);
+    const ctx = biancaCtx && biancaCtx.library ? biancaCtx : buildBiancaContext(biancaCtx && biancaCtx.route);
     for (const intent of SARA_INTENTS) {
       try {
         const hit = intent.match(text, ctx);
@@ -4474,8 +4483,8 @@
 
   function appendChatMessage(threadKey, friendId, role, text) {
     store.update(s => {
-      if (threadKey === "sara") {
-        s.chats.sara.push({ id: util.id("m"), role, text, ts: Date.now() });
+      if (threadKey === "bianca") {
+        s.chats.bianca.push({ id: util.id("m"), role, text, ts: Date.now() });
       } else {
         const f = s.chats.friends.find(x => x.id === friendId);
         if (f) f.messages.push({ id: util.id("m"), role, text, ts: Date.now() });
@@ -4483,16 +4492,16 @@
     });
   }
 
-  function ensureSeedSara() {
+  function ensureSeedBianca() {
     const s = store.get();
-    if (s.chats.sara.length === 0) {
-      appendChatMessage("sara", null, "sara",
+    if (s.chats.bianca.length === 0) {
+      appendChatMessage("bianca", null, "bianca",
         `Hi — I'm Bianca. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare three titles, or to help you journal a reaction. Everything here is private.`);
     }
   }
 
   function renderChat() {
-    ensureSeedSara();
+    ensureSeedBianca();
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
@@ -4502,21 +4511,21 @@
       ])
     ]));
 
-    // Sara summary card
-    const saraMsgs = store.get().chats.sara || [];
-    const lastMsg = saraMsgs[saraMsgs.length - 1];
+    // Bianca summary card
+    const biancaMsgs = store.get().chats.bianca || [];
+    const lastMsg = biancaMsgs[biancaMsgs.length - 1];
     const saraCard = util.el("div", { class: "card" });
     saraCard.appendChild(util.el("div", { class: "card-head" }, [
       util.el("h3", { text: "Bianca · conversation history" }),
       util.el("div", { class: "row" }, [
-        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Bianca"),
+        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenBianca && window.LumenBianca.open() }, "Open Bianca"),
         util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
           ui.modal({
             title: "Clear Bianca's memory?",
             body: "<p class=\"t-muted\">Deletes every message between you and Bianca on this device. A fresh greeting will replace it.</p>",
             primary: { label: "Clear", onClick: () => {
-              store.update(s => { s.chats.sara = []; });
-              ensureSeedSara();
+              store.update(s => { s.chats.bianca = []; });
+              ensureSeedBianca();
               ui.toast("Bianca's memory cleared");
               renderView();
             }},
@@ -4526,11 +4535,11 @@
       ])
     ]));
     saraCard.appendChild(util.el("div", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" },
-      text: `${saraMsgs.length} message${saraMsgs.length === 1 ? "" : "s"} stored locally${lastMsg ? " · last: " + new Date(lastMsg.ts).toLocaleString() : ""}` }));
+      text: `${biancaMsgs.length} message${biancaMsgs.length === 1 ? "" : "s"} stored locally${lastMsg ? " · last: " + new Date(lastMsg.ts).toLocaleString() : ""}` }));
 
-    if (saraMsgs.length > 1) {
+    if (biancaMsgs.length > 1) {
       const transcript = util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-4)", maxHeight: "320px", overflowY: "auto", padding: "var(--s-3)", background: "var(--bg-sunken)", borderRadius: "var(--r-2)", border: "1px solid var(--border)" } });
-      saraMsgs.slice(-10).forEach(m => {
+      biancaMsgs.slice(-10).forEach(m => {
         transcript.appendChild(util.el("div", { style: { padding: "6px 0", borderBottom: "1px dashed var(--border)" } }, [
           util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Bianca"} · ${new Date(m.ts).toLocaleTimeString()}` }),
           util.el("div", { class: "t-small", style: { marginTop: "2px" }, text: (m.text || "").replace(/\*\*(.+?)\*\*/g, "$1") })
@@ -4610,7 +4619,7 @@
             body: "<p class=\"t-muted\">The conversation is deleted from this device.</p>",
             primary: { label: "Remove", onClick: () => {
               store.update(s => { s.chats.friends = s.chats.friends.filter(x => x.id !== f.id); });
-              chatState.active = "sara"; chatState.friendId = null;
+              chatState.active = "bianca"; chatState.friendId = null;
               renderView();
             }},
             secondary: { label: "Cancel" }
@@ -5152,7 +5161,7 @@
         cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, fresh.profile);
         ui.toast("Deep analysis ready · scroll down to read it", {
           action: "Open in Bianca",
-          onAction: () => openInSara(cmpState.lastDeepAnalysis),
+          onAction: () => openInBianca(cmpState.lastDeepAnalysis),
           duration: 5000
         });
         renderView();
@@ -5190,7 +5199,7 @@
       util.el("h3", { text: "Deep analysis" }),
       util.el("div", { class: "row" }, [
         util.el("span", { class: "card-sub t-subtle", text: new Date(payload.timestamp).toLocaleString() }),
-        util.el("button", { class: "btn btn-sm", onclick: () => openInSara(payload) }, "Open in Bianca"),
+        util.el("button", { class: "btn btn-sm", onclick: () => openInBianca(payload) }, "Open in Bianca"),
         util.el("button", { class: "btn btn-sm", onclick: () => {
           saveAnalysis({
             titleA: payload.titles[0],
@@ -5386,15 +5395,15 @@
     return card;
   }
 
-  function openInSara(payload) {
-    if (!window.LumenSara) return;
+  function openInBianca(payload) {
+    if (!window.LumenBianca) return;
     const titles = payload.titles.join(" · ");
-    window.LumenSara.post(`I just ran a deep analysis on **${titles}**. Here's the headline:\n\n${payload.headline}\n\nAsk me for any part of it — tradeoffs, moods, confidence, or reading order.`);
-    window.LumenSara.setContext({
+    window.LumenBianca.post(`I just ran a deep analysis on **${titles}**. Here's the headline:\n\n${payload.headline}\n\nAsk me for any part of it — tradeoffs, moods, confidence, or reading order.`);
+    window.LumenBianca.setContext({
       route: "compare",
       chips: [{ label: "Deep analysis active" }, ...payload.titles.map(t => ({ label: t }))]
     });
-    window.LumenSara.open();
+    window.LumenBianca.open();
   }
 
   /* ==================================================================
@@ -5745,8 +5754,8 @@
       excludeCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Any book tagged with these is removed entirely" }));
       col.appendChild(excludeCard);
 
-      // --- Companion preferences (Sara) ------------------------------------
-      // How Sara tailors her tone and what she filters out of her
+      // --- Companion preferences (Bianca) ------------------------------------
+      // How Bianca tailors her tone and what she filters out of her
       // replies. Hard constraint: spoilers. Soft constraints:
       // reading level, format preference.
       const companionCard = util.el("div", { class: "card stack" });
@@ -6238,10 +6247,10 @@
     const ageBadge = util.el("span", { class: "badge-pill", title: "Adults only" }, "18 · adults only");
 
     const saraLauncher = util.el("button", {
-      class: "sara-launcher",
+      class: "bianca-launcher",
       "aria-label": "Open Bianca",
       title: "Open Bianca (your reading companion)",
-      onclick: () => window.LumenSara && window.LumenSara.toggle()
+      onclick: () => window.LumenBianca && window.LumenBianca.toggle()
     }, [
       util.el("span", { class: "dot" }),
       util.el("span", { text: "Ask Bianca" })
@@ -6267,8 +6276,8 @@
       }));
     }
     root.focus();
-    if (window.LumenSara) {
-      window.LumenSara.setContext(computeSaraContext(r.id));
+    if (window.LumenBianca) {
+      window.LumenBianca.setContext(computeBiancaContext(r.id));
     }
     // Auto-collapse the left nav when on the Terminal — the
     // dashboard needs every pixel to breathe. A pull-tab on the
@@ -6328,7 +6337,7 @@
     }, true);
   }
 
-  // computeSaraContext is now defined alongside buildSaraContext
+  // computeBiancaContext is now defined alongside buildBiancaContext
   // above — this second definition was the legacy regex-driven
   // version and has been removed. Keeping the comment so future
   // greps find the old symbol.
@@ -6502,8 +6511,8 @@
       } },
       { label: "Open Transparency", hint: "", run: () => router.go("transparency") },
       { label: "Open Settings",     hint: "", run: () => router.go("settings") },
-      { label: "Open Bianca",        hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
-      { label: "Close Bianca",       hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
+      { label: "Open Bianca",        hint: "S", run: () => window.LumenBianca && window.LumenBianca.open() },
+      { label: "Close Bianca",       hint: "",  run: () => window.LumenBianca && window.LumenBianca.close() }
     ];
 
     if (cmpState.slots && cmpState.slots.filter(Boolean).length >= 2) {
@@ -6603,7 +6612,7 @@
         store.update(s => { s.ui.discreet = !s.ui.discreet; });
         applyUIFlags();
       } else if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey) {
-        if (window.LumenSara) window.LumenSara.toggle();
+        if (window.LumenBianca) window.LumenBianca.toggle();
       }
     });
   }
@@ -6629,17 +6638,17 @@
 
     setupKeyboard();
 
-    // Mount Sara (persistent floating assistant) once at shell level.
-    if (window.LumenSara) {
-      window.LumenSara.boot();
-      // Keep Sara's context in sync with every state change —
+    // Mount Bianca (persistent floating assistant) once at shell level.
+    if (window.LumenBianca) {
+      window.LumenBianca.boot();
+      // Keep Bianca's context in sync with every state change —
       // slider tweaks, chip toggles, imports, rejections all push
       // a fresh structured context object without needing a
       // renderView() bounce through the hash router.
       store.subscribe(() => {
         try {
           const r = router.current();
-          window.LumenSara.setContext(computeSaraContext(r.id));
+          window.LumenBianca.setContext(computeBiancaContext(r.id));
         } catch (e) { /* ignore */ }
       });
     }
@@ -6736,11 +6745,11 @@
     return list[Math.floor(Math.random() * list.length)];
   }
 
-  // Public surface for sara.js — keep this list small and intentional.
+  // Public surface for bianca.js — keep this list small and intentional.
   window.Lumen = {
     store, router, ui, util, views, ROUTES, saraRespond,
     findBook, listAllBooks, openBookDetail,
-    buildSaraSystemContext
+    buildBiancaSystemContext
   };
   document.addEventListener("DOMContentLoaded", boot);
 })();

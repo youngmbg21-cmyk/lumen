@@ -1,6 +1,6 @@
 /* ============================================================
-   Lumen — Sara persona
-   System prompt + behavioural rules for Sara's LLM-backed replies.
+   Lumen — Bianca persona
+   System prompt + behavioural rules for Bianca's LLM-backed replies.
    Kept in its own file so it can be edited without touching the
    chat machinery. Loaded as a plain <script> so it works under
    file:// with no fetch() indirection.
@@ -64,7 +64,7 @@ When you mention a book from the Library or the Catalog, reach for its id from t
   };
 
   // Graceful fail-safe replies — used when the LLM call throws or
-  // parses empty. Phrased in Sara's voice; never expose the error.
+  // parses empty. Phrased in Bianca's voice; never expose the error.
   const FAILSAFES = [
     "I lost my place in the book for a moment. Could you ask me again?",
     "Something slipped out of my hand there. Try me once more?",
@@ -72,7 +72,7 @@ When you mention a book from the Library or the Catalog, reach for its id from t
     "I lost the thread. Ask me again, and I'll catch it this time."
   ];
 
-  window.LumenSaraPersona = {
+  window.LumenBiancaPersona = {
     PERSONA_PROMPT: PERSONA,
     STYLE,
     FAILSAFES,

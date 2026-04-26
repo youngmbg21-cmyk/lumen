@@ -1,9 +1,9 @@
 /* ============================================================
-   Lumen — Sara (persistent floating assistant)
+   Lumen — Bianca (persistent floating assistant)
    Batch 1: launcher, docked panel, thread, context bus stub.
    Reuses the rule-based responder exposed by app.js.
    Mounted once at shell level, survives route changes.
-   Exposes: window.LumenSara { open, close, toggle, setContext, post }
+   Exposes: window.LumenBianca { open, close, toggle, setContext, post }
    ============================================================ */
 (function () {
   "use strict";
@@ -26,27 +26,27 @@
   let lastFocus = null;
 
   // Persisted after first pin — stops the "tip" bubble from reappearing.
-  const NUDGE_KEY = "lumen:sara-pin-nudge-seen";
+  const NUDGE_KEY = "lumen:bianca-pin-nudge-seen";
 
   function mount() {
     if (panel) return;
 
     panel = document.createElement("div");
-    panel.className = "sara-panel";
+    panel.className = "bianca-panel";
     panel.dataset.width = width;
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-modal", "false");
     panel.setAttribute("aria-label", "Bianca, your reading companion");
 
     const head = document.createElement("div");
-    head.className = "sara-head";
+    head.className = "bianca-head";
     const title = document.createElement("div");
-    title.className = "sara-head-title";
+    title.className = "bianca-head-title";
     title.innerHTML =
-      '<div class="sara-title"><span class="sara-title-serif">Bianca</span> <span class="sara-title-sub">whispers</span></div>' +
-      '<div class="sara-sub">Your reading companion <span class="sara-privacy-pill" title="Nothing leaves this device">Local</span></div>';
+      '<div class="bianca-title"><span class="bianca-title-serif">Bianca</span> <span class="bianca-title-sub">whispers</span></div>' +
+      '<div class="bianca-sub">Your reading companion <span class="bianca-privacy-pill" title="Nothing leaves this device">Local</span></div>';
     const actions = document.createElement("div");
-    actions.className = "sara-head-actions";
+    actions.className = "bianca-head-actions";
     // Discreet-mode toggle — blurs covers and titles in the chat only.
     const discreetBtn = iconBtn("Discreet mode (blur covers in chat)", () => {
       panel.classList.toggle("discreet");
@@ -59,10 +59,10 @@
     // Width cycle — dock → wide → focus → dock. Matches the icons
     // progressively: single bar → two bars → expanded bracket.
     const widthBtn = iconBtn("Panel width", () => cycleWidth(), widthIcon());
-    widthBtn.classList.add("sara-width-btn");
+    widthBtn.classList.add("bianca-width-btn");
     const resetBtn = iconBtn("Reset conversation", () => {
       if (!confirm("Clear this conversation?")) return;
-      store().update(s => { s.chats.sara = []; s.chats.saraPinned = []; });
+      store().update(s => { s.chats.bianca = []; s.chats.biancaPinned = []; });
       ensureSeed();
       renderMessages();
       renderPinnedTray();
@@ -78,18 +78,18 @@
     panel.appendChild(head);
 
     ctxBar = document.createElement("div");
-    ctxBar.className = "sara-context";
+    ctxBar.className = "bianca-context";
     panel.appendChild(ctxBar);
 
     // Pinned-books tray — lives between context and messages. Stays
     // horizontally scrollable on narrow widths so it never eats the
     // conversation height.
     pinnedTray = document.createElement("div");
-    pinnedTray.className = "sara-pinned-tray";
+    pinnedTray.className = "bianca-pinned-tray";
     panel.appendChild(pinnedTray);
 
     body = document.createElement("div");
-    body.className = "sara-body";
+    body.className = "bianca-body";
     body.setAttribute("role", "log");
     body.setAttribute("aria-live", "polite");
     body.setAttribute("aria-label", "Conversation with Bianca");
@@ -98,12 +98,12 @@
     // Mood chips — first-person, audience-appropriate primary entry
     // points. Sends "Show me something <mood> tonight" when tapped.
     moodRow = document.createElement("div");
-    moodRow.className = "sara-moods";
-    moodRow.id = "sara-moods";
+    moodRow.className = "bianca-moods";
+    moodRow.id = "bianca-moods";
     panel.appendChild(moodRow);
 
     const compose = document.createElement("form");
-    compose.className = "sara-compose";
+    compose.className = "bianca-compose";
     composeTA = document.createElement("textarea");
     composeTA.placeholder = "Message Bianca… try /picks, /swap, /why, /compare, /library, /profile";
     composeTA.rows = 1;
@@ -132,7 +132,7 @@
     document.body.appendChild(panel);
 
     fab = document.createElement("button");
-    fab.className = "sara-fab";
+    fab.className = "bianca-fab";
     fab.setAttribute("aria-label", "Open Bianca");
     // Open-book glyph — softer than a generic "S" for the audience.
     fab.innerHTML = '<span aria-hidden="true">❦</span>';
@@ -141,7 +141,7 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && opened) close();
-      // Cmd/Ctrl + / summons Sara from anywhere.
+      // Cmd/Ctrl + / summons Bianca from anywhere.
       if ((e.metaKey || e.ctrlKey) && e.key === "/") {
         e.preventDefault();
         toggle();
@@ -163,10 +163,10 @@
     if (!panel) return;
     panel.dataset.width = width;
     // Body attribute so the app shell can reflow (padding on .app-main
-    // in focus mode on desktop) without Sara reaching into app.js.
-    if (opened && width === "focus") document.body.setAttribute("data-sara-width", "focus");
-    else document.body.removeAttribute("data-sara-width");
-    const btns = panel.querySelectorAll(".sara-width-btn");
+    // in focus mode on desktop) without Bianca reaching into app.js.
+    if (opened && width === "focus") document.body.setAttribute("data-bianca-width", "focus");
+    else document.body.removeAttribute("data-bianca-width");
+    const btns = panel.querySelectorAll(".bianca-width-btn");
     btns.forEach(b => { b.textContent = widthIcon(); });
   }
 
@@ -249,12 +249,12 @@
       return;
     }
     const menu = document.createElement("div");
-    menu.className = "sara-appearance-menu";
+    menu.className = "bianca-appearance-menu";
     const current = readAppearance();
     APPEARANCE_PRESETS.forEach(p => {
       const sw = document.createElement("button");
       sw.type = "button";
-      sw.className = "sara-appearance-swatch" + (current.kind === p.id ? " is-active" : "");
+      sw.className = "bianca-appearance-swatch" + (current.kind === p.id ? " is-active" : "");
       sw.title = p.label;
       sw.setAttribute("aria-label", p.label);
       sw.style.background = p.bg || "var(--bg-raised)";
@@ -268,7 +268,7 @@
     // Upload custom image as a data URL (persisted in localStorage —
     // keep it modest; images over ~1 MB will blow past quota).
     const upload = document.createElement("label");
-    upload.className = "sara-appearance-upload";
+    upload.className = "bianca-appearance-upload";
     upload.textContent = "Upload image";
     const fileInput = document.createElement("input");
     fileInput.type = "file";
@@ -288,7 +288,7 @@
     // Clear / revert to default.
     const clearBtn = document.createElement("button");
     clearBtn.type = "button";
-    clearBtn.className = "sara-appearance-clear";
+    clearBtn.className = "bianca-appearance-clear";
     clearBtn.textContent = "Default";
     clearBtn.addEventListener("click", () => {
       saveAppearance({ kind: "auto", image: null, dark: false });
@@ -296,7 +296,7 @@
     });
     menu.appendChild(clearBtn);
     // Position: anchor it below the appearance icon button in the
-    // Sara head. position: absolute inside the panel.
+    // Bianca head. position: absolute inside the panel.
     panel.appendChild(menu);
     appearanceMenu = menu;
     // Click-outside-closes.
@@ -349,16 +349,16 @@
     const st = store();
     if (!st) return;
     const s = st.get();
-    // Guarantee both arrays exist — older states may have just `sara`.
-    if (!Array.isArray(s.chats.saraPinned)) {
-      st.update(s2 => { s2.chats.saraPinned = s2.chats.saraPinned || []; });
+    // Guarantee both arrays exist — older states may have just `bianca`.
+    if (!Array.isArray(s.chats.biancaPinned)) {
+      st.update(s2 => { s2.chats.biancaPinned = s2.chats.biancaPinned || []; });
     }
-    if (!s.chats.sara || s.chats.sara.length === 0) {
+    if (!s.chats.bianca || s.chats.bianca.length === 0) {
       st.update(s2 => {
-        s2.chats.sara = s2.chats.sara || [];
-        s2.chats.sara.push({
+        s2.chats.bianca = s2.chats.bianca || [];
+        s2.chats.bianca.push({
           id: "s_" + Math.random().toString(36).slice(2, 8),
-          role: "sara",
+          role: "bianca",
           ts: Date.now(),
           text: firstContactGreeting()
         });
@@ -396,7 +396,7 @@
   // Matches [[ENHANCED_BOOK_CARD: <id>]] with flexible whitespace.
   const ENHANCED_CARD_RE = /\[\[\s*ENHANCED_BOOK_CARD\s*:\s*([a-z0-9_\-]+)\s*\]\]/gi;
 
-  // Split a Sara reply into alternating text segments and enhanced-
+  // Split a Bianca reply into alternating text segments and enhanced-
   // book-card markers so renderMessages can render each in its own
   // DOM node. Returns [{ type: "text", text } | { type: "card", bookId }, …]
   function splitReplyWithCards(raw) {
@@ -413,17 +413,17 @@
     return out.filter(p => p.type !== "text" || p.text.trim().length > 0);
   }
 
-  // Renders the whole thread. The newest Sara message gets the
+  // Renders the whole thread. The newest Bianca message gets the
   // typing-reveal effect (once per insert); previous messages render
   // instantly so scroll-back stays snappy.
   let lastTypedMessageId = null;
   function renderMessages() {
     const st = store();
     if (!st || !body) return;
-    const msgs = st.get().chats.sara || [];
+    const msgs = st.get().chats.bianca || [];
     body.innerHTML = "";
     const latestSaraIdx = (() => {
-      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "sara") return i;
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "bianca") return i;
       return -1;
     })();
 
@@ -433,7 +433,7 @@
         if (card) body.appendChild(card);
         return;
       }
-      if (m.role === "sara") {
+      if (m.role === "bianca") {
         const parts = splitReplyWithCards(m.text || "");
         parts.forEach(p => {
           if (p.type === "text") {
@@ -452,9 +452,9 @@
               node.innerHTML = html;
             }
           } else if (p.type === "card") {
-            const card = renderBookCardMessage({ role: "book-card", bookId: p.bookId, sender: "sara" });
+            const card = renderBookCardMessage({ role: "book-card", bookId: p.bookId, sender: "bianca" });
             if (card) {
-              card.classList.add("sara-share-card-from-them");
+              card.classList.add("bianca-share-card-from-them");
               card.classList.remove("from-me");
               body.appendChild(card);
             }
@@ -537,11 +537,11 @@
   function renderBookCardMessage(m) {
     const book = resolveBook(m.bookId);
     const wrap = document.createElement("div");
-    wrap.className = "sara-share-card chat-msg from-me";
+    wrap.className = "bianca-share-card chat-msg from-me";
     wrap.dataset.bookId = m.bookId;
 
     const cover = document.createElement("div");
-    cover.className = "sara-share-cover";
+    cover.className = "bianca-share-cover";
     if (book && book.thumbnail) {
       const img = document.createElement("img");
       img.src = String(book.thumbnail).replace(/^http:/, "https:");
@@ -564,24 +564,24 @@
     wrap.appendChild(cover);
 
     const meta = document.createElement("div");
-    meta.className = "sara-share-meta";
+    meta.className = "bianca-share-meta";
     if (book) {
       const title = document.createElement("div");
-      title.className = "sara-share-title";
+      title.className = "bianca-share-title";
       title.textContent = book.title;
       meta.appendChild(title);
       const author = document.createElement("div");
-      author.className = "sara-share-author";
+      author.className = "bianca-share-author";
       author.textContent = `${book.author || ""}${book.year ? " · " + book.year : ""}`;
       meta.appendChild(author);
       if (Array.isArray(book.content_warnings) && book.content_warnings.length) {
         const warns = document.createElement("div");
-        warns.className = "sara-share-warns";
+        warns.className = "bianca-share-warns";
         warns.textContent = `${book.content_warnings.length} content warning${book.content_warnings.length === 1 ? "" : "s"}`;
         meta.appendChild(warns);
       }
       const actions = document.createElement("div");
-      actions.className = "sara-share-actions";
+      actions.className = "bianca-share-actions";
       const openBtn = document.createElement("button");
       openBtn.className = "btn btn-sm";
       openBtn.textContent = "Open";
@@ -606,12 +606,12 @@
   function renderPinnedTray() {
     if (!pinnedTray) return;
     const st = store();
-    const pinned = (st && st.get().chats.saraPinned) || [];
+    const pinned = (st && st.get().chats.biancaPinned) || [];
     pinnedTray.innerHTML = "";
     if (!pinned.length) {
       pinnedTray.classList.add("is-empty");
       const empty = document.createElement("div");
-      empty.className = "sara-pinned-empty";
+      empty.className = "bianca-pinned-empty";
       empty.textContent = "Bookmark a book card from any page and I'll keep it here.";
       pinnedTray.appendChild(empty);
       return;
@@ -621,7 +621,7 @@
       const book = resolveBook(entry.bookId);
       if (!book) return;
       const chip = document.createElement("button");
-      chip.className = "sara-pinned-chip";
+      chip.className = "bianca-pinned-chip";
       chip.title = `${book.title}${book.author ? " · " + book.author : ""}`;
       chip.setAttribute("aria-label", `Pinned: ${book.title}. Click to open.`);
       if (book.thumbnail) {
@@ -631,16 +631,16 @@
         chip.appendChild(img);
       } else {
         const fb = document.createElement("span");
-        fb.className = "sara-pinned-chip-fallback";
+        fb.className = "bianca-pinned-chip-fallback";
         fb.textContent = (book.title || "??").slice(0, 2).toUpperCase();
         chip.appendChild(fb);
       }
       const label = document.createElement("span");
-      label.className = "sara-pinned-chip-label";
+      label.className = "bianca-pinned-chip-label";
       label.textContent = book.title;
       chip.appendChild(label);
       const remove = document.createElement("span");
-      remove.className = "sara-pinned-chip-x";
+      remove.className = "bianca-pinned-chip-x";
       remove.textContent = "×";
       remove.setAttribute("aria-label", `Unpin ${book.title}`);
       remove.addEventListener("click", (e) => {
@@ -683,13 +683,13 @@
     if (!moodRow) return;
     moodRow.innerHTML = "";
     const lead = document.createElement("span");
-    lead.className = "sara-moods-lead";
+    lead.className = "bianca-moods-lead";
     lead.textContent = "Tonight I want…";
     moodRow.appendChild(lead);
     MOODS.forEach(m => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "sara-mood-chip";
+      b.className = "bianca-mood-chip";
       b.textContent = m.label;
       b.addEventListener("click", () => send(`Show me something ${m.key} tonight.`));
       moodRow.appendChild(b);
@@ -724,12 +724,12 @@
   function historyForLLM() {
     const st = store();
     if (!st) return [];
-    const msgs = st.get().chats.sara || [];
+    const msgs = st.get().chats.bianca || [];
     const out = [];
     for (const m of msgs) {
       if (!m || !m.text) continue;
       if (m.role === "user") out.push({ role: "user", content: String(m.text) });
-      else if (m.role === "sara") out.push({ role: "assistant", content: String(m.text) });
+      else if (m.role === "bianca") out.push({ role: "assistant", content: String(m.text) });
     }
     return out;
   }
@@ -740,28 +740,28 @@
     const expanded = expandSlashCommand(text) || text;
     const userMessage = expanded === text ? text : `${text}\n_${expanded}_`;
     st.update(s => {
-      s.chats.sara = s.chats.sara || [];
-      s.chats.sara.push({ id: "m_" + Date.now(), role: "user", ts: Date.now(), text: userMessage });
+      s.chats.bianca = s.chats.bianca || [];
+      s.chats.bianca.push({ id: "m_" + Date.now(), role: "user", ts: Date.now(), text: userMessage });
     });
     renderMessages();
     if (composeTA) { composeTA.value = ""; autosizeCompose(); }
 
-    // Preferred path — LLM-backed Sara. Needs Claude API key and the
+    // Preferred path — LLM-backed Bianca. Needs Claude API key and the
     // discovery bridge. Falls back to the rule-based responder on any
     // failure so the app never silently dies.
     const Disco = window.LumenDiscovery;
-    const hasKey = Disco && typeof Disco.chatWithSara === "function" && Disco.getApiKey && Disco.getApiKey();
+    const hasKey = Disco && typeof Disco.chatWithBianca === "function" && Disco.getApiKey && Disco.getApiKey();
     let reply = "";
     if (hasKey) {
       try {
-        const systemContext = (window.Lumen && typeof window.Lumen.buildSaraSystemContext === "function")
-          ? window.Lumen.buildSaraSystemContext(ctxState && ctxState.route) : "";
-        reply = await Disco.chatWithSara({
+        const systemContext = (window.Lumen && typeof window.Lumen.buildBiancaSystemContext === "function")
+          ? window.Lumen.buildBiancaSystemContext(ctxState && ctxState.route) : "";
+        reply = await Disco.chatWithBianca({
           systemContext,
           messages: historyForLLM()
         });
       } catch (err) {
-        console.warn("[Lumen Sara] LLM path failed, falling back:", err && err.message);
+        console.warn("[Lumen Bianca] LLM path failed, falling back:", err && err.message);
         reply = "";
       }
     }
@@ -777,41 +777,41 @@
     // If all else failed (empty string), use a graceful in-character
     // apology rather than silence.
     if (!reply) {
-      const persona = window.LumenSaraPersona;
+      const persona = window.LumenBiancaPersona;
       reply = (persona && persona.randomFailsafe && persona.randomFailsafe())
         || "I lost my place in the book for a moment. Could you ask me again?";
     }
 
     st.update(s => {
-      s.chats.sara.push({ id: "m_" + (Date.now() + 1), role: "sara", ts: Date.now(), text: reply });
+      s.chats.bianca.push({ id: "m_" + (Date.now() + 1), role: "bianca", ts: Date.now(), text: reply });
     });
     renderMessages();
   }
 
   function fallbackResponder() {
-    const persona = window.LumenSaraPersona;
+    const persona = window.LumenBiancaPersona;
     return (persona && persona.randomFailsafe && persona.randomFailsafe())
       || "I lost my place in the book for a moment. Could you ask me again?";
   }
 
   // Inject a fresh first-contact greeting if the gap since the last
-  // Sara turn is long enough to count as a new session (2+ hours).
+  // Bianca turn is long enough to count as a new session (2+ hours).
   // Stays silent otherwise so the user isn't pestered on every tab
   // flip.
   function maybeStartNewSession() {
     const st = store();
     if (!st) return;
     const s = st.get();
-    const msgs = s.chats.sara || [];
+    const msgs = s.chats.bianca || [];
     if (!msgs.length) return; // ensureSeed() already handled it.
-    const lastSaraTurn = [...msgs].reverse().find(m => m.role === "sara");
+    const lastSaraTurn = [...msgs].reverse().find(m => m.role === "bianca");
     const since = lastSaraTurn ? (Date.now() - (lastSaraTurn.ts || 0)) : Infinity;
     const TWO_HOURS = 2 * 60 * 60 * 1000;
     if (since < TWO_HOURS) return;
     st.update(s2 => {
-      s2.chats.sara.push({
+      s2.chats.bianca.push({
         id: "s_" + Math.random().toString(36).slice(2, 8),
-        role: "sara",
+        role: "bianca",
         ts: Date.now(),
         text: firstContactGreeting()
       });
@@ -839,7 +839,7 @@
     if (!panel) return;
     panel.classList.remove("open");
     opened = false;
-    document.body.removeAttribute("data-sara-width");
+    document.body.removeAttribute("data-bianca-width");
     store() && store().update(s => { s.ui = s.ui || {}; s.ui.saraOpen = false; });
     if (lastFocus && typeof lastFocus.focus === "function") {
       try { lastFocus.focus(); } catch (e) { /* ignore */ }
@@ -853,21 +853,21 @@
     const st = store();
     if (!st || !bookId) return;
     st.update(s => {
-      s.chats.saraPinned = s.chats.saraPinned || [];
-      if (s.chats.saraPinned.some(e => e.bookId === bookId)) return;
-      s.chats.saraPinned.push({ bookId, ts: Date.now() });
-      s.chats.sara = s.chats.sara || [];
-      s.chats.sara.push({
+      s.chats.biancaPinned = s.chats.biancaPinned || [];
+      if (s.chats.biancaPinned.some(e => e.bookId === bookId)) return;
+      s.chats.biancaPinned.push({ bookId, ts: Date.now() });
+      s.chats.bianca = s.chats.bianca || [];
+      s.chats.bianca.push({
         id: "m_" + Date.now(),
         role: "book-card",
         bookId,
         ts: Date.now()
       });
-      // Sara acknowledges the pin so the chat has a conversational
+      // Bianca acknowledges the pin so the chat has a conversational
       // turn instead of a naked card.
-      s.chats.sara.push({
+      s.chats.bianca.push({
         id: "m_" + (Date.now() + 1),
-        role: "sara",
+        role: "bianca",
         ts: Date.now() + 1,
         text: "Pinned. I'll keep this one open while we talk."
       });
@@ -892,7 +892,7 @@
     const st = store();
     if (!st || !bookId) return;
     st.update(s => {
-      s.chats.saraPinned = (s.chats.saraPinned || []).filter(e => e.bookId !== bookId);
+      s.chats.biancaPinned = (s.chats.biancaPinned || []).filter(e => e.bookId !== bookId);
     });
     renderPinnedTray();
     renderMessages();
@@ -901,7 +901,7 @@
   function isPinned(bookId) {
     const st = store();
     if (!st || !bookId) return false;
-    return (st.get().chats.saraPinned || []).some(e => e.bookId === bookId);
+    return (st.get().chats.biancaPinned || []).some(e => e.bookId === bookId);
   }
 
   function store() { return window.Lumen && window.Lumen.store; }
@@ -914,11 +914,11 @@
 
   // Focus status line — when the user opens a book detail sheet, the
   // structured context carries focus.book. Show a one-liner in the
-  // Sara head ("Reading *Venus in Furs* with you") so the chat feels
+  // Bianca head ("Reading *Venus in Furs* with you") so the chat feels
   // like it is tracking what's actively on screen.
   function renderFocusStatus() {
     if (!panel) return;
-    const existing = panel.querySelector(".sara-focus-line");
+    const existing = panel.querySelector(".bianca-focus-line");
     const focus = (ctxState.focus && ctxState.focus.book) || null;
     if (!focus) {
       if (existing) existing.remove();
@@ -927,11 +927,11 @@
     const msg = `Reading ${focus.title} with you`;
     if (existing) { existing.textContent = msg; return; }
     const line = document.createElement("div");
-    line.className = "sara-focus-line";
+    line.className = "bianca-focus-line";
     line.textContent = msg;
     // Insert after the head, before the context chip strip so it
     // doesn't fight the chips for space.
-    const head = panel.querySelector(".sara-head");
+    const head = panel.querySelector(".bianca-head");
     if (head && head.nextSibling) panel.insertBefore(line, head.nextSibling);
     else panel.appendChild(line);
   }
@@ -942,16 +942,16 @@
   function renderQuickReplies() {
     if (!moodRow) return;
     // Remove any prior quick-reply row — we re-render in place.
-    const prior = panel && panel.querySelector(".sara-quick-replies");
+    const prior = panel && panel.querySelector(".bianca-quick-replies");
     if (prior) prior.remove();
     const chips = contextualQuickReplies(ctxState);
     if (!chips.length) return;
     const row = document.createElement("div");
-    row.className = "sara-quick-replies";
+    row.className = "bianca-quick-replies";
     chips.forEach(c => {
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "sara-quick-reply-chip";
+      b.className = "bianca-quick-reply-chip";
       b.textContent = c.label;
       b.addEventListener("click", () => send(c.send));
       row.appendChild(b);
@@ -1006,7 +1006,7 @@
     const st = store();
     if (!st) return;
     st.update(s => {
-      s.chats.sara.push({ id: "m_" + Date.now(), role: "sara", ts: Date.now(), text });
+      s.chats.bianca.push({ id: "m_" + Date.now(), role: "bianca", ts: Date.now(), text });
     });
     if (panel) renderMessages();
   }
@@ -1019,7 +1019,7 @@
     if (s && s.ui && s.ui.saraOpen) open();
   }
 
-  window.LumenSara = {
+  window.LumenBianca = {
     boot,
     open, close, toggle,
     setContext,
@@ -1029,7 +1029,7 @@
     get context() { return Object.assign({}, ctxState); },
     get pinned() {
       const st = store();
-      return st ? (st.get().chats.saraPinned || []).slice() : [];
+      return st ? (st.get().chats.biancaPinned || []).slice() : [];
     }
   };
 })();

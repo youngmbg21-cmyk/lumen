@@ -39,13 +39,13 @@
   function defaultMessage(status) {
     if (status === "idle") {
       const { via } = resolveProvider();
-      if (via === "admin") return "Sara is online";
-      if (via === "user")  return "Sara is online · your key";
+      if (via === "admin") return "Bianca is online";
+      if (via === "user")  return "Bianca is online · your key";
       return "Waiting for API key";
     }
     return {
-      reading: "Sara is reading…",
-      online:  "Sara is online",
+      reading: "Bianca is reading…",
+      online:  "Bianca is online",
       error:   "Analysis failed"
     }[status] || "";
   }
@@ -203,7 +203,7 @@
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────
-  // Shared by analyzeWithClaude, enrichCatalogEntry, chatWithSara.
+  // Shared by analyzeWithClaude, enrichCatalogEntry, chatWithBianca.
   // Tries the edge proxy first when a proxyPayload is supplied;
   // falls back to direct Anthropic API using the resolved key.
   async function _claudePost({ directPayload, proxyPayload = null }) {
@@ -548,24 +548,24 @@
   }
 
   // ----------------------------------------------------------------
-  // chatWithSara — the LLM path for the persistent companion.
+  // chatWithBianca — the LLM path for the persistent companion.
   //   args = {
   //     systemContext:   string (the "=== CONTEXT ===" block, built
-  //                       in app.js from the structured Sara ctx)
+  //                       in app.js from the structured Bianca ctx)
   //     messages:        [{ role: "user" | "assistant", content: string }]
   //   }
   // Returns the assistant's text on success. On any failure (no
   // key, network, parse, rate limit) throws an Error that the
-  // caller converts into Sara's graceful fail-safe line.
+  // caller converts into Bianca's graceful fail-safe line.
   //
-  // Persona prompt comes from window.LumenSaraPersona.PERSONA_PROMPT
-  // (see sara-persona.js) and is prepended to the systemContext so
+  // Persona prompt comes from window.LumenBiancaPersona.PERSONA_PROMPT
+  // (see bianca-persona.js) and is prepended to the systemContext so
   // both land in Claude's `system` field.
   // ----------------------------------------------------------------
-  async function chatWithSara({ systemContext = "", messages = [] } = {}) {
+  async function chatWithBianca({ systemContext = "", messages = [] } = {}) {
     _checkThrottle();
 
-    const persona = (window.LumenSaraPersona && window.LumenSaraPersona.PERSONA_PROMPT) || "";
+    const persona = (window.LumenBiancaPersona && window.LumenBiancaPersona.PERSONA_PROMPT) || "";
     const system  = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
 
     // Sanitize: must alternate user/assistant starting with user.
@@ -603,7 +603,7 @@
     const out = (payload.content || [])
       .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
-    setStatus("online", "Sara is online");
+    setStatus("online", "Bianca is online");
     return out;
   }
 
@@ -625,7 +625,7 @@
     analyzeWithClaude,
     enrichCatalogEntry,
     lookupBookMetadata,
-    chatWithSara,
+    chatWithBianca,
     onStatus,
     get status()  { return state.status; },
     get message() { return state.lastMessage; }

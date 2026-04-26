@@ -417,7 +417,7 @@
     tone: [], pacing: [], style: [], dynamic: [], trope: [], kink: [],
     orientation: [], exclude: [],
     warnStrict: "moderate",
-    // Conversational-companion preferences used by Sara to tailor
+    // Conversational-companion preferences used by Bianca to tailor
     // tone and filtering. Hard constraints land in the system
     // prompt; soft ones become hints.
     readingLevel: "casual",         // "casual" | "literary" | "academic"

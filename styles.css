@@ -232,7 +232,7 @@ body.theme-plum::before {
   mix-blend-mode: overlay;
 }
 /* Ensure the app shell sits above the noise layer.
-   Overlays (modal host, toast host, Sara panel, Sara FAB) use
+   Overlays (modal host, toast host, Bianca panel, Bianca FAB) use
    position: fixed in their own rules — do NOT add them here, an
    ID-specificity override would kill their fixed layout and they'd
    lay out in-flow at the bottom of the document. */
@@ -2256,9 +2256,9 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* ============================================================
-   Floating Sara — launcher + docked panel
+   Floating Bianca — launcher + docked panel
    ============================================================ */
-.sara-launcher {
+.bianca-launcher {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -2272,8 +2272,8 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
-.sara-launcher:hover { background: var(--accent-dim); border-color: var(--accent); }
-.sara-launcher .dot {
+.bianca-launcher:hover { background: var(--accent-dim); border-color: var(--accent); }
+.bianca-launcher .dot {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -2282,7 +2282,7 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* ============================================================
-   Sara — floating reading-companion panel
+   Bianca — floating reading-companion panel
    - 3 width states: dock (380), wide (560), focus (≈50vw, 760 cap)
    - in `focus` mode the main page content reflows so it isn't covered
    - rich book-card messages, pinned tray, mood chips, discreet mode
@@ -2290,7 +2290,7 @@ body[data-privacy-blur="on"] .app-main::after {
 
 /* Floating launcher — soft tear-drop / fleuron glyph instead of "S".
    Visible at all viewport widths so the panel can be summoned anywhere. */
-.sara-fab {
+.bianca-fab {
   position: fixed;
   right: var(--s-4);
   bottom: var(--s-4);
@@ -2309,17 +2309,17 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
-.sara-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -10px rgba(60, 38, 22, 0.4); }
+.bianca-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -10px rgba(60, 38, 22, 0.4); }
 @media (max-width: 880px) {
-  .sara-launcher { display: none; }
+  .bianca-launcher { display: none; }
 }
 
-.sara-panel {
-  --sara-w: 380px;
+.bianca-panel {
+  --bianca-w: 380px;
   position: fixed;
   top: calc(var(--shell-topbar) + var(--s-3));
   right: var(--s-4);
-  width: var(--sara-w);
+  width: var(--bianca-w);
   max-width: calc(100vw - var(--s-5));
   height: calc(100vh - var(--shell-topbar) - var(--s-7));
   max-height: 760px;
@@ -2338,35 +2338,35 @@ body[data-privacy-blur="on"] .app-main::after {
               opacity var(--dur-2) var(--ease),
               width var(--dur-2) var(--ease);
 }
-.sara-panel.open {
+.bianca-panel.open {
   transform: translateY(0) scale(1);
   opacity: 1;
   pointer-events: auto;
 }
-.sara-panel[data-width="dock"]  { --sara-w: 380px; }
-.sara-panel[data-width="wide"]  { --sara-w: 560px; }
-.sara-panel[data-width="focus"] {
-  --sara-w: min(50vw, 760px);
+.bianca-panel[data-width="dock"]  { --bianca-w: 380px; }
+.bianca-panel[data-width="wide"]  { --bianca-w: 560px; }
+.bianca-panel[data-width="focus"] {
+  --bianca-w: min(50vw, 760px);
   /* Focus mode breathes vertically too: up to 900px or full viewport
      minus the topbar, whichever is smaller. Overrides the 760px
      global cap so the conversation doesn't feel cramped. */
   max-height: min(900px, calc(100vh - var(--shell-topbar) - var(--s-4)));
 }
 
-/* Reflow the main content as soon as Sara is desktop-sized. Lowered
+/* Reflow the main content as soon as Bianca is desktop-sized. Lowered
    from 1100px to the 880px mobile breakpoint so focus mode doesn't
    overlay content on mid-size laptops. Mobile keeps the overlay
    (now fullscreen) behaviour since its content isn't visible
    alongside the panel anyway. */
 @media (min-width: 881px) {
-  body[data-sara-width="focus"] .app-main {
+  body[data-bianca-width="focus"] .app-main {
     padding-right: calc(min(50vw, 760px) + var(--s-5));
     transition: padding-right var(--dur-2) var(--ease);
   }
 }
 
 @media (max-width: 880px) {
-  .sara-panel {
+  .bianca-panel {
     top: auto;
     bottom: var(--s-3);
     right: var(--s-3);
@@ -2377,8 +2377,8 @@ body[data-privacy-blur="on"] .app-main::after {
   }
   /* Mobile focus mode = full-screen takeover. Without this override
      the `width: auto` + fixed bottom placement above would swallow
-     the --sara-w change and the expand button would feel dead. */
-  .sara-panel[data-width="focus"] {
+     the --bianca-w change and the expand button would feel dead. */
+  .bianca-panel[data-width="focus"] {
     top: 0;
     right: 0;
     bottom: 0;
@@ -2391,7 +2391,7 @@ body[data-privacy-blur="on"] .app-main::after {
   }
 }
 
-.sara-head {
+.bianca-head {
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -2400,8 +2400,8 @@ body[data-privacy-blur="on"] .app-main::after {
   gap: var(--s-2);
   background: linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--accent-glow, var(--primary-soft)) 18%, var(--bg-raised)));
 }
-.sara-head-title { min-width: 0; }
-.sara-head .sara-title {
+.bianca-head-title { min-width: 0; }
+.bianca-head .bianca-title {
   font-family: var(--font-serif);
   font-size: 18px;
   color: var(--text);
@@ -2410,14 +2410,14 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: baseline;
   gap: 6px;
 }
-.sara-head .sara-title-serif { font-weight: 500; }
-.sara-head .sara-title-sub {
+.bianca-head .bianca-title-serif { font-weight: 500; }
+.bianca-head .bianca-title-sub {
   font-style: italic;
   color: var(--accent-deep);
   font-weight: 400;
   font-size: 14px;
 }
-.sara-head .sara-sub {
+.bianca-head .bianca-sub {
   font-size: 11px;
   color: var(--text-subtle);
   margin-top: 2px;
@@ -2425,7 +2425,7 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: center;
   gap: 6px;
 }
-.sara-privacy-pill {
+.bianca-privacy-pill {
   display: inline-block;
   padding: 1px 7px;
   border-radius: var(--r-pill);
@@ -2437,13 +2437,13 @@ body[data-privacy-blur="on"] .app-main::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-.sara-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.sara-head-actions .icon-btn[aria-pressed="true"] {
+.bianca-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.bianca-head-actions .icon-btn[aria-pressed="true"] {
   background: var(--accent-soft, var(--primary-soft));
   color: var(--accent-deep);
 }
 
-.sara-context {
+.bianca-context {
   padding: var(--s-2) var(--s-4);
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--border);
@@ -2453,8 +2453,8 @@ body[data-privacy-blur="on"] .app-main::after {
   min-height: 34px;
   align-items: center;
 }
-.sara-context:empty { display: none; }
-.sara-context .ctx-chip {
+.bianca-context:empty { display: none; }
+.bianca-context .ctx-chip {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: var(--r-pill);
@@ -2467,7 +2467,7 @@ body[data-privacy-blur="on"] .app-main::after {
 /* Pinned-books tray — horizontal scroller of cover-chips, sits above
    the conversation. Empty state reads as a soft hint instead of being
    blank. */
-.sara-pinned-tray {
+.bianca-pinned-tray {
   display: flex;
   gap: 6px;
   padding: var(--s-2) var(--s-3);
@@ -2476,14 +2476,14 @@ body[data-privacy-blur="on"] .app-main::after {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.sara-pinned-tray.is-empty { padding: 6px var(--s-4); }
-.sara-pinned-empty {
+.bianca-pinned-tray.is-empty { padding: 6px var(--s-4); }
+.bianca-pinned-empty {
   font-size: 11px;
   color: var(--text-subtle);
   font-style: italic;
   line-height: 1.4;
 }
-.sara-pinned-chip {
+.bianca-pinned-chip {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -2499,9 +2499,9 @@ body[data-privacy-blur="on"] .app-main::after {
   max-width: 180px;
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-pinned-chip:hover { border-color: var(--primary); background: var(--bg-raised); }
-.sara-pinned-chip img,
-.sara-pinned-chip-fallback {
+.bianca-pinned-chip:hover { border-color: var(--primary); background: var(--bg-raised); }
+.bianca-pinned-chip img,
+.bianca-pinned-chip-fallback {
   width: 22px; height: 22px;
   border-radius: 50%;
   object-fit: cover;
@@ -2514,13 +2514,13 @@ body[data-privacy-blur="on"] .app-main::after {
   font-style: italic;
   font-size: 11px;
 }
-.sara-pinned-chip-label {
+.bianca-pinned-chip-label {
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sara-pinned-chip-x {
+.bianca-pinned-chip-x {
   display: inline-block;
   width: 16px;
   height: 16px;
@@ -2531,9 +2531,9 @@ body[data-privacy-blur="on"] .app-main::after {
   font-size: 13px;
   cursor: pointer;
 }
-.sara-pinned-chip-x:hover { color: var(--accent); background: var(--bg-raised); }
+.bianca-pinned-chip-x:hover { color: var(--accent); background: var(--bg-raised); }
 
-.sara-body {
+.bianca-body {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: var(--s-4);
@@ -2542,13 +2542,13 @@ body[data-privacy-blur="on"] .app-main::after {
   gap: var(--s-3);
   background: var(--bg-sunken);
 }
-.sara-body .chat-msg { max-width: 100%; }
-.sara-body .chat-msg ul { margin: 6px 0 0; padding-left: 18px; }
-.sara-body .chat-msg li { margin: 2px 0; line-height: 1.5; }
+.bianca-body .chat-msg { max-width: 100%; }
+.bianca-body .chat-msg ul { margin: 6px 0 0; padding-left: 18px; }
+.bianca-body .chat-msg li { margin: 2px 0; line-height: 1.5; }
 
 /* Rich book-card message — cover on the left, meta + actions on the right.
-   Renders inside .sara-body alongside ordinary chat messages. */
-.sara-share-card {
+   Renders inside .bianca-body alongside ordinary chat messages. */
+.bianca-share-card {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr);
   gap: var(--s-3);
@@ -2558,7 +2558,7 @@ body[data-privacy-blur="on"] .app-main::after {
   background: var(--bg-raised);
   border: 1px solid var(--border);
 }
-.sara-share-cover {
+.bianca-share-cover {
   width: 60px; height: 90px;
   border-radius: 6px;
   overflow: hidden;
@@ -2566,8 +2566,8 @@ body[data-privacy-blur="on"] .app-main::after {
   flex-shrink: 0;
   position: relative;
 }
-.sara-share-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sara-share-cover .cover-fallback {
+.bianca-share-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bianca-share-cover .cover-fallback {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--font-serif);
@@ -2576,27 +2576,27 @@ body[data-privacy-blur="on"] .app-main::after {
   color: var(--accent-deep);
   font-weight: 500;
 }
-.sara-share-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.sara-share-title {
+.bianca-share-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.bianca-share-title {
   font-family: var(--font-serif);
   font-size: 15px;
   font-weight: 500;
   line-height: 1.2;
   color: var(--text);
 }
-.sara-share-author { font-size: 11px; color: var(--primary); letter-spacing: 0.04em; }
-.sara-share-warns {
+.bianca-share-author { font-size: 11px; color: var(--primary); letter-spacing: 0.04em; }
+.bianca-share-warns {
   font-size: 10px;
   color: var(--accent-deep);
   font-style: italic;
   margin-top: 2px;
 }
-.sara-share-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-.sara-share-actions .btn { padding: 3px 9px; font-size: 11px; }
+.bianca-share-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.bianca-share-actions .btn { padding: 3px 9px; font-size: 11px; }
 
 /* Mood-chip row — primary entry to a conversation.
    Always visible above the compose box. */
-.sara-moods {
+.bianca-moods {
   display: flex;
   gap: 6px;
   padding: var(--s-2) var(--s-4);
@@ -2606,7 +2606,7 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: center;
   scrollbar-width: thin;
 }
-.sara-moods-lead {
+.bianca-moods-lead {
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 12px;
@@ -2614,7 +2614,7 @@ body[data-privacy-blur="on"] .app-main::after {
   flex-shrink: 0;
   margin-right: 2px;
 }
-.sara-mood-chip {
+.bianca-mood-chip {
   flex-shrink: 0;
   font-family: var(--font-sans);
   font-size: 12px;
@@ -2626,13 +2626,13 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-mood-chip:hover {
+.bianca-mood-chip:hover {
   border-color: var(--primary);
   background: var(--accent-soft, var(--primary-soft));
   color: var(--accent-deep);
 }
 
-.sara-compose {
+.bianca-compose {
   display: flex;
   gap: var(--s-2);
   padding: var(--s-3);
@@ -2640,7 +2640,7 @@ body[data-privacy-blur="on"] .app-main::after {
   border-top: 1px solid var(--border);
   align-items: flex-end;
 }
-.sara-compose textarea {
+.bianca-compose textarea {
   flex: 1 1 auto;
   resize: none;
   min-height: 36px;
@@ -2652,7 +2652,7 @@ body[data-privacy-blur="on"] .app-main::after {
   font-size: 13px;
   font-family: var(--font-sans);
 }
-.sara-compose textarea:focus-visible {
+.bianca-compose textarea:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -2675,23 +2675,23 @@ body[data-privacy-blur="on"] .app-main::after {
   filter: none;
 }
 
-/* Sara-only discreet — blurs covers + titles inside the chat panel
+/* Bianca-only discreet — blurs covers + titles inside the chat panel
    without affecting the rest of the app. Hover a card to reveal. */
-.sara-panel.discreet .sara-share-cover img,
-.sara-panel.discreet .sara-share-title,
-.sara-panel.discreet .sara-pinned-chip img,
-.sara-panel.discreet .sara-pinned-chip-label {
+.bianca-panel.discreet .bianca-share-cover img,
+.bianca-panel.discreet .bianca-share-title,
+.bianca-panel.discreet .bianca-pinned-chip img,
+.bianca-panel.discreet .bianca-pinned-chip-label {
   filter: blur(5px);
   transition: filter var(--dur-1) var(--ease);
 }
-.sara-panel.discreet .sara-share-card:hover .sara-share-cover img,
-.sara-panel.discreet .sara-share-card:hover .sara-share-title,
-.sara-panel.discreet .sara-pinned-chip:hover img,
-.sara-panel.discreet .sara-pinned-chip:hover .sara-pinned-chip-label {
+.bianca-panel.discreet .bianca-share-card:hover .bianca-share-cover img,
+.bianca-panel.discreet .bianca-share-card:hover .bianca-share-title,
+.bianca-panel.discreet .bianca-pinned-chip:hover img,
+.bianca-panel.discreet .bianca-pinned-chip:hover .bianca-pinned-chip-label {
   filter: none;
 }
 
-/* Bookmark / share-with-Sara button — top-left corner of every book
+/* Bookmark / share-with-Bianca button — top-left corner of every book
    card. Sits next to the existing dismiss × so they don't collide. */
 .card-pin {
   position: absolute;
@@ -4300,7 +4300,7 @@ body[data-privacy-blur="on"] .app-main::after {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(122, 140, 111, 0.6); }
   50%      { opacity: 0.7; box-shadow: 0 0 0 6px rgba(122, 140, 111, 0); }
 }
-/* Sara launcher dot reverted to a quiet accent pip. Pulse keyframe
+/* Bianca launcher dot reverted to a quiet accent pip. Pulse keyframe
    kept above for opt-in use elsewhere. */
 
 @media (prefers-reduced-motion: reduce) {
@@ -4678,10 +4678,10 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 @media (hover: none) { .card-reject { opacity: 0.7; } }
 
-/* Sara focus line — visible when a book detail sheet is open.
-   Sits just under the head so Sara feels like she is watching
+/* Bianca focus line — visible when a book detail sheet is open.
+   Sits just under the head so Bianca feels like she is watching
    the user's current screen. */
-.sara-focus-line {
+.bianca-focus-line {
   padding: 6px var(--s-4);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--primary-soft) 35%, var(--bg-raised));
@@ -4693,9 +4693,9 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* Route-aware quick replies — a slim row just under the mood chips.
-   Adapts with the context so the user can see what Sara knows about
+   Adapts with the context so the user can see what Bianca knows about
    the current screen and jump straight to a relevant question. */
-.sara-quick-replies {
+.bianca-quick-replies {
   display: flex;
   gap: 6px;
   padding: 2px var(--s-4) 6px;
@@ -4703,7 +4703,7 @@ body[data-privacy-blur="on"] .app-main::after {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.sara-quick-reply-chip {
+.bianca-quick-reply-chip {
   flex-shrink: 0;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -4715,7 +4715,7 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-quick-reply-chip:hover {
+.bianca-quick-reply-chip:hover {
   border-style: solid;
   border-color: var(--primary);
   background: var(--accent-soft, var(--primary-soft));
@@ -4791,11 +4791,11 @@ details[open] .settings-advanced-summary::before {
 }
 
 /* ============================================================
-   Sara appearance menu — preset swatches + upload.
-   Pops under the "✦" icon in the Sara head. Tight popover, not
+   Bianca appearance menu — preset swatches + upload.
+   Pops under the "✦" icon in the Bianca head. Tight popover, not
    a full modal.
    ============================================================ */
-.sara-appearance-menu {
+.bianca-appearance-menu {
   position: absolute;
   top: 44px;
   right: 8px;
@@ -4810,7 +4810,7 @@ details[open] .settings-advanced-summary::before {
   gap: 6px;
   min-width: 140px;
 }
-.sara-appearance-swatch {
+.bianca-appearance-swatch {
   width: 34px; height: 34px;
   border-radius: 50%;
   border: 2px solid var(--border);
@@ -4824,10 +4824,10 @@ details[open] .settings-advanced-summary::before {
   color: var(--text-subtle);
   transition: transform 120ms ease, border-color 120ms ease;
 }
-.sara-appearance-swatch:hover { transform: scale(1.08); border-color: var(--primary); }
-.sara-appearance-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft)); }
-.sara-appearance-upload,
-.sara-appearance-clear {
+.bianca-appearance-swatch:hover { transform: scale(1.08); border-color: var(--primary); }
+.bianca-appearance-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft)); }
+.bianca-appearance-upload,
+.bianca-appearance-clear {
   grid-column: 1 / -1;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -4841,13 +4841,13 @@ details[open] .settings-advanced-summary::before {
   cursor: pointer;
   text-align: center;
 }
-.sara-appearance-upload:hover,
-.sara-appearance-clear:hover {
+.bianca-appearance-upload:hover,
+.bianca-appearance-clear:hover {
   border-style: solid;
   color: var(--accent-deep);
   border-color: var(--primary);
 }
-.sara-appearance-upload input { display: none; }
+.bianca-appearance-upload input { display: none; }
 
 /* Custom-background preset support. `has-custom-bg` fires for any
    non-default preset (cream, rose, sage, slate, night) and for
@@ -4855,20 +4855,20 @@ details[open] .settings-advanced-summary::before {
    panel's background gradient/image shows through. `is-dark-bg` is a
    separate, stricter flag that only fires for dark backdrops and
    swaps the message-bubble + text colors for legibility. */
-.sara-panel.has-custom-bg .sara-body,
-.sara-panel.has-custom-bg .sara-pinned-tray,
-.sara-panel.has-custom-bg .sara-moods,
-.sara-panel.has-custom-bg .sara-quick-replies,
-.sara-panel.has-custom-bg .sara-compose {
+.bianca-panel.has-custom-bg .bianca-body,
+.bianca-panel.has-custom-bg .bianca-pinned-tray,
+.bianca-panel.has-custom-bg .bianca-moods,
+.bianca-panel.has-custom-bg .bianca-quick-replies,
+.bianca-panel.has-custom-bg .bianca-compose {
   background: transparent;
 }
-.sara-panel.is-dark-bg .chat-msg.from-them,
-.sara-panel.is-dark-bg .sara-share-card {
+.bianca-panel.is-dark-bg .chat-msg.from-them,
+.bianca-panel.is-dark-bg .bianca-share-card {
   background: rgba(255,255,255,0.08);
   color: #f2ecdf;
   border-color: rgba(255,255,255,0.18);
 }
-.sara-panel.is-dark-bg .chat-msg.from-me {
+.bianca-panel.is-dark-bg .chat-msg.from-me {
   background: rgba(255,255,255,0.14);
   color: #f2ecdf;
 }
