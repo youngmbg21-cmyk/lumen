@@ -4074,6 +4074,21 @@
       })));
       card.appendChild(moodRow);
 
+      const saveRow = util.el("div", { class: "row", style: { justifyContent: "flex-end", marginTop: "var(--s-3)" } });
+      const saveBtn = util.el("button", { class: "btn btn-primary", onclick: () => {
+        store.update(s => {
+          const it = s.journal.find(x => x.id === entry.id);
+          if (!it) return;
+          it.title = titleInput.value;
+          it.body = bodyArea.value;
+        });
+        saveBtn.textContent = "Saved";
+        saveBtn.disabled = true;
+        setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.disabled = false; }, 1500);
+      } }, "Save");
+      saveRow.appendChild(saveBtn);
+      card.appendChild(saveRow);
+
       editorSide.appendChild(card);
     }
 
