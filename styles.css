@@ -2767,13 +2767,14 @@ body[data-privacy-blur="on"] .app-main::after {
    taller and with the title immediately beneath, not to the right. */
 .book-card.has-cover .lib-card-cover {
   position: relative;
-  width: 100%;
+  width: 140px;
   aspect-ratio: 2 / 3;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   background: linear-gradient(135deg, var(--accent-glow), var(--bg-sunk));
-  margin-bottom: var(--s-3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin: 0 auto var(--s-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  flex-shrink: 0;
 }
 .book-card.has-cover .lib-card-cover img {
   width: 100%;
