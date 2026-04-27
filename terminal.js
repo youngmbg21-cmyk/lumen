@@ -283,12 +283,15 @@
 
   // ---------- Trope frequency bars ----------
   function renderTropeBar(root, rerender) {
-    // Bars are drawn from the full catalog so rows stay clickable even
-    // when a trope filter is already active. Counts reflect the
-    // catalogue totals, not the filtered pool.
-    const all = rawBooks();
+    // Count tropes from books matching the active ERA filter so the two
+    // charts cross-filter each other. When no era is selected, use all books.
+    const eraF = termState.eraFilter;
+    const activeEras = eraF.size ? ERA_BUCKETS.filter(e => eraF.has(e.label)) : null;
+    const pool = rawBooks().filter(b =>
+      !activeEras || (b.year && activeEras.some(e => e.test(b.year)))
+    );
     const counts = {};
-    all.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+    pool.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
     const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
     const max = Math.max(1, ...entries.map(e => e[1]));
     const el = $(root, "#tropeBar");
@@ -314,10 +317,15 @@
 
   // ---------- Publication-era bars (interactive filters) ----------
   function renderEraBar(root, rerender) {
-    const all = rawBooks();
+    // Count eras from books matching the active TROPE filter so the two
+    // charts cross-filter each other. When no trope is selected, use all books.
+    const tropeF = termState.tropeFilter;
+    const pool = rawBooks().filter(b =>
+      !tropeF.size || (b.trope || []).some(t => tropeF.has(t))
+    );
     const data = ERA_BUCKETS.map(b => ({
       label: b.label,
-      n: all.filter(x => x.year && b.test(x.year)).length
+      n: pool.filter(x => x.year && b.test(x.year)).length
     }));
     const max = Math.max(1, ...data.map(d => d.n));
     const el = $(root, "#eraBar");
