@@ -870,16 +870,19 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
 .lumen-terminal .detail-panel .panel-body { padding: 0; }
 .lumen-terminal .detail-cover {
   position: relative;
-  height: 320px;
+  height: 210px;
   background: linear-gradient(135deg, var(--bg-sunk), var(--bg-deep));
   overflow: hidden;
   border-radius: 10px 10px 0 0;
 }
 .lumen-terminal .detail-cover img {
-  width: 100%;
+  width: auto;
   height: 100%;
+  max-width: 100%;
   object-fit: contain;
-  object-position: center top;
+  object-position: center;
+  display: block;
+  margin: 0 auto;
   opacity: 1;
 }
 .lumen-terminal .detail-cover::after {

@@ -354,7 +354,7 @@
   /* -------------------- router -------------------- */
   const ROUTES = [
     { id: "discover",     label: "Today",         short: "Today",    group: "main",     render: () => views.discover() },
-    { id: "terminal",     label: "Terminal",      short: "Terminal", group: "main",     render: () => views.terminal() },
+    { id: "terminal",     label: "Signals",       short: "Signals",  group: "main",     render: () => views.terminal() },
     { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
