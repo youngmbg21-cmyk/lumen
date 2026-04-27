@@ -373,40 +373,62 @@
   async function lookupBookMetadata(input) {
     if (!input || !input.title) return null;
     const gkey = getGoogleKey();
-    const parts = [`intitle:"${input.title.replace(/"/g, "")}"`];
-    if (input.author) parts.push(`inauthor:"${String(input.author).replace(/"/g, "")}"`);
-    const q = parts.join(" ");
-    const url = "https://www.googleapis.com/books/v1/volumes"
-      + "?q=" + encodeURIComponent(q)
-      + "&maxResults=5"
-      + "&printType=books"
-      + "&orderBy=relevance"
-      + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
-    let res;
-    try { res = await fetch(url); }
-    catch (e) { return null; }
-    if (!res.ok) return null;
-    let data;
-    try { data = await res.json(); } catch (e) { return null; }
-    const items = (data.items || []).map(it => it.volumeInfo || {});
-    if (!items.length) return null;
-    // Prefer the first result that has both a thumbnail and a
-    // reasonably close title. Falls back to the top result.
-    const titleLc = input.title.toLowerCase();
-    const scored = items.map(v => {
-      const hasThumb = !!(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
-      const t = String(v.title || "").toLowerCase();
-      const titleHit = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
-      return { v, score: titleHit + (hasThumb ? 1 : 0) };
-    }).sort((a, b) => b.score - a.score);
-    const v = scored[0].v;
-    const thumb = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
-    return {
-      thumbnail: thumb ? String(thumb).replace(/^http:/, "https:") : null,
-      year: (v.publishedDate || "").slice(0, 4) ? parseInt(v.publishedDate.slice(0, 4), 10) : null,
-      description: v.description || null,
-      categories: v.categories || []
-    };
+
+    async function gbFetch(q) {
+      const url = "https://www.googleapis.com/books/v1/volumes"
+        + "?q=" + encodeURIComponent(q)
+        + "&maxResults=8"
+        + "&printType=books"
+        + "&orderBy=relevance"
+        + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.items || []).map(it => it.volumeInfo || {});
+      } catch (e) { return []; }
+    }
+
+    function upgradeThumb(url) {
+      if (!url) return null;
+      return String(url).replace(/^http:/, "https:").replace(/zoom=\d+/, "zoom=5");
+    }
+
+    function pickBest(items) {
+      if (!items.length) return null;
+      const titleLc = input.title.toLowerCase();
+      const scored = items.map(v => {
+        const hasThumb = !!(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
+        const t = String(v.title || "").toLowerCase();
+        const titleHit = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+        return { v, hasThumb, titleHit, score: titleHit * 2 + (hasThumb ? 3 : 0) };
+      }).sort((a, b) => b.score - a.score);
+      // Prefer any result that has a thumbnail and at least a partial title match.
+      // Falls back to the top scorer (which may have no thumbnail).
+      const best = scored.find(s => s.hasThumb && s.titleHit >= 1) || scored[0];
+      const v = best.v;
+      const raw = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
+      return {
+        thumbnail: upgradeThumb(raw),
+        year: (v.publishedDate || "").slice(0, 4) ? parseInt(v.publishedDate.slice(0, 4), 10) : null,
+        description: v.description || null,
+        categories: v.categories || []
+      };
+    }
+
+    // 1) Strict query: intitle:"X" inauthor:"Y"
+    const strictParts = [`intitle:"${input.title.replace(/"/g, "")}"`];
+    if (input.author) strictParts.push(`inauthor:"${String(input.author).replace(/"/g, "")}"`);
+    let items = await gbFetch(strictParts.join(" "));
+
+    // 2) If strict query found nothing with a thumbnail, retry with a loose query.
+    const hasThumb = items.some(v => v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
+    if (!hasThumb) {
+      const loose = await gbFetch(`${input.title}${input.author ? " " + input.author : ""}`);
+      if (loose.length) items = loose;
+    }
+
+    return pickBest(items);
   }
 
   // ----------------------------------------------------------------
