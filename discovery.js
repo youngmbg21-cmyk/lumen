@@ -649,7 +649,8 @@
           max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
           system,
           messages: clean
-        }
+        },
+        proxyPayload: { action: "chat", model: "claude-sonnet-4-6", max_tokens: 150, system, messages: clean }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
