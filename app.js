@@ -2912,6 +2912,7 @@
     const Disco = window.LumenDiscovery;
     const wrap = util.el("div", { class: "page settings-page" });
 
+    // ── Header ──────────────────────────────────────────────────────────
     wrap.appendChild(util.el("div", { class: "page-head settings-page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Admin" }),
@@ -2920,20 +2921,123 @@
       ])
     ]));
 
-    // --- Developer / Advanced (collapsible) ------------------------------
-    // Hidden by default during the Discovery Phase. Testers use the
-    // admin key set via the secret logo-click modal; only power users
-    // need to supply their own keys here.
+    // ── Operator controls ────────────────────────────────────────────────
+    const hasMasterKey = !!(Disco && Disco.getMasterKey && Disco.getMasterKey());
+    const demoOn       = !!(Disco && Disco.getDemoMode  && Disco.getDemoMode());
+    const currentCap   = (Disco && Disco.getSessionCap)    ? Disco.getSessionCap()    : 10;
+    const remaining    = (Disco && Disco.throttleRemaining) ? Disco.throttleRemaining() : "—";
+
+    const opCard = util.el("div", { class: "card settings-op-card stack" });
+    opCard.appendChild(util.el("div", { class: "settings-op-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Operator" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "2px" },
+          text: "Discovery Phase settings — only visible via the trapdoor." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (hasMasterKey ? "settings-badge-ok" : "settings-badge-missing"),
+        text: hasMasterKey ? (demoOn ? "Demo on" : "Key set") : "No key"
+      })
+    ]));
+
+    const opBody = util.el("div", { class: "settings-op-body" });
+
+    // Left: master key input
+    const keyCol = util.el("div", { class: "settings-op-col" });
+    keyCol.appendChild(util.el("div", { class: "settings-field-label", text: "Master Claude API key" }));
+    const masterInput = util.el("input", {
+      type: "password", class: "input", placeholder: "sk-ant-…",
+      value: (Disco && Disco.getMasterKey) ? Disco.getMasterKey() : "",
+      autocomplete: "off", spellcheck: "false"
+    });
+    keyCol.appendChild(masterInput);
+    const masterRevealLabel = util.el("label", { class: "toggle settings-reveal-toggle" });
+    const masterRevealCb = util.el("input", { type: "checkbox",
+      onchange: e => masterInput.setAttribute("type", e.target.checked ? "text" : "password") });
+    masterRevealLabel.appendChild(masterRevealCb);
+    masterRevealLabel.appendChild(util.el("span", { class: "toggle-track" }));
+    masterRevealLabel.appendChild(util.el("span", { class: "toggle-label", text: "Reveal" }));
+    keyCol.appendChild(masterRevealLabel);
+    opBody.appendChild(keyCol);
+
+    // Right: demo mode + session cap
+    const ctrlCol = util.el("div", { class: "settings-op-col" });
+
+    const demoCtrlRow = util.el("div", { class: "settings-op-control-row" });
+    demoCtrlRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "Demo Mode" }),
+      util.el("div", { class: "t-tiny t-subtle", text: "Bianca works for every visitor — no key prompt." })
+    ]));
+    const demoLabel = util.el("label", { class: "toggle" });
+    const demoCb    = util.el("input", { type: "checkbox" });
+    demoCb.checked  = demoOn;
+    demoLabel.appendChild(demoCb);
+    demoLabel.appendChild(util.el("span", { class: "toggle-track" }));
+    demoCtrlRow.appendChild(demoLabel);
+    ctrlCol.appendChild(demoCtrlRow);
+
+    const capCtrlRow = util.el("div", { class: "settings-op-control-row" });
+    capCtrlRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "AI calls / hour" }),
+      util.el("div", { class: "t-tiny t-subtle", text: `${remaining} remaining this session` })
+    ]));
+    const capInput = util.el("input", {
+      type: "number", class: "input", min: "1", max: "100", value: String(currentCap),
+      style: { width: "64px", textAlign: "center" }
+    });
+    capCtrlRow.appendChild(capInput);
+    ctrlCol.appendChild(capCtrlRow);
+
+    opBody.appendChild(ctrlCol);
+    opCard.appendChild(opBody);
+
+    const opActions = util.el("div", { class: "settings-op-actions" });
+    opActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      const keyVal = masterInput.value.trim();
+      const capVal = parseInt(capInput.value, 10);
+      if (Disco.setMasterKey)  Disco.setMasterKey(keyVal);
+      if (Disco.setDemoMode)   Disco.setDemoMode(demoCb.checked);
+      if (Disco.setSessionCap && Number.isFinite(capVal) && capVal > 0) Disco.setSessionCap(capVal);
+      if (keyVal && demoCb.checked) {
+        store.update(s => { s.ui.adultConfirmed = true; });
+        ui.toast("Demo Mode ON · Bianca is live for all visitors");
+      } else if (keyVal) {
+        ui.toast("Master key saved");
+      } else {
+        ui.toast("Master key cleared");
+      }
+      renderView();
+    }}, "Save changes"));
+    if (hasMasterKey) {
+      opActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
+        if (Disco.clearMasterKey) Disco.clearMasterKey();
+        if (Disco.setDemoMode)    Disco.setDemoMode(false);
+        ui.toast("Master key cleared · Demo Mode off");
+        renderView();
+      }}, "Clear key"));
+    }
+    opCard.appendChild(opActions);
+    wrap.appendChild(opCard);
+
+    // ── API Keys (collapsible) ──────────────────────────────────────────
+    const Embed = window.LumenEmbeddings;
+    const hasVoyage = () => !!(Embed && Embed.getApiKey && Embed.getApiKey());
+    const keyStatusParts = [
+      Disco.getApiKey()  ? "Claude" : "",
+      hasVoyage()        ? "Voyage" : "",
+      Disco.getGoogleKey() ? "Google" : ""
+    ].filter(Boolean);
+    const keySummaryText = keyStatusParts.length
+      ? keyStatusParts.join(" · ") + " configured"
+      : "None configured";
+
     const devDetails = document.createElement("details");
     devDetails.className = "settings-advanced-section";
-    const devSummary = util.el("summary", { class: "settings-advanced-summary" }, [
-      util.el("span", { class: "t-eyebrow", text: "Developer / Advanced" }),
-      util.el("span", { class: "t-small t-subtle", style: { marginLeft: "var(--s-2)" }, text: "API keys for direct access" })
-    ]);
-    devDetails.appendChild(devSummary);
-    // Open automatically only when a user key is already saved so it
-    // remains visible without the user having to expand it again.
-    if (Disco.getApiKey() || (window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey())) {
+    devDetails.appendChild(util.el("summary", { class: "settings-advanced-summary" }, [
+      util.el("span", { class: "t-eyebrow", text: "API Keys" }),
+      util.el("span", { class: "t-small t-subtle", style: { marginLeft: "var(--s-2)" }, text: keySummaryText })
+    ]));
+    if (Disco.getApiKey() || hasVoyage()) {
       devDetails.open = true;
     }
 
@@ -3139,98 +3243,87 @@
     devDetails.appendChild(gbCard);
     wrap.appendChild(devDetails);
 
-    // --- Starter library -------------------------------------------------
-    const starterLoaded = hasStarterLibraryLoaded();
-    const starterCount = (SEED_BOOKS || []).length;
-    const loadedCount = (store.get().discovered || []).filter(d => d.source === "seed").length;
-    const starterCard = util.el("div", { class: "card settings-card stack" });
-    starterCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Starter library" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `An optional bundle of ${starterCount} historical and classical titles (Fanny Hill, Kama Sutra, Venus in Furs, The Decameron, and more). Loading it populates your library so Home, Compare, and your profile preview have something to rank.` })
-      ]),
+    // ── Library management (single card, three rows) ──────────────────
+    const starterLoaded   = hasStarterLibraryLoaded();
+    const starterCount    = (SEED_BOOKS || []).length;
+    const loadedCount     = (store.get().discovered || []).filter(d => d.source === "seed").length;
+    const hiddenIds       = Object.keys(store.get().hidden || {});
+    const rejectedPickIds = Object.keys(store.get().dailyPicksRejected || {});
+
+    const libCard = util.el("div", { class: "card settings-mgmt-card stack" });
+    libCard.appendChild(util.el("h3", { class: "settings-mgmt-title", text: "Library" }));
+
+    function mgmtRow(label, description, badgeEl, actionEls, expandEl) {
+      const row = util.el("div", { class: "settings-mgmt-row" });
+      row.appendChild(util.el("div", { class: "settings-mgmt-row-info" }, [
+        util.el("div", { class: "t-small", text: label }),
+        util.el("div", { class: "t-tiny t-subtle", text: description })
+      ]));
+      const actions = util.el("div", { class: "settings-mgmt-row-actions" });
+      if (badgeEl) actions.appendChild(badgeEl);
+      actionEls.forEach(el => actions.appendChild(el));
+      row.appendChild(actions);
+      if (expandEl) row.appendChild(expandEl);
+      return row;
+    }
+
+    // Row 1 — Starter library
+    libCard.appendChild(mgmtRow(
+      "Starter library",
+      `${starterCount} historical and classical titles — Fanny Hill, Kama Sutra, Venus in Furs, The Decameron, and more.`,
       util.el("span", {
         class: "settings-badge " + (starterLoaded ? "settings-badge-ok" : "settings-badge-missing"),
         text: starterLoaded ? `${loadedCount} loaded` : "Not loaded"
-      })
-    ]));
-    starterCard.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)" } }, [
-      util.el("button", {
-        class: "btn btn-primary btn-sm",
-        disabled: starterLoaded && loadedCount === starterCount ? "disabled" : null,
-        onclick: () => {
-          const added = loadStarterLibrary();
-          if (added) ui.toast(`Loaded ${added} title${added === 1 ? "" : "s"} into your library`);
-          else ui.toast("Starter library is already fully loaded");
-          renderView();
-        }
-      }, starterLoaded ? "Top up" : "Load starter library"),
-      util.el("button", {
-        class: "btn btn-sm",
-        disabled: !starterLoaded || null,
-        onclick: () => {
-          ui.modal({
-            title: "Remove the starter library?",
-            body: "<p class=\"t-muted\">Every starter title is removed from your library along with any reading state or tags you attached to them. Books you added from Discovery are untouched.</p>",
-            primary: { label: "Remove", onClick: () => {
-              const removed = unloadStarterLibrary();
-              ui.toast(`Removed ${removed} starter title${removed === 1 ? "" : "s"}`);
-              renderView();
-            } },
-            secondary: { label: "Cancel" }
-          });
-        }
-      }, "Remove starter titles")
-    ]));
-    starterCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Starter titles are tagged internally as seed data and live alongside anything you add from Discovery. You can dismiss individual titles from the Library at any time." }));
-    wrap.appendChild(starterCard);
-
-    // --- Curated catalog importer ----------------------------------------
-    wrap.appendChild(renderCatalogImporter());
-
-    // --- Hidden books -----------------------------------------------------
-    const hiddenIds = Object.keys(store.get().hidden || {});
-    const hiddenCard = util.el("div", { class: "card settings-card stack" });
-    hiddenCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Hidden books" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Titles you've dismissed from your library. Restore any of them here." })
-      ]),
-      util.el("span", { class: "settings-badge " + (hiddenIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: hiddenIds.length ? `${hiddenIds.length} hidden` : "None" })
-    ]));
-    if (!hiddenIds.length) {
-      hiddenCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing is hidden right now. Dismiss a card from the Library to send it here." }));
-    } else {
-      const list = util.el("div", { class: "stack-sm" });
-      hiddenIds.forEach(id => {
-        const book = findBook(id);
-        if (!book) {
-          // Orphaned id (discovered item fully removed). Show a minimal row.
-          list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
-            util.el("div", {}, [
-              util.el("div", { class: "t-small t-muted", text: "Untracked title" }),
-              util.el("div", { class: "t-tiny t-subtle", text: `id: ${id}` })
-            ]),
-            util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { unhideBook(id); renderView(); } }, "Forget")
-          ]));
-          return;
-        }
-        list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book.title }),
-            util.el("div", { class: "t-tiny t-subtle", text: `${book.author}${book._discovered ? " · from Discovery" : ""}` })
-          ]),
-          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
-            unhideBook(id);
-            ui.toast(`Restored ${book.title}`);
+      }),
+      [
+        util.el("button", {
+          class: "btn btn-sm btn-primary",
+          disabled: (starterLoaded && loadedCount === starterCount) ? "disabled" : null,
+          onclick: () => {
+            const added = loadStarterLibrary();
+            ui.toast(added ? `Loaded ${added} title${added === 1 ? "" : "s"}` : "Already fully loaded");
             renderView();
-          } }, "Restore")
+          }
+        }, starterLoaded ? "Top up" : "Load"),
+        starterLoaded ? util.el("button", {
+          class: "btn btn-sm btn-ghost",
+          onclick: () => ui.modal({
+            title: "Remove the starter library?",
+            body: "<p class=\"t-muted\">Every starter title is removed along with any reading state or tags you attached. Discovery adds are untouched.</p>",
+            primary: { label: "Remove", onClick: () => {
+              ui.toast(`Removed ${unloadStarterLibrary()} starter titles`);
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          })
+        }, "Remove") : null
+      ].filter(Boolean)
+    ));
+
+    // Row 2 — Hidden books (with inline expand if any)
+    const hiddenExpand = hiddenIds.length ? (() => {
+      const d = util.el("div", { class: "settings-mgmt-expand" });
+      hiddenIds.slice(0, 8).forEach(id => {
+        const book = findBook(id);
+        const r = util.el("div", { class: "settings-mgmt-expand-row" });
+        r.appendChild(util.el("div", {}, [
+          util.el("div", { class: "t-small t-serif", text: book ? book.title : "Untracked title" }),
+          util.el("div", { class: "t-tiny t-subtle", text: book ? book.author : `id: ${id}` })
         ]));
+        r.appendChild(util.el("button", { class: "btn btn-xs btn-primary", onclick: () => {
+          if (book) { unhideBook(id); ui.toast(`Restored ${book.title}`); }
+          else store.update(s => { delete s.hidden[id]; });
+          renderView();
+        }}, "Restore"));
+        d.appendChild(r);
       });
-      hiddenCard.appendChild(list);
+      if (hiddenIds.length > 8) {
+        d.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { paddingTop: "var(--s-2)" },
+          text: `+ ${hiddenIds.length - 8} more` }));
+      }
       if (hiddenIds.length > 1) {
-        hiddenCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
-          ui.modal({
+        d.appendChild(util.el("button", { class: "btn btn-xs btn-ghost", style: { marginTop: "var(--s-2)" },
+          onclick: () => ui.modal({
             title: "Restore all hidden books?",
             body: "<p class=\"t-muted\">Brings every dismissed title back into your library.</p>",
             primary: { label: "Restore all", onClick: () => {
@@ -3239,99 +3332,115 @@
               renderView();
             }},
             secondary: { label: "Cancel" }
-          });
-        }}, "Restore all"));
+          })
+        }, "Restore all"));
       }
-    }
-    wrap.appendChild(hiddenCard);
+      return d;
+    })() : null;
 
-    // --- Rejected Daily Picks -------------------------------------------
-    // Books the user said "Not for me" to on Home. They stay in the
-    // library but are suppressed from the top-3 until restored here.
-    const rejectedPickIds = Object.keys(store.get().dailyPicksRejected || {});
-    const rejectCard = util.el("div", { class: "card settings-card stack" });
-    rejectCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Rejected Daily Picks" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Books you marked \u201CNot for me\u201D on Home. They're still in your Library and Compare, just hidden from the Daily Picks top-3 until you restore them here." })
-      ]),
-      util.el("span", { class: "settings-badge " + (rejectedPickIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: rejectedPickIds.length ? `${rejectedPickIds.length} rejected` : "None" })
-    ]));
-    if (!rejectedPickIds.length) {
-      rejectCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing rejected. Use the × on any Daily Pick card to send it here." }));
-    } else {
-      const list = util.el("div", { class: "stack-sm" });
-      rejectedPickIds.forEach(id => {
+    libCard.appendChild(mgmtRow(
+      "Hidden books",
+      hiddenIds.length
+        ? `${hiddenIds.length} title${hiddenIds.length === 1 ? "" : "s"} dismissed from your library.`
+        : "None dismissed. Dismiss a card from the Library to send it here.",
+      util.el("span", {
+        class: "settings-badge " + (hiddenIds.length ? "settings-badge-missing" : "settings-badge-ok"),
+        text: hiddenIds.length ? `${hiddenIds.length} hidden` : "None"
+      }),
+      [],
+      hiddenExpand
+    ));
+
+    // Row 3 — Rejected Daily Picks (with inline expand if any)
+    const rejectedExpand = rejectedPickIds.length ? (() => {
+      const d = util.el("div", { class: "settings-mgmt-expand" });
+      rejectedPickIds.slice(0, 8).forEach(id => {
         const book = findBook(id);
-        const row = util.el("div", { class: "settings-hidden-row" }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book ? book.title : "Untracked title" }),
-            util.el("div", { class: "t-tiny t-subtle", text: book ? (book.author + (book._catalog ? " · curated" : book._discovered ? " · from Discovery" : "")) : `id: ${id}` })
-          ]),
-          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
-            restoreDailyPick(id);
-            ui.toast(book ? `${book.title} is eligible for picks again` : "Restored");
-            renderView();
-          } }, "Restore")
-        ]);
-        list.appendChild(row);
-      });
-      rejectCard.appendChild(list);
-      if (rejectedPickIds.length > 1) {
-        rejectCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
-          store.update(st => { st.dailyPicksRejected = {}; });
-          ui.toast("All rejected picks restored");
+        const r = util.el("div", { class: "settings-mgmt-expand-row" });
+        r.appendChild(util.el("div", {}, [
+          util.el("div", { class: "t-small t-serif", text: book ? book.title : "Untracked title" }),
+          util.el("div", { class: "t-tiny t-subtle", text: book
+            ? (book.author + (book._catalog ? " \u00b7 curated" : book._discovered ? " \u00b7 Discovery" : ""))
+            : `id: ${id}` })
+        ]));
+        r.appendChild(util.el("button", { class: "btn btn-xs btn-primary", onclick: () => {
+          restoreDailyPick(id);
+          ui.toast(book ? `${book.title} is eligible for picks again` : "Restored");
           renderView();
-        } }, "Restore all"));
+        }}, "Restore"));
+        d.appendChild(r);
+      });
+      if (rejectedPickIds.length > 8) {
+        d.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { paddingTop: "var(--s-2)" },
+          text: `+ ${rejectedPickIds.length - 8} more` }));
       }
-    }
-    wrap.appendChild(rejectCard);
+      if (rejectedPickIds.length > 1) {
+        d.appendChild(util.el("button", { class: "btn btn-xs btn-ghost", style: { marginTop: "var(--s-2)" },
+          onclick: () => {
+            store.update(st => { st.dailyPicksRejected = {}; });
+            ui.toast("All rejected picks restored");
+            renderView();
+          }
+        }, "Restore all"));
+      }
+      return d;
+    })() : null;
 
-    // --- Quick links ------------------------------------------------------
-    const links = util.el("div", { class: "card settings-card stack" });
-    links.appendChild(util.el("h3", { text: "Other settings" }));
-    links.appendChild(util.el("p", { class: "t-small t-muted", text: "Your reader profile, data export, and full privacy controls live in their own sections." }));
-    links.appendChild(util.el("div", { class: "row-wrap" }, [
-      util.el("a", { class: "btn btn-sm", href: "#/profile" }, "Reader profile"),
-      util.el("a", { class: "btn btn-sm", href: "#/vault" }, "Privacy & Vault"),
-      util.el("a", { class: "btn btn-sm", href: "#/transparency" }, "Transparency & data")
+    libCard.appendChild(mgmtRow(
+      "Rejected Daily Picks",
+      rejectedPickIds.length
+        ? `${rejectedPickIds.length} title${rejectedPickIds.length === 1 ? "" : "s"} hidden from Home picks.`
+        : "None rejected. Use the \u00d7 on any Home Pick card to send it here.",
+      util.el("span", {
+        class: "settings-badge " + (rejectedPickIds.length ? "settings-badge-missing" : "settings-badge-ok"),
+        text: rejectedPickIds.length ? `${rejectedPickIds.length} rejected` : "None"
+      }),
+      [],
+      rejectedExpand
+    ));
+
+    wrap.appendChild(libCard);
+
+    // ── Curated catalog importer ────────────────────────────────────────
+    wrap.appendChild(renderCatalogImporter());
+
+    // ── Navigation links (no card) ──────────────────────────────────────
+    wrap.appendChild(util.el("div", { class: "settings-footer-nav" }, [
+      util.el("span", { class: "t-tiny t-subtle", text: "Also:" }),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/profile" }, "Reader profile"),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/vault" }, "Privacy & Vault"),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/transparency" }, "Transparency")
     ]));
-    wrap.appendChild(links);
 
-    // --- Danger zone: wipe the entire library ----------------------------
-    // Clears every book (discovered + seed + catalog override) plus any
-    // per-book state (reading status, tags, hidden, rejected picks, cached
-    // embeddings). Leaves API keys, the taste profile, journal, and
-    // vault alone. Followed by a reload so every view re-reads state.
-    const wipeCard = util.el("div", { class: "card settings-card stack" });
-    wipeCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+    // ── Danger zone (no card, red accent border) ────────────────────────
+    const dangerZone = util.el("div", { class: "settings-danger-zone" });
+    dangerZone.appendChild(util.el("div", { class: "settings-danger-head" }, [
       util.el("div", {}, [
-        util.el("h3", { text: "Delete entire library" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Wipes every book from this device — Discovery saves, seed library, and the curated catalogue — along with their reading statuses, tags, and cached embeddings. Your profile, API keys, journal, and vault stay intact. Use this before uploading a new catalogue from scratch." })
-      ])
-    ]));
-    wipeCard.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)" } }, [
-      util.el("button", { class: "btn btn-sm", style: { color: "var(--danger)", borderColor: "var(--danger)" }, onclick: () => {
-        ui.modal({
+        util.el("div", { class: "t-small", style: { color: "var(--danger, #ef4444)", fontWeight: "600" },
+          text: "Delete entire library" }),
+        util.el("div", { class: "t-tiny t-subtle", style: { marginTop: "2px" },
+          text: "Wipes every book \u2014 Discovery saves, seed library, and curated catalogue \u2014 along with reading statuses, tags, and cached embeddings. Profile, API keys, journal, and vault stay intact." })
+      ]),
+      util.el("button", {
+        class: "btn btn-sm",
+        style: { color: "var(--danger, #ef4444)", borderColor: "var(--danger, #ef4444)", flexShrink: "0" },
+        onclick: () => ui.modal({
           title: "Delete the entire library?",
-          body: "<p class=\"t-muted\">This removes every book saved to this device and clears their states, tags, hidden flags, rejected picks, and embeddings. Your profile, API keys, journal, and vault are untouched. This cannot be undone.</p>",
+          body: "<p class=\"t-muted\">Removes every book on this device and clears their states, tags, hidden flags, rejected picks, and embeddings. Profile, API keys, journal, and vault are untouched. This cannot be undone.</p>",
           primary: { label: "Delete everything", onClick: () => {
             store.update(st => {
-              st.discovered = [];
-              st.bookStates = {};
-              st.tags = {};
-              st.hidden = {};
-              st.dailyPicksRejected = {};
+              st.discovered = []; st.bookStates = {}; st.tags = {};
+              st.hidden = {}; st.dailyPicksRejected = {};
             });
-            try { localStorage.removeItem("lumen:catalog-override"); } catch (_) { /* ignore */ }
-            ui.toast("Library deleted — reloading…");
+            try { localStorage.removeItem("lumen:catalog-override"); } catch (_) {}
+            ui.toast("Library deleted \u2014 reloading\u2026");
             setTimeout(() => location.reload(), 500);
           }},
           secondary: { label: "Cancel" }
-        });
-      }}, "Delete entire library")
+        })
+      }, "Delete entire library")
     ]));
-    wrap.appendChild(wipeCard);
+    wrap.appendChild(dangerZone);
 
     return wrap;
   }
@@ -3365,9 +3474,11 @@
       util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Bianca conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
       util.el("h3", { text: "What the vault passcode does and does not do" }),
       util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." }),
-      util.el("h3", { text: "About the Discovery tab — calling Claude from your browser" }),
-      util.el("p", { class: "t-muted", text: "The Discovery tab calls the Anthropic Messages API directly from this page using an opt-in header ('anthropic-dangerous-direct-browser-access'). That convenience carries a real tradeoff: your API key sits inside your browser's localStorage, and any script loaded on this page — including any browser extension — can read it. The key is also sent with every request, so any network intermediary could observe it." }),
-      util.el("p", { class: "t-muted", text: "Use a key dedicated to personal experimentation, set a low monthly spend limit in the Anthropic console, and never paste a team or production key here. If you want real safety, run a small server-side proxy and point Lumen at that instead. Google Books calls also go directly from your browser, but that API does not require authentication." })
+      util.el("h3", { text: "About Discovery and Bianca — calling Claude from your browser" }),
+      util.el("p", { class: "t-muted", text: "The Discovery tab and Bianca (the AI reading assistant) call the Anthropic Messages API directly from this page using an opt-in header ('anthropic-dangerous-direct-browser-access'). That convenience carries a real tradeoff: your API key sits inside your browser's localStorage, and any script loaded on this page — including any browser extension — can read it. The key is also sent with every request, so any network intermediary could observe it." }),
+      util.el("p", { class: "t-muted", text: "Use a key dedicated to personal experimentation, set a low monthly spend limit in the Anthropic console, and never paste a team or production key here. If you want real safety, run a small server-side proxy and point Lumen at that instead. Google Books calls also go directly from your browser, but that API does not require authentication." }),
+      util.el("h3", { text: "The Master Key and Demo Mode" }),
+      util.el("p", { class: "t-muted", text: "During the Discovery Phase, an operator can configure a Master Key via the admin panel (accessible via the 5-click logo trapdoor). The Master Key is a single Claude API key stored in the browser on the operator's device. When Demo Mode is on, Bianca and Discovery work for every visitor automatically — no visitor needs to supply their own key. The session cap (default: 10 calls/hour) limits how many AI calls any one visitor can make, protecting against runaway spend. The Master Key never leaves the operator's browser." })
     ]);
     wrap.appendChild(privacy);
 
