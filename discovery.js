@@ -419,7 +419,6 @@
   // what is safe to overwrite vs. what the human has edited.
   // ----------------------------------------------------------------
   async function enrichCatalogEntry(input) {
-    _checkThrottle();
     if (!input || !input.title) throw new Error("missing-title");
 
     // 1) Look up cover + year + description on Google Books.
