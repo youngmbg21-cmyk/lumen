@@ -2785,6 +2785,24 @@
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
   }
 
+  function downloadScoredJson() {
+    const ready = readyBooks();
+    let payload;
+    if (ready.length) {
+      payload = { version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books: ready };
+    } else {
+      const raw = localStorage.getItem("lumen:catalog-override");
+      if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+      try { payload = JSON.parse(raw); } catch (e) { ui.toast("Couldn't read stored catalog"); return; }
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "lumen-scores.json";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+  }
+
   function renderCatalogImporter() {
     const Disco = window.LumenDiscovery;
     const overrideActive = !!localStorage.getItem("lumen:catalog-override");
@@ -2870,6 +2888,40 @@
       disabled: !catalogImport.parsed.some(r => r.status === "ready") ? "disabled" : null,
       onclick: () => downloadCatalogJS()
     }, "Download catalog.js"));
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm",
+      disabled: (!catalogImport.parsed.some(r => r.status === "ready") && !localStorage.getItem("lumen:catalog-override")) ? "disabled" : null,
+      onclick: () => downloadScoredJson()
+    }, "Download scored JSON"));
+    const uploadLabel = util.el("label", { class: "btn btn-sm", style: { cursor: "pointer" }, title: "Upload a previously downloaded lumen-scores.json to restore scores without re-enriching" });
+    uploadLabel.appendChild(document.createTextNode("Upload scored JSON"));
+    const uploadInput = util.el("input", {
+      type: "file", accept: ".json,application/json",
+      style: { display: "none" },
+      onchange: (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            if (!parsed || !Array.isArray(parsed.books) || !parsed.books.length) {
+              ui.toast("Invalid file — expected a Lumen scores JSON"); return;
+            }
+            localStorage.setItem("lumen:catalog-override", JSON.stringify(parsed));
+            ui.toast(`Loaded ${parsed.books.length} scored book${parsed.books.length === 1 ? "" : "s"} — reload to apply`, {
+              action: "Reload now", onAction: () => location.reload(), duration: 6000
+            });
+          } catch (_) {
+            ui.toast("Couldn't parse the file — is this a Lumen scores JSON?");
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      }
+    });
+    uploadLabel.appendChild(uploadInput);
+    btnRow.appendChild(uploadLabel);
     // "Refresh covers" — for catalogs that were imported before
     // the Google Books lookup was wired in (or whose thumbnails
     // 404'd). Hits Google Books for every book in the currently-
