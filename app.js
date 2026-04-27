@@ -1701,7 +1701,7 @@
     const hint = util.el("div", { class: "disco-hero-hint" });
     const modeHint = util.el("span", { class: "disco-hero-mode", text: "" });
     const hintLead = util.el("span");
-    const hasAiKey = !!(Disco.getAdminKey && Disco.getAdminKey()) || !!Disco.getApiKey();
+    const hasAiKey = !!(Disco.hasKey && Disco.hasKey());
     if (!hasAiKey) {
       hintLead.textContent = "Heads up — ";
       hint.appendChild(hintLead);
@@ -1809,7 +1809,7 @@
     async function runSearch() {
       const q = searchInput.value.trim();
       if (!q) { ui.toast("Enter a title, author, or topic"); return; }
-      const hasKey = !!(Disco.getAdminKey && Disco.getAdminKey()) || !!Disco.getApiKey();
+      const hasKey = !!(Disco.hasKey && Disco.hasKey());
       if (!hasKey) {
         ui.toast("Add your Claude API key in Admin first", {
           action: "Open Settings",
@@ -2566,7 +2566,7 @@
 
   async function enrichPending() {
     const Disco = window.LumenDiscovery;
-    if (!Disco || !Disco.getApiKey()) {
+    if (!Disco || !Disco.hasKey()) {
       ui.toast("Add your Claude API key in Settings → Claude API key to enable enrichment");
       return;
     }
@@ -2902,9 +2902,7 @@
     preview.appendChild(buildImporterPreview());
     card.appendChild(preview);
 
-    const hasAnyKey = Disco && (
-      (Disco.getAdminKey && Disco.getAdminKey()) || Disco.getApiKey()
-    );
+    const hasAnyKey = Disco && (Disco.hasKey && Disco.hasKey());
     if (!hasAnyKey) {
       card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs an API key configured. CSV-full imports work without it." }));
     }
@@ -4219,7 +4217,7 @@
         lastQuery: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.lastQuery) || "",
         mode: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.mode) || null,
         resultCount: (typeof discoveryState !== "undefined" && discoveryState && (discoveryState.raw || []).length) || 0,
-        hasApiKey: !!(window.LumenDiscovery && window.LumenDiscovery.getApiKey && window.LumenDiscovery.getApiKey())
+        hasApiKey: !!(window.LumenDiscovery && window.LumenDiscovery.hasKey && window.LumenDiscovery.hasKey())
       },
       compare: {
         slots: compareSlotsDetail,

@@ -651,6 +651,7 @@
   window.LumenDiscovery = {
     // User key
     setApiKey, getApiKey, clearApiKey,
+    hasKey: () => resolveProvider().via !== "none",
     // Master key + Demo Mode + Session Cap (operator, Discovery Phase)
     setMasterKey, getMasterKey, clearMasterKey,
     setDemoMode, getDemoMode,
