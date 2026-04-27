@@ -3118,8 +3118,6 @@
     // Styled identically to the Claude card above. setApiKey("") in
     // embeddings.js doubles as "clear" (removes the localStorage entry),
     // so there's no separate clearApiKey() to call.
-    const Embed = window.LumenEmbeddings;
-    const hasVoyage = () => !!(Embed && Embed.getApiKey && Embed.getApiKey());
     const voyageCard = util.el("div", { class: "card settings-card stack" });
     voyageCard.appendChild(util.el("div", { class: "settings-card-head" }, [
       util.el("div", {}, [
