@@ -2717,18 +2717,19 @@
       } catch (e) { fails += 1; }
     }
 
-    // Persist: whether the catalog came from the committed file or an
-    // existing override, the refreshed version goes into the override
-    // slot so reloads see the new covers.
+    // Persist to localStorage for this device session.
     try {
       const payload = { version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books: catalog };
       localStorage.setItem("lumen:catalog-override", JSON.stringify(payload));
-    } catch (e) { /* quota */ }
+    } catch (e) { /* quota — user must rely on the downloaded catalog.js */ }
 
-    ui.toast(`Added ${hits} cover${hits === 1 ? "" : "s"}${fails ? ` · ${fails} not found` : ""} — reload to see them`, {
-      action: "Reload now",
-      onAction: () => location.reload(),
-      duration: 6000
+    if (hits > 0) {
+      // Auto-download updated catalog.js so covers become permanent on all devices after one commit.
+      downloadCatalogJS(catalog);
+    }
+
+    ui.toast(`Added ${hits} cover${hits === 1 ? "" : "s"}${fails ? ` · ${fails} not found` : ""}. catalog.js downloaded — commit it to make covers permanent.`, {
+      duration: 8000
     });
   }
 
@@ -2752,18 +2753,22 @@
     }
   }
 
-  function downloadCatalogJS() {
-    // Prefer the live importer session; fall back to the active override.
-    let books = readyBooks();
-    if (!books.length) {
-      const raw = localStorage.getItem("lumen:catalog-override");
-      if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
-      try {
-        const parsed = JSON.parse(raw);
-        books = (parsed && Array.isArray(parsed.books)) ? parsed.books : [];
-      } catch (e) {}
+  function downloadCatalogJS(prebuiltBooks) {
+    // Accept a prebuilt array (e.g. from refreshCatalogCovers), otherwise
+    // prefer the live importer session, then fall back to the active override.
+    let books = prebuiltBooks || null;
+    if (!books) {
+      books = readyBooks();
+      if (!books.length) {
+        const raw = localStorage.getItem("lumen:catalog-override");
+        if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+        try {
+          const parsed = JSON.parse(raw);
+          books = (parsed && Array.isArray(parsed.books)) ? parsed.books : [];
+        } catch (e) {}
+      }
     }
-    if (!books.length) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+    if (!books || !books.length) { ui.toast("No scored books to download — enrich your catalog first"); return; }
 
     // Generate a drop-in replacement for data/catalog.js, preserving
     // all helper functions so the file is fully compatible.
