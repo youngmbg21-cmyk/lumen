@@ -1744,12 +1744,18 @@
       if (!discoveryState.raw.length) return;
       const fresh = store.get();
       if (discoveryState.mode === "broad") {
-        // Restore the original Google Books order.
+        // Restore the original Google Books order, exact match always first.
         const orderIndex = new Map(discoveryState.originalOrder.map((id, i) => [id, i]));
-        discoveryState.raw.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
-      } else {
-        // Tailored: sort by computed fit against the user profile.
         discoveryState.raw.sort((a, b) => {
+          if (a.isExactMatch) return -1;
+          if (b.isExactMatch) return 1;
+          return (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0);
+        });
+      } else {
+        // Tailored: sort by computed fit, exact match always first.
+        discoveryState.raw.sort((a, b) => {
+          if (a.isExactMatch) return -1;
+          if (b.isExactMatch) return 1;
           const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
           const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
           return sb - sa;
@@ -1900,6 +1906,8 @@
         if (discoveryState.mode === "tailored") {
           const fresh = store.get();
           discoveryState.raw.sort((a, b) => {
+            if (a.isExactMatch) return -1;
+            if (b.isExactMatch) return 1;
             const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
             const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
             return sb - sa;

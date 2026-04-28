@@ -187,8 +187,14 @@
     return true;
   }
 
+  function _upgradeThumb(url) {
+    if (!url) return null;
+    return String(url).replace(/^http:/, "https:").replace(/zoom=\d+/, "zoom=5");
+  }
+
   function _mapGBItem(item) {
     const v = item.volumeInfo || {};
+    const rawThumb = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
     return {
       id:          "gb_" + item.id,
       title:       v.title || "Untitled",
@@ -196,7 +202,7 @@
       authors:     v.authors || [],
       year:        (v.publishedDate || "").slice(0, 4),
       description: v.description || "No description available.",
-      thumbnail:   (v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || null,
+      thumbnail:   _upgradeThumb(rawThumb),
       categories:  v.categories || [],
       sourceUrl:   v.infoLink || v.canonicalVolumeLink || null,
       source:      "Google Books"
@@ -282,6 +288,7 @@
           })
           .sort((a, b_) => b_.score - a.score);
         exactBook = scored[0].b;
+        exactBook.isExactMatch = true;
       }
     } catch (e) {
       // Non-fatal — fall through to similarity search alone.
@@ -454,10 +461,7 @@
       } catch (e) { return []; }
     }
 
-    function upgradeThumb(url) {
-      if (!url) return null;
-      return String(url).replace(/^http:/, "https:").replace(/zoom=\d+/, "zoom=5");
-    }
+    const upgradeThumb = _upgradeThumb;
 
     function pickBest(items) {
       if (!items.length) return null;
