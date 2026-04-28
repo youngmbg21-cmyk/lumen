@@ -618,7 +618,7 @@ body {
 
 .app-main {
   grid-area: main;
-  padding: var(--s-7) var(--s-6);
+  padding: var(--s-4) var(--s-6) var(--s-7);
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -628,8 +628,8 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--s-5);
-  margin-bottom: var(--s-6);
-  padding-bottom: var(--s-5);
+  margin-bottom: var(--s-5);
+  padding-bottom: var(--s-4);
   border-bottom: 1px solid var(--border);
 }
 .page-head h1 {
@@ -4544,7 +4544,7 @@ body[data-privacy-blur="on"] .app-main::after {
   }
 }
 @media (max-width: 760px) {
-  .app-main { padding: var(--s-5) var(--s-4); }
+  .app-main { padding: var(--s-3) var(--s-4) var(--s-6); }
   .page-head h1 { font-size: 36px; }
   .section-header { font-size: 32px; }
   .cmp-slots { grid-template-columns: 1fr; }
