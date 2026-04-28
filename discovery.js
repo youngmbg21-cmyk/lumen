@@ -147,18 +147,29 @@
   function _recordThrottledCall() { /* no-op */ }
   function _checkThrottle() { /* no-op */ }
 
-  // Keywords that indicate a clearly non-fiction, non-genre result to discard.
+  // Category-level signals for non-romance/non-fiction books.
   const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
 
+  // Description-level signals used when Google Books returns no category metadata.
+  // DROP wins over KEEP — e.g. "encyclopedia of romance" is still a reference work.
+  const DESC_DROP = /encyclopedia|handbook|workbook|guidebook|self.?help|self.?improvement|how.to|therapy|therapist|detective|murder|mystery|thriller|crime|investigation|horror|parenting|cookbook|recipe|nutrition|fitness|academic|dissertation|research study/i;
+  const DESC_KEEP = /romance novel|romantic comedy|rom.?com|love story|falling in love|meet cute|enemies.to.lovers|second chance|fake dating|steamy|swoon|happily ever after|love interest|fated|heart.*flutter|forbidden love|billionaire.*love|small.town.*love|marriage.*romance|fake.*relationship|arranged.*marriage/i;
+
   function isRomanceEligible(item) {
-    // Exclude pre-1950 books — these are almost always old bibliographic
-    // reference works or literary criticism that sneak through on "romance fiction" queries.
     const year = parseInt(item.year, 10);
     if (!isNaN(year) && year < 1950) return false;
+
     const cats = (item.categories || []).join(" ");
-    if (!cats) return true;
-    if (ROMANCE_DROP.test(cats)) return false;
-    return true;
+    if (cats) return !ROMANCE_DROP.test(cats);
+
+    // No category metadata — use description signals.
+    // DESC_DROP eliminates reference works, thrillers, self-help, etc.
+    // DESC_KEEP confirms actual romance fiction language.
+    // Books with neither signal are too ambiguous to include.
+    const desc = item.description || "";
+    if (DESC_DROP.test(desc)) return false;
+    if (DESC_KEEP.test(desc)) return true;
+    return false;
   }
 
   function _upgradeThumb(url) {
