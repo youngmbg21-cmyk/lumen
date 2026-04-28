@@ -284,74 +284,108 @@
     return descSeeds ? `${descSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
   }
 
-  // A book is usable only if it has both a real cover and a description.
-  // Google Books returns thumbnail URLs even for editions with no cover art,
-  // and those coverless editions almost always lack a description too.
+  // Resolve a thumbnail URL to true only if the image is a real cover
+  // (naturalWidth >= 128). Google Books serves tiny placeholder images
+  // for editions with no cover art — this catches them definitively.
+  function _coverOk(url) {
+    if (!url) return Promise.resolve(false);
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload  = () => resolve(img.naturalWidth >= 128);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+  }
+
+  // Metadata pre-filter: reject books that definitely have no real cover.
+  // This catches the majority before we spend time on image validation.
   function _hasGoodMeta(b) {
     return !!b.thumbnail && b.description !== "No description available.";
   }
 
-  // Two-phase search:
-  //   Phase 1 — find the best matching edition of the searched book,
-  //             preferring editions that have a cover and description.
-  //   Phase 2 — fill remaining slots with in-genre books that have covers.
-  //             Falls back to a broader subgenre query if the first pass
-  //             doesn't yield enough results.
+  // Fetch a batch, apply metadata + genre filters, then validate every
+  // remaining cover image. Returns only books with confirmed real covers,
+  // up to `needed`. Already-seen titles (by lowercase) are excluded.
+  async function _collect(query, needed, seen, gkey) {
+    const batch = await _gbFetch(query, 40, gkey);
+    const candidates = batch
+      .filter(b => !seen.has(b.title.toLowerCase()))
+      .filter(_hasGoodMeta)
+      .filter(isRomanceEligible);
+
+    const coverResults = await Promise.all(
+      candidates.map(b => _coverOk(b.thumbnail).then(ok => ok ? b : null))
+    );
+
+    const out = [];
+    for (const b of coverResults.filter(Boolean)) {
+      if (out.length >= needed) break;
+      if (!seen.has(b.title.toLowerCase())) {
+        out.push(b);
+        seen.add(b.title.toLowerCase());
+      }
+    }
+    return out;
+  }
+
+  // searchBooks always returns up to maxResults books that have been
+  // confirmed to have real cover images. Cover validation is done here,
+  // inside the search, so callers never need to filter or re-validate.
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
     const gkey = getGoogleKey();
     const { title, author } = _parseQueryIntent(query.trim());
+    const seen = new Set();
 
-    // Phase 1 — pick the edition with the best title match AND metadata.
-    const strictParts = [`intitle:"${title.replace(/"/g, "")}"`];
-    if (author) strictParts.push(`inauthor:"${author.replace(/"/g, "")}"`);
+    // Phase 1 — find the best edition of the exact book.
+    // Score by title match quality first, then prefer editions with covers.
     let exactBook = null;
     try {
+      const strictParts = [`intitle:"${title.replace(/"/g, "")}"`];
+      if (author) strictParts.push(`inauthor:"${author.replace(/"/g, "")}"`);
       const exactItems = await _gbFetch(strictParts.join(" "), 10, gkey);
-      if (exactItems.length) {
-        const titleLc = title.toLowerCase();
-        const scored = exactItems
-          .map(b => {
-            const t = b.title.toLowerCase();
-            const titleScore = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
-            const metaScore  = (b.thumbnail ? 2 : 0) + (_hasGoodMeta(b) ? 1 : 0);
-            return { b, score: titleScore * 10 + metaScore };
-          })
-          .sort((a, b_) => b_.score - a.score);
-        exactBook = scored[0].b;
-        exactBook.isExactMatch = true;
+      const titleLc = title.toLowerCase();
+      const scored = exactItems
+        .map(b => {
+          const t = b.title.toLowerCase();
+          const titleScore = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+          const metaScore  = _hasGoodMeta(b) ? 1 : 0;
+          return { b, score: titleScore * 10 + metaScore };
+        })
+        .sort((a, z) => z.score - a.score);
+
+      for (const { b } of scored) {
+        if (await _coverOk(b.thumbnail)) { exactBook = b; break; }
       }
+      // Fall back to best title match even if no cover (user searched for it).
+      if (!exactBook && scored.length) exactBook = scored[0].b;
+      if (exactBook) { exactBook.isExactMatch = true; seen.add(exactBook.title.toLowerCase()); }
     } catch (e) {
       console.warn("[Lumen Discovery] Exact lookup failed:", e.message);
     }
 
-    // Phase 2 — collect in-genre books with covers and descriptions.
-    const similarCount  = maxResults - (exactBook ? 1 : 0);
-    const exactTitleLc  = exactBook ? exactBook.title.toLowerCase() : "";
-    const seen          = new Set([exactTitleLc]);
+    // Phase 2 — fill remaining slots with confirmed-cover books in-genre.
+    const needed = maxResults - (exactBook ? 1 : 0);
+    let similar = [];
 
-    function filterSim(items) {
-      return items
-        .filter(b => !seen.has(b.title.toLowerCase()))
-        .filter(_hasGoodMeta)
-        .filter(isRomanceEligible);
+    // Pass A: description-seeded query (most thematically relevant).
+    const simQuery = exactBook ? _similarityQuery(exactBook) : `${title} romance fiction`;
+    similar = await _collect(simQuery, needed, seen, gkey);
+
+    // Pass B: broader subgenre query if still short.
+    if (similar.length < needed) {
+      const subgenre = _subgenreFor(exactBook || { categories: [] });
+      const more = await _collect(`${subgenre} fiction`, needed - similar.length, seen, gkey);
+      similar = [...similar, ...more];
     }
 
-    // First pass — description-seeded query for thematic variety.
-    const simQuery   = exactBook ? _similarityQuery(exactBook) : `${title} romance fiction`;
-    const simItems   = await _gbFetch(simQuery, Math.max(similarCount * 6, 30), gkey);
-    let similar      = filterSim(simItems).slice(0, similarCount);
-    similar.forEach(b => seen.add(b.title.toLowerCase()));
-
-    // Second pass — broaden to subgenre-only if still short.
-    if (similar.length < similarCount) {
-      const subgenre    = _subgenreFor(exactBook || { categories: [] });
-      const moreItems   = await _gbFetch(`${subgenre} fiction`, Math.max((similarCount - similar.length) * 8, 30), gkey);
-      const more        = filterSim(moreItems).slice(0, similarCount - similar.length);
-      similar           = [...similar, ...more];
+    // Pass C: generic romance fallback — last resort.
+    if (similar.length < needed) {
+      const more = await _collect("romance fiction novel", needed - similar.length, seen, gkey);
+      similar = [...similar, ...more];
     }
 
-    return exactBook ? [exactBook, ...similar] : similar.slice(0, maxResults);
+    return exactBook ? [exactBook, ...similar] : similar;
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────
