@@ -6366,6 +6366,12 @@
     };
     const side = document.getElementById("side-nav");
     side.innerHTML = "";
+
+    // Clean up any previously rendered mobile drawer/scrim
+    document.querySelector(".nav-more-drawer")?.remove();
+    document.querySelector(".nav-more-scrim")?.remove();
+    document.body.classList.remove("nav-more-open");
+
     // Secret admin trapdoor: click the "Lumen" mark 5 times within 2 s.
     let _adminClickCount = 0, _adminClickTimer = null;
     const brand = util.el("div", { class: "app-brand", onclick: () => {
@@ -6383,8 +6389,13 @@
     ]);
     side.appendChild(brand);
 
+    const secondaryGroups = ["personal", "settings"];
+    const currentIsSecondary = secondaryGroups.some(g =>
+      ROUTES.filter(r => r.group === g).some(r => r.id === current.id)
+    );
+
     for (const [gid, g] of Object.entries(groups)) {
-      const group = util.el("div", { class: "nav-group" });
+      const group = util.el("div", { class: "nav-group", "data-group": gid });
       group.appendChild(util.el("div", { class: "nav-group-label", text: g.label }));
       for (const r of ROUTES.filter(r => r.group === gid)) {
         const link = util.el("a", {
@@ -6397,6 +6408,56 @@
       }
       side.appendChild(group);
     }
+
+    // "More" button — visible only on mobile (CSS hides it on desktop).
+    // Opens a slide-up drawer with personal + settings routes.
+    const moreBtn = util.el("button", {
+      class: "nav-more-btn" + (currentIsSecondary ? " has-active-child" : ""),
+      "aria-label": "More pages"
+    });
+    moreBtn.appendChild(util.el("span", { class: "nav-more-dots", text: "···" }));
+    moreBtn.appendChild(util.el("span", { text: "More" }));
+    side.appendChild(moreBtn);
+
+    // Scrim (appended to body so it covers the full viewport)
+    const scrim = util.el("div", { class: "nav-more-scrim" });
+    document.body.appendChild(scrim);
+
+    // Slide-up drawer with personal + settings links
+    const drawer = util.el("div", { class: "nav-more-drawer", "aria-label": "More navigation" });
+    drawer.appendChild(util.el("div", { class: "nav-more-drawer-handle" }));
+
+    for (const [gid, g] of Object.entries(groups)) {
+      if (!secondaryGroups.includes(gid)) continue;
+      const section = util.el("div", { class: "nav-more-drawer-section" });
+      section.appendChild(util.el("div", { class: "nav-more-drawer-label", text: g.label }));
+      for (const r of ROUTES.filter(r => r.group === gid)) {
+        section.appendChild(util.el("a", {
+          class: "nav-link",
+          href: `#/${r.id}`,
+          "aria-current": r.id === current.id ? "page" : null,
+          "data-route": r.id
+        }, [util.el("span", { text: r.label })]));
+      }
+      drawer.appendChild(section);
+    }
+    document.body.appendChild(drawer);
+
+    function openMore() {
+      document.body.classList.add("nav-more-open");
+      moreBtn.classList.add("is-active");
+    }
+    function closeMore() {
+      document.body.classList.remove("nav-more-open");
+      moreBtn.classList.remove("is-active");
+    }
+
+    moreBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      document.body.classList.contains("nav-more-open") ? closeMore() : openMore();
+    });
+    scrim.addEventListener("click", closeMore);
+    drawer.querySelectorAll(".nav-link").forEach(l => l.addEventListener("click", closeMore));
   }
 
   function renderTopbar() {
