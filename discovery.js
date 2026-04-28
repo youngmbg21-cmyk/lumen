@@ -288,17 +288,19 @@
     // Phase 2 — similar books based on the anchor's subgenre.
     const similarCount = maxResults - (exactBook ? 1 : 0);
     const simQuery = exactBook ? _similarityQuery(exactBook) : title + " subject:romance";
-    const fetchCount = Math.max(similarCount * 3, 12);
+    // Fetch generously — thumbnail + year + eligibility filters can drop many results.
+    const fetchCount = Math.max(similarCount * 6, 30);
     const simItems = await _gbFetch(simQuery, fetchCount, gkey);
 
     const exactTitleLc = exactBook ? exactBook.title.toLowerCase() : "";
     const similar = simItems
       .filter(b => b.title.toLowerCase() !== exactTitleLc)
+      .filter(b => !!b.thumbnail)
       .filter(isRomanceEligible)
       .slice(0, similarCount);
 
     const results = exactBook ? [exactBook, ...similar] : similar.slice(0, maxResults);
-    return results.length ? results : simItems.slice(0, maxResults);
+    return results.length ? results : simItems.filter(b => !!b.thumbnail).slice(0, maxResults);
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────
