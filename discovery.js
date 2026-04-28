@@ -177,38 +177,49 @@
     }
   }
 
-  // Keywords that indicate a result is fiction/romance/erotica and should be kept.
-  // Google Books categories are usually broad strings like "Fiction / Romance / General".
-  const ROMANCE_KEEP = /romance|erotica|erotic|fiction|love stor|adult fiction/i;
   // Keywords that indicate a clearly non-fiction, non-genre result to discard.
   const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
 
   function isRomanceEligible(item) {
     const cats = (item.categories || []).join(" ");
-    if (!cats) return true;           // no category data — let Claude decide
+    if (!cats) return true;
     if (ROMANCE_DROP.test(cats)) return false;
     return true;
   }
 
-  // 1) Google Books search restricted to romance/fiction. Unauthenticated
-  // requests share a low daily quota; pass a Google Books API key from
-  // Settings to raise the cap dramatically.
-  // Throws an Error with a human-readable message the UI can render.
-  async function searchBooks(query, maxResults = 6) {
-    if (!query || !query.trim()) return [];
-    const gkey = getGoogleKey();
-    // Fetch extra results because the post-filter may discard some.
-    const fetchCount = Math.max(maxResults * 2, 16);
-    // subject:romance biases Google Books toward the romance/erotica shelf
-    // without hard-blocking books filed under plain "Fiction".
-    const q = query.trim() + " subject:romance";
+  function _mapGBItem(item) {
+    const v = item.volumeInfo || {};
+    return {
+      id:          "gb_" + item.id,
+      title:       v.title || "Untitled",
+      author:      (v.authors && v.authors[0]) || "Unknown author",
+      authors:     v.authors || [],
+      year:        (v.publishedDate || "").slice(0, 4),
+      description: v.description || "No description available.",
+      thumbnail:   (v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || null,
+      categories:  v.categories || [],
+      sourceUrl:   v.infoLink || v.canonicalVolumeLink || null,
+      source:      "Google Books"
+    };
+  }
+
+  // Parse "Title — Author", "Title by Author", or bare title.
+  function _parseQueryIntent(query) {
+    const q = query.trim();
+    const dashMatch = q.match(/^(.+?)\s+[—–-]\s+(.+)$/);
+    if (dashMatch) return { title: dashMatch[1].trim(), author: dashMatch[2].trim() };
+    const byMatch = q.match(/^(.+?)\s+by\s+(.+)$/i);
+    if (byMatch) return { title: byMatch[1].trim(), author: byMatch[2].trim() };
+    return { title: q, author: null };
+  }
+
+  async function _gbFetch(q, maxResults, gkey) {
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(q)
-      + "&maxResults=" + fetchCount
+      + "&maxResults=" + maxResults
       + "&printType=books"
       + "&orderBy=relevance"
       + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
-
     let res;
     try {
       res = await fetch(url);
@@ -216,12 +227,10 @@
       console.error("[Lumen Discovery] Network error calling Google Books:", networkErr);
       throw new Error("Can't reach Google Books — check your connection or see the console for the exact error.");
     }
-
     if (!res.ok) {
       let detail = "";
       try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
       console.error("[Lumen Discovery] Google Books returned", res.status, detail);
-
       if (res.status === 429 || res.status === 403) {
         const err = new Error(gkey
           ? "Google Books rejected this key's quota (HTTP " + res.status + "). Check the key's daily limit in the Google Cloud console."
@@ -232,35 +241,67 @@
       }
       throw new Error(`Google Books returned HTTP ${res.status}.` + (detail ? ` ${detail}` : ""));
     }
-
     let data;
-    try {
-      data = await res.json();
-    } catch (parseErr) {
-      console.error("[Lumen Discovery] Malformed Google Books response:", parseErr);
+    try { data = await res.json(); } catch (e) {
       throw new Error("Google Books returned an unreadable response.");
     }
+    return (data.items || []).map(_mapGBItem);
+  }
 
-    const items = (data.items || []).map(item => {
-      const v = item.volumeInfo || {};
-      return {
-        id: "gb_" + item.id,
-        title: v.title || "Untitled",
-        author: (v.authors && v.authors[0]) || "Unknown author",
-        authors: v.authors || [],
-        year: (v.publishedDate || "").slice(0, 4),
-        description: v.description || "No description available.",
-        thumbnail: (v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || null,
-        categories: v.categories || [],
-        sourceUrl: v.infoLink || v.canonicalVolumeLink || null,
-        source: "Google Books"
-      };
-    });
+  // Pick a similarity search query from an anchor book's categories.
+  function _similarityQuery(anchor) {
+    const cats = (anchor.categories || []).join(" ");
+    if (/contemporary/i.test(cats))                    return "contemporary romance fiction";
+    if (/historical/i.test(cats))                      return "historical romance fiction";
+    if (/paranormal|supernatural|fantasy/i.test(cats)) return "paranormal romance fiction";
+    if (/suspense|thriller|mystery/i.test(cats))       return "romantic suspense fiction";
+    if (/erotic/i.test(cats))                          return "erotic romance fiction";
+    return "subject:romance fiction";
+  }
 
-    const filtered = items.filter(isRomanceEligible);
-    // Return filtered results; if filtering removed everything fall back to
-    // the unfiltered set so the user isn't left with a blank page.
-    return (filtered.length ? filtered : items).slice(0, maxResults);
+  // Two-phase search: find the exact book first, then fill the remaining
+  // slots with subgenre-matched similar titles.
+  async function searchBooks(query, maxResults = 6) {
+    if (!query || !query.trim()) return [];
+    const gkey = getGoogleKey();
+    const { title, author } = _parseQueryIntent(query.trim());
+
+    // Phase 1 — exact book lookup via intitle: (+ inauthor: if provided).
+    const strictParts = [`intitle:"${title.replace(/"/g, "")}"`];
+    if (author) strictParts.push(`inauthor:"${author.replace(/"/g, "")}"`);
+    let exactBook = null;
+    try {
+      const exactItems = await _gbFetch(strictParts.join(" "), 5, gkey);
+      if (exactItems.length) {
+        const titleLc = title.toLowerCase();
+        const scored = exactItems
+          .map(b => {
+            const t = b.title.toLowerCase();
+            const score = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+            return { b, score };
+          })
+          .sort((a, b_) => b_.score - a.score);
+        exactBook = scored[0].b;
+      }
+    } catch (e) {
+      // Non-fatal — fall through to similarity search alone.
+      console.warn("[Lumen Discovery] Exact lookup failed:", e.message);
+    }
+
+    // Phase 2 — similar books based on the anchor's subgenre.
+    const similarCount = maxResults - (exactBook ? 1 : 0);
+    const simQuery = exactBook ? _similarityQuery(exactBook) : title + " subject:romance";
+    const fetchCount = Math.max(similarCount * 3, 12);
+    const simItems = await _gbFetch(simQuery, fetchCount, gkey);
+
+    const exactTitleLc = exactBook ? exactBook.title.toLowerCase() : "";
+    const similar = simItems
+      .filter(b => b.title.toLowerCase() !== exactTitleLc)
+      .filter(isRomanceEligible)
+      .slice(0, similarCount);
+
+    const results = exactBook ? [exactBook, ...similar] : similar.slice(0, maxResults);
+    return results.length ? results : simItems.slice(0, maxResults);
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────

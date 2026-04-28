@@ -1653,7 +1653,7 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Discovery" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Search Google Books for any title, author, or topic. Claude reads the result and returns heat, tropes, and a one-line insight you can use to decide whether it belongs in your Library." })
+        util.el("p", { class: "lede", text: "Type a book title and Claude finds that exact book plus five similar reads. Each result is analyzed for heat, tropes, and a one-line insight." })
       ])
     ]));
 
@@ -1708,7 +1708,7 @@
       hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Admin"));
       hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
     } else {
-      hintLead.textContent = "Up to six Google Books results · Claude reads each for heat, tropes, and a one-line insight.";
+      hintLead.textContent = "Your book + 5 similar reads · Claude analyzes each for heat, tropes, and a one-line insight.";
       hint.appendChild(hintLead);
     }
     hint.appendChild(modeSegmented);
@@ -1883,7 +1883,7 @@
         // Stop enriching if the session budget ran out mid-batch.
         if (Disco.throttleRemaining && Disco.throttleRemaining() <= 0) {
           resultsLabel.textContent += " · session limit reached";
-          ui.toast("Hourly AI limit reached — results shown without full analysis", { duration: 5000 });
+          ui.toast("Daily AI limit reached — results shown without full analysis", { duration: 5000 });
           break;
         }
         try {
@@ -1892,7 +1892,7 @@
         } catch (err) {
           if (err && err.code === "throttled") {
             resultsLabel.textContent += " · session limit reached";
-            ui.toast("Hourly AI limit reached — results shown without full analysis", { duration: 5000 });
+            ui.toast("Daily AI limit reached — results shown without full analysis", { duration: 5000 });
             break;
           }
           discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
