@@ -2753,36 +2753,85 @@
   }
 
   function downloadCatalogJS() {
-    const books = readyBooks();
-    if (!books.length) { ui.toast("Nothing ready to download"); return; }
-    const header =
-      "/* Lumen curated catalog — generated via Settings → Import catalog. */\n" +
-      "/* Schema: data/CATALOG.md. Do not edit large sections by hand. */\n";
-    const body =
-      "(function () {\n" +
-      "  \"use strict\";\n" +
-      "  const CATALOG_BUILTIN = " + JSON.stringify(books, null, 2) + ";\n" +
-      "  const CATALOG_VERSION = 1;\n" +
-      "  function resolveCatalog() {\n" +
-      "    try {\n" +
-      "      const raw = localStorage.getItem(\"lumen:catalog-override\");\n" +
-      "      if (!raw) return CATALOG_BUILTIN;\n" +
-      "      const parsed = JSON.parse(raw);\n" +
-      "      if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;\n" +
-      "      return parsed.books;\n" +
-      "    } catch (e) { return CATALOG_BUILTIN; }\n" +
-      "  }\n" +
-      "  window.LumenData = window.LumenData || {};\n" +
-      "  window.LumenData.CATALOG = resolveCatalog();\n" +
-      "  window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;\n" +
-      "  window.LumenData.CATALOG_VERSION = CATALOG_VERSION;\n" +
-      "})();\n";
-    const blob = new Blob([header + body], { type: "text/javascript" });
+    // Prefer the live importer session; fall back to the active override.
+    let books = readyBooks();
+    if (!books.length) {
+      const raw = localStorage.getItem("lumen:catalog-override");
+      if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+      try {
+        const parsed = JSON.parse(raw);
+        books = (parsed && Array.isArray(parsed.books)) ? parsed.books : [];
+      } catch (e) {}
+    }
+    if (!books.length) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+
+    // Generate a drop-in replacement for data/catalog.js, preserving
+    // all helper functions so the file is fully compatible.
+    const ts = new Date().toISOString().slice(0, 10);
+    const out = [
+      "/* ============================================================",
+      "   Lumen — Curated catalog",
+      "   Generated " + ts + " via Settings → Admin → Curated catalog → Download catalog.js",
+      "   Drop this file into data/catalog.js and commit.",
+      "   Schema: data/CATALOG.md",
+      "   ============================================================ */",
+      "(function () {",
+      "  \"use strict\";",
+      "",
+      "  const CATALOG_BUILTIN = " + JSON.stringify(books, null, 2) + ";",
+      "",
+      "  const CATALOG_VERSION = 1;",
+      "",
+      "  function resolveCatalog() {",
+      "    try {",
+      "      const raw = localStorage.getItem(\"lumen:catalog-override\");",
+      "      if (!raw) return CATALOG_BUILTIN;",
+      "      const parsed = JSON.parse(raw);",
+      "      if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;",
+      "      return parsed.books;",
+      "    } catch (e) {",
+      "      return CATALOG_BUILTIN;",
+      "    }",
+      "  }",
+      "",
+      "  function getCatalogPage(catalog, page, pageSize) {",
+      "    const size  = (typeof pageSize === \"number\" && pageSize > 0) ? pageSize : 50;",
+      "    const start = Math.max(0, (page || 0)) * size;",
+      "    return catalog.slice(start, start + size);",
+      "  }",
+      "",
+      "  function searchCatalog(catalog, query) {",
+      "    if (!query || !query.trim()) return catalog.slice(0, 50);",
+      "    const q = query.trim().toLowerCase();",
+      "    return catalog.filter(b => {",
+      "      const title  = (b.title  || \"\").toLowerCase();",
+      "      const author = (b.author || \"\").toLowerCase();",
+      "      const tags   = [",
+      "        ...(b.trope_tags || []),",
+      "        ...(b.kink_tags  || []),",
+      "        ...(b.tone       || [])",
+      "      ].join(\" \").toLowerCase();",
+      "      return title.includes(q) || author.includes(q) || tags.includes(q);",
+      "    });",
+      "  }",
+      "",
+      "  window.LumenData = window.LumenData || {};",
+      "  window.LumenData.CATALOG         = resolveCatalog();",
+      "  window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;",
+      "  window.LumenData.CATALOG_VERSION = CATALOG_VERSION;",
+      "  window.LumenData.getCatalogPage  = getCatalogPage;",
+      "  window.LumenData.searchCatalog   = searchCatalog;",
+      "})();",
+      ""
+    ].join("\n");
+
+    const blob = new Blob([out], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "catalog.js";
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+    ui.toast("Downloaded — replace data/catalog.js with this file and deploy once");
   }
 
   function downloadScoredJson() {
