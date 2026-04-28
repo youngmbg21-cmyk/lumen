@@ -564,7 +564,9 @@ body {
   color: var(--text-mute);
   font-variant-numeric: tabular-nums;
 }
-.nav-more-btn { display: none; } /* shown only on mobile via media query */
+.nav-more-btn    { display: none; } /* shown only on mobile via media query */
+.nav-more-scrim  { display: none; } /* shown only on mobile via media query */
+.nav-more-drawer { display: none; } /* shown only on mobile via media query */
 
 .app-top {
   grid-area: top;
@@ -1446,6 +1448,11 @@ body {
   }
   .nav-link::before { display: none; }
   .nav-link .count  { display: none; }
+
+  /* More button, scrim, and drawer — revealed on mobile */
+  .nav-more-btn,
+  .nav-more-scrim,
+  .nav-more-drawer { display: block; }
 
   /* More button */
   .nav-more-btn {
