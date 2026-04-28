@@ -215,14 +215,18 @@ body.theme-plum .lumen-terminal::before { mix-blend-mode: overlay; opacity: 0.3;
   padding: 0 28px;
   border-right: 1px solid var(--border-faint);
 }
-.lumen-terminal .ticker-symbol {
+.lumen-terminal .ticker-title {
   color: var(--accent-deep);
   font-weight: 600;
   margin-right: 6px;
 }
 .lumen-terminal .ticker-val   { color: var(--text); font-weight: 500; }
-.lumen-terminal .ticker-delta { color: var(--sage); margin-left: 4px; }
-.lumen-terminal .ticker-delta.neg { color: var(--warn); }
+.lumen-terminal .ticker-trope {
+  color: var(--sage);
+  font-weight: 400;
+  margin-left: 6px;
+  font-style: italic;
+}
 
 /* Theme switcher — four palette dots */
 .lumen-terminal .theme-switcher {

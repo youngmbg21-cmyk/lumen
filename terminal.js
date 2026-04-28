@@ -418,13 +418,11 @@
     const list = filteredBooks();
     const top = list.slice(0, 12);
     const items = top.map(b => {
-      const delta = Math.floor(Math.random() * 12 - 3);
-      const sign = delta >= 0 ? "+" : "";
-      const cls  = delta >= 0 ? "" : "neg";
+      const topTrope = (b.trope || [])[0] || "";
       return `<span class="ticker-item">
-        <span class="ticker-symbol">${initials(b.title) + initials(b.author)}</span>
+        <span class="ticker-title">${b.title}</span>
         <span class="ticker-val">${b.fit}%</span>
-        <span class="ticker-delta ${cls}">${sign}${delta}</span>
+        ${topTrope ? `<span class="ticker-trope">${topTrope}</span>` : ""}
       </span>`;
     });
     const tickEl = $(root, "#ticker");
