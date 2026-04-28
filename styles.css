@@ -5312,6 +5312,14 @@ body[data-sidenav="overlay"] .lumen-terminal {
    the higher-specificity Signals sidenav rules above).
    ═══════════════════════════════════════════════════════════ */
 @media (max-width: 880px) {
+  /* Restore single-column grid even when Signals hides its sidebar */
+  body[data-sidenav="hidden"] .app,
+  body[data-sidenav="overlay"] .app {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: var(--shell-topbar) auto 1fr !important;
+    grid-template-areas: "top" "side" "main" !important;
+  }
+
   /* Ensure tab strip stays visible in ALL Signals sidenav states */
   .app-side,
   body[data-sidenav="hidden"] .app-side,
