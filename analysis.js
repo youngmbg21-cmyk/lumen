@@ -229,5 +229,25 @@
     };
   }
 
-  window.LumenAnalysis = { deepAnalysis, CATEGORIES };
+  // ── Heuristic Fit Score ───────────────────────────────────────
+  // Produces a 0-100 fit score from tag overlap alone — no AI
+  // description required. Used by the Discovery view and the
+  // catalog importer for books that haven't been Claude-enriched yet.
+  //
+  // Scoring breakdown (weights sum to 1.0):
+  // Delegates to engine.scoreBook via withDefaults so the score
+  // is identical to what Library and Compare show for the same book.
+  function heuristicFitScore(book, profile) {
+    if (!book || !profile) return 50;
+    const Engine = window.LumenEngine;
+    if (!Engine) return 50;
+    const st = window.Lumen && window.Lumen.store && window.Lumen.store.get && window.Lumen.store.get();
+    return Engine.scoreBook(
+      Engine.withDefaults(book),
+      Engine.normalizeProfile(profile),
+      (st && st.weights) || {}
+    ).fitScore;
+  }
+
+  window.LumenAnalysis = { deepAnalysis, heuristicFitScore, CATEGORIES };
 })();

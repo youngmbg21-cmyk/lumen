@@ -232,7 +232,7 @@ body.theme-plum::before {
   mix-blend-mode: overlay;
 }
 /* Ensure the app shell sits above the noise layer.
-   Overlays (modal host, toast host, Sara panel, Sara FAB) use
+   Overlays (modal host, toast host, Bianca panel, Bianca FAB) use
    position: fixed in their own rules — do NOT add them here, an
    ID-specificity override would kill their fixed layout and they'd
    lay out in-flow at the bottom of the document. */
@@ -564,6 +564,9 @@ body {
   color: var(--text-mute);
   font-variant-numeric: tabular-nums;
 }
+.nav-more-btn    { display: none; } /* shown only on mobile via media query */
+.nav-more-scrim  { display: none; } /* shown only on mobile via media query */
+.nav-more-drawer { display: none; } /* shown only on mobile via media query */
 
 .app-top {
   grid-area: top;
@@ -615,7 +618,7 @@ body {
 
 .app-main {
   grid-area: main;
-  padding: var(--s-7) var(--s-6);
+  padding: var(--s-4) var(--s-6) var(--s-7);
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -625,8 +628,8 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: var(--s-5);
-  margin-bottom: var(--s-6);
-  padding-bottom: var(--s-5);
+  margin-bottom: var(--s-5);
+  padding-bottom: var(--s-4);
   border-bottom: 1px solid var(--border);
 }
 .page-head h1 {
@@ -1346,49 +1349,259 @@ body {
 /* ============================================================
    Responsive shell
    ============================================================ */
+/* ═══════════════════════════════════════════════════════════
+   MOBILE — sticky top tab strip  (≤ 880 px)
+   Nav sits just below the topbar. Sticky, not fixed — works
+   reliably across all iOS/Android browsers with no z-index hacks.
+   ═══════════════════════════════════════════════════════════ */
 @media (max-width: 880px) {
+  /* Single-column grid: topbar → nav strip → content */
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: var(--shell-topbar) 1fr auto;
-    grid-template-areas:
-      "top"
-      "main"
-      "side";
+    grid-template-rows: var(--shell-topbar) auto 1fr;
+    grid-template-areas: "top" "side" "main";
   }
-  .app-side {
+
+  /* Sticky topbar */
+  .app-top {
     position: sticky;
-    bottom: 0;
-    top: auto;
-    height: auto;
-    flex-direction: row;
+    top: 0;
+    z-index: 101;
+  }
+
+  /* Sticky tab strip directly below topbar */
+  .app-side {
+    grid-area: side;
+    position: sticky !important;
+    top: var(--shell-topbar) !important;
+    z-index: 100 !important;
+    height: auto !important;
+    max-height: none;
+    flex-direction: row !important;
     overflow-x: auto;
     overflow-y: hidden;
-    padding: var(--s-2);
-    border-right: 0;
-    border-top: 1px solid var(--border);
-    gap: var(--s-1);
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 0 var(--s-2) !important;
+    gap: 0 !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-raised) !important;
+    transform: none !important;
+    pointer-events: auto !important;
   }
+  .app-side::-webkit-scrollbar { display: none; }
+
+  .app-main { padding: var(--s-4); }
+
   .app-brand, .nav-group-label { display: none; }
+
+  .app-brand, .nav-group-label { display: none; }
+
+  /* Groups displayed inline */
   .nav-group {
     display: flex;
-    gap: var(--s-1);
+    flex-shrink: 0;
+    gap: 0;
     padding: 0;
   }
+  .nav-group + .nav-group {
+    border-left: 1px solid var(--border);
+    margin-left: var(--s-2);
+    padding-left: var(--s-1);
+  }
+
+  /* Individual tab */
   .nav-link {
     flex-direction: column;
-    gap: 4px;
-    padding: 8px 10px;
-    font-size: 11px;
-    border-radius: var(--r-2);
-    min-width: 64px;
+    align-items: center;
+    justify-content: center;
+    padding: 10px 14px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    border-radius: 0;
+    white-space: nowrap;
+    min-height: 48px;
+    flex-shrink: 0;
     text-align: center;
+    position: relative;
+    box-shadow: none;
+    color: var(--text-soft);
   }
-  .nav-link[aria-current="page"] { box-shadow: none; background: var(--accent-soft); }
-  .nav-link .count { display: none; }
-  .app-main { padding: var(--s-4); }
+
+  /* Active: bottom accent bar */
+  .nav-link[aria-current="page"] {
+    color: var(--accent-deep);
+    background: transparent;
+    box-shadow: none;
+  }
+  .nav-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    border-radius: 2px 2px 0 0;
+    background: var(--accent-deep);
+  }
+  .nav-link::before { display: none; }
+  .nav-link .count  { display: none; }
+
+  /* More button, scrim, and drawer — revealed on mobile */
+  .nav-more-btn,
+  .nav-more-scrim,
+  .nav-more-drawer { display: block; }
+
+  /* More button */
+  .nav-more-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    padding: 10px 14px;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 600;
+    font-family: var(--font-sans);
+    color: var(--text-soft);
+    background: none;
+    border: none;
+    border-left: 1px solid var(--border);
+    margin-left: var(--s-2);
+    cursor: pointer;
+    min-height: 48px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .nav-more-btn .nav-more-dots {
+    font-size: 14px;
+    line-height: 1;
+    letter-spacing: 0;
+    font-weight: 700;
+    margin-bottom: 1px;
+  }
+  .nav-more-btn.is-active,
+  .nav-more-btn.has-active-child { color: var(--accent-deep); }
+  .nav-more-btn.is-active::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--accent-deep);
+  }
+
+  /* Scrim behind the "More" drawer */
+  .nav-more-scrim {
+    position: fixed;
+    inset: 0;
+    background: rgba(40, 16, 10, 0.35);
+    z-index: 190;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease;
+  }
+  body.nav-more-open .nav-more-scrim {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Slide-down dropdown from tab strip */
+  .nav-more-drawer {
+    position: fixed;
+    top: calc(var(--shell-topbar) + 48px);
+    right: 0;
+    width: min(280px, 90vw);
+    background: var(--bg-raised);
+    border: 1px solid var(--border);
+    border-top: none;
+    border-radius: 0 0 var(--r-3) var(--r-3);
+    box-shadow: 0 12px 40px rgba(60, 38, 22, 0.18);
+    z-index: 195;
+    padding: var(--s-3) var(--s-4) var(--s-4);
+    transform: translateY(-8px);
+    opacity: 0;
+    transition: transform 200ms ease, opacity 180ms ease;
+    pointer-events: none;
+  }
+  body.nav-more-open .nav-more-drawer {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .nav-more-drawer-handle { display: none; }
+  .nav-more-drawer-section { margin-bottom: var(--s-4); }
+  .nav-more-drawer-section:last-child { margin-bottom: 0; }
+  .nav-more-drawer-label {
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-mute);
+    padding: 0 var(--s-2);
+    margin-bottom: var(--s-2);
+  }
+  .nav-more-drawer .nav-link {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex: none;
+    min-height: 48px;
+    width: 100%;
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-2);
+    font-size: 13px;
+    letter-spacing: 0.05em;
+    gap: var(--s-3);
+    white-space: normal;
+    overflow: visible;
+    color: var(--text);
+  }
+  .nav-more-drawer .nav-link[aria-current="page"] {
+    background: var(--accent-glow);
+    color: var(--accent-deep);
+  }
+  .nav-more-drawer .nav-link[aria-current="page"]::after { display: none; }
+
+  /* Signals: hide desktop pull-tab; keep tab strip visible in all states */
+  .sidenav-pulltab { display: none !important; }
+  .sidenav-scrim   { display: none !important; }
+  body[data-sidenav="hidden"] .app,
+  body[data-sidenav="overlay"] .app { grid-template-columns: 1fr; }
+
+  /* More drawer nav links */
+  .nav-more-drawer .nav-link {
+    flex-direction: row;
+    justify-content: flex-start;
+    flex-shrink: 0;
+    min-height: 44px;
+    width: 100%;
+    padding: var(--s-2) var(--s-3);
+    border-radius: var(--r-2);
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    gap: var(--s-3);
+    white-space: normal;
+    overflow: visible;
+    color: var(--text);
+  }
+  .nav-more-drawer .nav-link[aria-current="page"] {
+    background: var(--accent-glow);
+    color: var(--accent-deep);
+  }
+  .nav-more-drawer .nav-link[aria-current="page"]::after { display: none; }
+
+  /* Page layout */
   .page-head { flex-direction: column; align-items: flex-start; gap: var(--s-3); }
   h1 { font-size: 26px; }
 }
+
 @media (max-width: 520px) {
   .toast-host { right: var(--s-3); left: var(--s-3); }
   .toast { max-width: none; }
@@ -1590,6 +1803,18 @@ body {
   gap: var(--s-3);
 }
 @media (max-width: 720px) { .cmp-slots { grid-template-columns: 1fr; } }
+
+@keyframes cmp-pulse {
+  0%, 100% { transform: translateX(0); box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  15%       { transform: translateX(-3px); }
+  30%       { transform: translateX(3px); }
+  45%       { transform: translateX(-2px); }
+  60%       { transform: translateX(2px); }
+  75%       { transform: translateX(0); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+.cmp-run-pulse {
+  animation: cmp-pulse 2s ease-in-out infinite;
+}
 
 .cmp-slot {
   padding: var(--s-4);
@@ -2256,9 +2481,9 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* ============================================================
-   Floating Sara — launcher + docked panel
+   Floating Bianca — launcher + docked panel
    ============================================================ */
-.sara-launcher {
+.bianca-launcher {
   display: inline-flex;
   align-items: center;
   gap: var(--s-2);
@@ -2272,8 +2497,8 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: background var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease);
 }
-.sara-launcher:hover { background: var(--accent-dim); border-color: var(--accent); }
-.sara-launcher .dot {
+.bianca-launcher:hover { background: var(--accent-dim); border-color: var(--accent); }
+.bianca-launcher .dot {
   display: inline-block;
   width: 8px; height: 8px;
   border-radius: 50%;
@@ -2282,7 +2507,7 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* ============================================================
-   Sara — floating reading-companion panel
+   Bianca — floating reading-companion panel
    - 3 width states: dock (380), wide (560), focus (≈50vw, 760 cap)
    - in `focus` mode the main page content reflows so it isn't covered
    - rich book-card messages, pinned tray, mood chips, discreet mode
@@ -2290,7 +2515,7 @@ body[data-privacy-blur="on"] .app-main::after {
 
 /* Floating launcher — soft tear-drop / fleuron glyph instead of "S".
    Visible at all viewport widths so the panel can be summoned anywhere. */
-.sara-fab {
+.bianca-fab {
   position: fixed;
   right: var(--s-4);
   bottom: var(--s-4);
@@ -2309,17 +2534,17 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: transform var(--dur-1) var(--ease), box-shadow var(--dur-1) var(--ease);
 }
-.sara-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -10px rgba(60, 38, 22, 0.4); }
+.bianca-fab:hover { transform: translateY(-2px); box-shadow: 0 14px 28px -10px rgba(60, 38, 22, 0.4); }
 @media (max-width: 880px) {
-  .sara-launcher { display: none; }
+  .bianca-launcher { display: none; }
 }
 
-.sara-panel {
-  --sara-w: 380px;
+.bianca-panel {
+  --bianca-w: 380px;
   position: fixed;
   top: calc(var(--shell-topbar) + var(--s-3));
   right: var(--s-4);
-  width: var(--sara-w);
+  width: var(--bianca-w);
   max-width: calc(100vw - var(--s-5));
   height: calc(100vh - var(--shell-topbar) - var(--s-7));
   max-height: 760px;
@@ -2338,27 +2563,25 @@ body[data-privacy-blur="on"] .app-main::after {
               opacity var(--dur-2) var(--ease),
               width var(--dur-2) var(--ease);
 }
-.sara-panel.open {
+.bianca-panel.open {
   transform: translateY(0) scale(1);
   opacity: 1;
   pointer-events: auto;
 }
-.sara-panel[data-width="dock"]  { --sara-w: 380px; }
-.sara-panel[data-width="wide"]  { --sara-w: 560px; }
-.sara-panel[data-width="focus"] { --sara-w: min(50vw, 760px); }
-
-/* Reflow the main content when Sara is in `focus` mode on desktop —
-   pushes the .app-main column over so the panel doesn't cover it.
-   Mobile keeps the overlay behaviour. */
-@media (min-width: 1100px) {
-  body[data-sara-width="focus"] .app-main {
-    padding-right: calc(min(50vw, 760px) + var(--s-5));
-    transition: padding-right var(--dur-2) var(--ease);
-  }
+.bianca-panel[data-width="dock"]  { --bianca-w: 380px; }
+.bianca-panel[data-width="wide"]  { --bianca-w: 560px; }
+.bianca-panel[data-width="focus"] {
+  --bianca-w: min(50vw, 760px);
+  /* Focus mode breathes vertically too: up to 900px or full viewport
+     minus the topbar, whichever is smaller. Overrides the 760px
+     global cap so the conversation doesn't feel cramped. */
+  max-height: min(900px, calc(100vh - var(--shell-topbar) - var(--s-4)));
 }
 
+/* Focus mode — panel floats over content; no page reflow. */
+
 @media (max-width: 880px) {
-  .sara-panel {
+  .bianca-panel {
     top: auto;
     bottom: var(--s-3);
     right: var(--s-3);
@@ -2367,9 +2590,23 @@ body[data-privacy-blur="on"] .app-main::after {
     max-width: none;
     height: 78vh;
   }
+  /* Mobile focus mode = full-screen takeover. Without this override
+     the `width: auto` + fixed bottom placement above would swallow
+     the --bianca-w change and the expand button would feel dead. */
+  .bianca-panel[data-width="focus"] {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    height: 100vh;
+    max-height: none;
+    border-radius: 0;
+  }
 }
 
-.sara-head {
+.bianca-head {
   padding: var(--s-3) var(--s-4);
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -2378,8 +2615,8 @@ body[data-privacy-blur="on"] .app-main::after {
   gap: var(--s-2);
   background: linear-gradient(180deg, var(--bg-raised), color-mix(in srgb, var(--accent-glow, var(--primary-soft)) 18%, var(--bg-raised)));
 }
-.sara-head-title { min-width: 0; }
-.sara-head .sara-title {
+.bianca-head-title { min-width: 0; }
+.bianca-head .bianca-title {
   font-family: var(--font-serif);
   font-size: 18px;
   color: var(--text);
@@ -2388,14 +2625,14 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: baseline;
   gap: 6px;
 }
-.sara-head .sara-title-serif { font-weight: 500; }
-.sara-head .sara-title-sub {
+.bianca-head .bianca-title-serif { font-weight: 500; }
+.bianca-head .bianca-title-sub {
   font-style: italic;
   color: var(--accent-deep);
   font-weight: 400;
   font-size: 14px;
 }
-.sara-head .sara-sub {
+.bianca-head .bianca-sub {
   font-size: 11px;
   color: var(--text-subtle);
   margin-top: 2px;
@@ -2403,7 +2640,7 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: center;
   gap: 6px;
 }
-.sara-privacy-pill {
+.bianca-privacy-pill {
   display: inline-block;
   padding: 1px 7px;
   border-radius: var(--r-pill);
@@ -2415,13 +2652,13 @@ body[data-privacy-blur="on"] .app-main::after {
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-.sara-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
-.sara-head-actions .icon-btn[aria-pressed="true"] {
+.bianca-head-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.bianca-head-actions .icon-btn[aria-pressed="true"] {
   background: var(--accent-soft, var(--primary-soft));
   color: var(--accent-deep);
 }
 
-.sara-context {
+.bianca-context {
   padding: var(--s-2) var(--s-4);
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--border);
@@ -2431,8 +2668,8 @@ body[data-privacy-blur="on"] .app-main::after {
   min-height: 34px;
   align-items: center;
 }
-.sara-context:empty { display: none; }
-.sara-context .ctx-chip {
+.bianca-context:empty { display: none; }
+.bianca-context .ctx-chip {
   font-size: 11px;
   padding: 2px 8px;
   border-radius: var(--r-pill);
@@ -2445,7 +2682,7 @@ body[data-privacy-blur="on"] .app-main::after {
 /* Pinned-books tray — horizontal scroller of cover-chips, sits above
    the conversation. Empty state reads as a soft hint instead of being
    blank. */
-.sara-pinned-tray {
+.bianca-pinned-tray {
   display: flex;
   gap: 6px;
   padding: var(--s-2) var(--s-3);
@@ -2454,14 +2691,14 @@ body[data-privacy-blur="on"] .app-main::after {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.sara-pinned-tray.is-empty { padding: 6px var(--s-4); }
-.sara-pinned-empty {
+.bianca-pinned-tray.is-empty { padding: 6px var(--s-4); }
+.bianca-pinned-empty {
   font-size: 11px;
   color: var(--text-subtle);
   font-style: italic;
   line-height: 1.4;
 }
-.sara-pinned-chip {
+.bianca-pinned-chip {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -2477,9 +2714,9 @@ body[data-privacy-blur="on"] .app-main::after {
   max-width: 180px;
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-pinned-chip:hover { border-color: var(--primary); background: var(--bg-raised); }
-.sara-pinned-chip img,
-.sara-pinned-chip-fallback {
+.bianca-pinned-chip:hover { border-color: var(--primary); background: var(--bg-raised); }
+.bianca-pinned-chip img,
+.bianca-pinned-chip-fallback {
   width: 22px; height: 22px;
   border-radius: 50%;
   object-fit: cover;
@@ -2492,13 +2729,13 @@ body[data-privacy-blur="on"] .app-main::after {
   font-style: italic;
   font-size: 11px;
 }
-.sara-pinned-chip-label {
+.bianca-pinned-chip-label {
   max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sara-pinned-chip-x {
+.bianca-pinned-chip-x {
   display: inline-block;
   width: 16px;
   height: 16px;
@@ -2509,9 +2746,9 @@ body[data-privacy-blur="on"] .app-main::after {
   font-size: 13px;
   cursor: pointer;
 }
-.sara-pinned-chip-x:hover { color: var(--accent); background: var(--bg-raised); }
+.bianca-pinned-chip-x:hover { color: var(--accent); background: var(--bg-raised); }
 
-.sara-body {
+.bianca-body {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: var(--s-4);
@@ -2520,13 +2757,13 @@ body[data-privacy-blur="on"] .app-main::after {
   gap: var(--s-3);
   background: var(--bg-sunken);
 }
-.sara-body .chat-msg { max-width: 100%; }
-.sara-body .chat-msg ul { margin: 6px 0 0; padding-left: 18px; }
-.sara-body .chat-msg li { margin: 2px 0; line-height: 1.5; }
+.bianca-body .chat-msg { max-width: 100%; }
+.bianca-body .chat-msg ul { margin: 6px 0 0; padding-left: 18px; }
+.bianca-body .chat-msg li { margin: 2px 0; line-height: 1.5; }
 
 /* Rich book-card message — cover on the left, meta + actions on the right.
-   Renders inside .sara-body alongside ordinary chat messages. */
-.sara-share-card {
+   Renders inside .bianca-body alongside ordinary chat messages. */
+.bianca-share-card {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr);
   gap: var(--s-3);
@@ -2536,7 +2773,7 @@ body[data-privacy-blur="on"] .app-main::after {
   background: var(--bg-raised);
   border: 1px solid var(--border);
 }
-.sara-share-cover {
+.bianca-share-cover {
   width: 60px; height: 90px;
   border-radius: 6px;
   overflow: hidden;
@@ -2544,8 +2781,8 @@ body[data-privacy-blur="on"] .app-main::after {
   flex-shrink: 0;
   position: relative;
 }
-.sara-share-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.sara-share-cover .cover-fallback {
+.bianca-share-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bianca-share-cover .cover-fallback {
   position: absolute; inset: 0;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--font-serif);
@@ -2554,27 +2791,27 @@ body[data-privacy-blur="on"] .app-main::after {
   color: var(--accent-deep);
   font-weight: 500;
 }
-.sara-share-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.sara-share-title {
+.bianca-share-meta { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.bianca-share-title {
   font-family: var(--font-serif);
   font-size: 15px;
   font-weight: 500;
   line-height: 1.2;
   color: var(--text);
 }
-.sara-share-author { font-size: 11px; color: var(--primary); letter-spacing: 0.04em; }
-.sara-share-warns {
+.bianca-share-author { font-size: 11px; color: var(--primary); letter-spacing: 0.04em; }
+.bianca-share-warns {
   font-size: 10px;
   color: var(--accent-deep);
   font-style: italic;
   margin-top: 2px;
 }
-.sara-share-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-.sara-share-actions .btn { padding: 3px 9px; font-size: 11px; }
+.bianca-share-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.bianca-share-actions .btn { padding: 3px 9px; font-size: 11px; }
 
 /* Mood-chip row — primary entry to a conversation.
    Always visible above the compose box. */
-.sara-moods {
+.bianca-moods {
   display: flex;
   gap: 6px;
   padding: var(--s-2) var(--s-4);
@@ -2584,7 +2821,7 @@ body[data-privacy-blur="on"] .app-main::after {
   align-items: center;
   scrollbar-width: thin;
 }
-.sara-moods-lead {
+.bianca-moods-lead {
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 12px;
@@ -2592,7 +2829,7 @@ body[data-privacy-blur="on"] .app-main::after {
   flex-shrink: 0;
   margin-right: 2px;
 }
-.sara-mood-chip {
+.bianca-mood-chip {
   flex-shrink: 0;
   font-family: var(--font-sans);
   font-size: 12px;
@@ -2604,13 +2841,13 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: border-color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-mood-chip:hover {
+.bianca-mood-chip:hover {
   border-color: var(--primary);
   background: var(--accent-soft, var(--primary-soft));
   color: var(--accent-deep);
 }
 
-.sara-compose {
+.bianca-compose {
   display: flex;
   gap: var(--s-2);
   padding: var(--s-3);
@@ -2618,7 +2855,7 @@ body[data-privacy-blur="on"] .app-main::after {
   border-top: 1px solid var(--border);
   align-items: flex-end;
 }
-.sara-compose textarea {
+.bianca-compose textarea {
   flex: 1 1 auto;
   resize: none;
   min-height: 36px;
@@ -2630,7 +2867,7 @@ body[data-privacy-blur="on"] .app-main::after {
   font-size: 13px;
   font-family: var(--font-sans);
 }
-.sara-compose textarea:focus-visible {
+.bianca-compose textarea:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
@@ -2653,23 +2890,23 @@ body[data-privacy-blur="on"] .app-main::after {
   filter: none;
 }
 
-/* Sara-only discreet — blurs covers + titles inside the chat panel
+/* Bianca-only discreet — blurs covers + titles inside the chat panel
    without affecting the rest of the app. Hover a card to reveal. */
-.sara-panel.discreet .sara-share-cover img,
-.sara-panel.discreet .sara-share-title,
-.sara-panel.discreet .sara-pinned-chip img,
-.sara-panel.discreet .sara-pinned-chip-label {
+.bianca-panel.discreet .bianca-share-cover img,
+.bianca-panel.discreet .bianca-share-title,
+.bianca-panel.discreet .bianca-pinned-chip img,
+.bianca-panel.discreet .bianca-pinned-chip-label {
   filter: blur(5px);
   transition: filter var(--dur-1) var(--ease);
 }
-.sara-panel.discreet .sara-share-card:hover .sara-share-cover img,
-.sara-panel.discreet .sara-share-card:hover .sara-share-title,
-.sara-panel.discreet .sara-pinned-chip:hover img,
-.sara-panel.discreet .sara-pinned-chip:hover .sara-pinned-chip-label {
+.bianca-panel.discreet .bianca-share-card:hover .bianca-share-cover img,
+.bianca-panel.discreet .bianca-share-card:hover .bianca-share-title,
+.bianca-panel.discreet .bianca-pinned-chip:hover img,
+.bianca-panel.discreet .bianca-pinned-chip:hover .bianca-pinned-chip-label {
   filter: none;
 }
 
-/* Bookmark / share-with-Sara button — top-left corner of every book
+/* Bookmark / share-with-Bianca button — top-left corner of every book
    card. Sits next to the existing dismiss × so they don't collide. */
 .card-pin {
   position: absolute;
@@ -2755,18 +2992,19 @@ body[data-privacy-blur="on"] .app-main::after {
    taller and with the title immediately beneath, not to the right. */
 .book-card.has-cover .lib-card-cover {
   position: relative;
-  width: 100%;
-  aspect-ratio: 3 / 2;
-  border-radius: 10px;
+  width: 140px;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
   overflow: hidden;
   background: linear-gradient(135deg, var(--accent-glow), var(--bg-sunk));
-  margin-bottom: var(--s-3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin: 0 auto var(--s-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.10);
+  flex-shrink: 0;
 }
 .book-card.has-cover .lib-card-cover img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 .book-card.has-cover .lib-card-cover .cover-fallback {
@@ -2819,6 +3057,37 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 @media (hover: none) {
   .card-dismiss { opacity: 0.7; }
+}
+/* Favourite star — top-left of the library card. Always visible
+   (unlike .card-dismiss which hides until hover), because the
+   filled vs empty state is content users should read at a glance. */
+.card-favorite {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 26px; height: 26px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-subtle);
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-1) var(--ease),
+              color var(--dur-1) var(--ease),
+              border-color var(--dur-1) var(--ease);
+  z-index: 2;
+}
+.card-favorite[aria-pressed="true"] {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.card-favorite:hover {
+  background: var(--primary-soft);
+  color: var(--gold);
+  border-color: var(--gold);
 }
 .book-card h4 {
   font-family: var(--font-serif);
@@ -2983,6 +3252,26 @@ body[data-privacy-blur="on"] .app-main::after {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: var(--s-3);
+}
+.disco-loading {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-7) var(--s-4);
+  gap: var(--s-3);
+}
+.disco-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--primary-dim);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: disco-spin 0.75s linear infinite;
+}
+@keyframes disco-spin {
+  to { transform: rotate(360deg); }
 }
 .discovery-empty {
   padding: var(--s-7) var(--s-5);
@@ -4118,6 +4407,42 @@ body[data-privacy-blur="on"] .app-main::after {
   border: 1px solid var(--border-strong);
   background: linear-gradient(135deg, var(--bg-surface), var(--bg-sunk));
 }
+.cmp-slot.filled {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+.cmp-slot-cover {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 84px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: var(--r-2);
+  background: var(--bg-sunk);
+  box-shadow: 0 2px 8px -4px rgba(60, 38, 22, 0.25);
+}
+/* Initials placeholder shown while the Google Books cover is
+   being fetched, or as a final fallback if no thumbnail is
+   available. Matches .cmp-slot-cover's geometry so the two can
+   swap without reflowing the slot card. */
+.cmp-slot-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 22px;
+  color: var(--accent-deep);
+  background: linear-gradient(135deg, var(--accent-glow), var(--bg-sunk));
+}
+.cmp-slot-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
 .cmp-slot.empty {
   background: transparent;
   border: 2px dashed var(--border);
@@ -4211,7 +4536,7 @@ body[data-privacy-blur="on"] .app-main::after {
   0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(122, 140, 111, 0.6); }
   50%      { opacity: 0.7; box-shadow: 0 0 0 6px rgba(122, 140, 111, 0); }
 }
-/* Sara launcher dot reverted to a quiet accent pip. Pulse keyframe
+/* Bianca launcher dot reverted to a quiet accent pip. Pulse keyframe
    kept above for opt-in use elsewhere. */
 
 @media (prefers-reduced-motion: reduce) {
@@ -4231,7 +4556,7 @@ body[data-privacy-blur="on"] .app-main::after {
   }
 }
 @media (max-width: 760px) {
-  .app-main { padding: var(--s-5) var(--s-4); }
+  .app-main { padding: var(--s-3) var(--s-4) var(--s-6); }
   .page-head h1 { font-size: 36px; }
   .section-header { font-size: 32px; }
   .cmp-slots { grid-template-columns: 1fr; }
@@ -4589,10 +4914,10 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 @media (hover: none) { .card-reject { opacity: 0.7; } }
 
-/* Sara focus line — visible when a book detail sheet is open.
-   Sits just under the head so Sara feels like she is watching
+/* Bianca focus line — visible when a book detail sheet is open.
+   Sits just under the head so Bianca feels like she is watching
    the user's current screen. */
-.sara-focus-line {
+.bianca-focus-line {
   padding: 6px var(--s-4);
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--primary-soft) 35%, var(--bg-raised));
@@ -4604,9 +4929,9 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 /* Route-aware quick replies — a slim row just under the mood chips.
-   Adapts with the context so the user can see what Sara knows about
+   Adapts with the context so the user can see what Bianca knows about
    the current screen and jump straight to a relevant question. */
-.sara-quick-replies {
+.bianca-quick-replies {
   display: flex;
   gap: 6px;
   padding: 2px var(--s-4) 6px;
@@ -4614,7 +4939,7 @@ body[data-privacy-blur="on"] .app-main::after {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.sara-quick-reply-chip {
+.bianca-quick-reply-chip {
   flex-shrink: 0;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -4626,7 +4951,7 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   transition: border-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease), background var(--dur-1) var(--ease);
 }
-.sara-quick-reply-chip:hover {
+.bianca-quick-reply-chip:hover {
   border-style: solid;
   border-color: var(--primary);
   background: var(--accent-soft, var(--primary-soft));
@@ -4641,24 +4966,196 @@ body[data-privacy-blur="on"] .app-main::after {
    column; gaps tighten for a denser feel.
    ============================================================ */
 .settings-page {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-direction: column;
   gap: var(--s-4);
+  align-items: stretch;
+}
+.settings-page > .settings-card { max-width: none; }
+
+/* ── Settings redesign: single-column, structured sections ──── */
+
+/* Operator card — prominent, full width */
+.settings-op-card { }          /* inherits full-width from grid below */
+.settings-op-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-bottom: var(--s-4);
+}
+.settings-op-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
   align-items: start;
 }
-.settings-page > .settings-page-head,
-.settings-page > .page-head { grid-column: 1 / -1; }
-.settings-page > .settings-card { max-width: none; }
-@media (max-width: 1024px) {
-  .settings-page { grid-template-columns: 1fr; }
+@media (max-width: 680px) {
+  .settings-op-body { grid-template-columns: 1fr; }
+}
+.settings-op-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+.settings-field-label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-subtle);
+}
+.settings-reveal-toggle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.settings-op-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-op-control-row:first-of-type {
+  border-top: 1px solid var(--border);
+}
+.settings-op-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+  margin-top: var(--s-4);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+/* Library management — single card with row-based list */
+.settings-mgmt-card { }
+.settings-mgmt-title {
+  margin: 0 0 var(--s-3);
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.settings-mgmt-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+}
+.settings-mgmt-row:last-child { border-bottom: none; padding-bottom: 0; }
+.settings-mgmt-row-info { flex: 1; min-width: 160px; }
+.settings-mgmt-row-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  flex-shrink: 0;
+}
+.settings-mgmt-expand {
+  flex-basis: 100%;
+  margin-top: var(--s-2);
+  padding-top: var(--s-3);
+  border-top: 1px solid color-mix(in srgb, var(--border) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.settings-mgmt-expand-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  background: var(--bg-sunken, var(--bg-raised));
+}
+
+/* Footer nav — inline links, no card */
+.settings-footer-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) 0;
+}
+
+/* Danger zone — section with red accent border, no card chrome */
+.settings-danger-zone {
+  border-top: 2px solid color-mix(in srgb, #ef4444 30%, var(--border));
+  padding-top: var(--s-4);
+  margin-top: var(--s-2);
+}
+.settings-danger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+/* Extra-small button variant for compact list rows */
+.btn-xs {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  line-height: 1.5;
+}
+
+/* ── Developer / Advanced collapsible ────────────────────────── */
+.settings-advanced-section {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.settings-advanced-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-4);
+  cursor: pointer;
+  user-select: none;
+  background: var(--surface-raised);
+  list-style: none;          /* hide default triangle in Firefox */
+}
+.settings-advanced-summary::-webkit-details-marker { display: none; }
+.settings-advanced-summary::before {
+  content: "›";
+  display: inline-block;
+  font-size: 1.1em;
+  color: var(--text-subtle);
+  transition: transform 180ms ease;
+  transform-origin: center;
+}
+details[open] .settings-advanced-summary::before {
+  transform: rotate(90deg);
+}
+.settings-advanced-summary:hover {
+  background: var(--surface-hover, var(--surface-raised));
+}
+.settings-advanced-section > .card,
+.settings-advanced-section > details,
+.settings-advanced-section .settings-card {
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  margin: 0;
+}
+
+/* Throttle limit card in Discovery ─────────────────────────────── */
+.discovery-throttle {
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  border-radius: var(--radius-lg);
+  padding: var(--s-5);
 }
 
 /* ============================================================
-   Sara appearance menu — preset swatches + upload.
-   Pops under the "✦" icon in the Sara head. Tight popover, not
+   Bianca appearance menu — preset swatches + upload.
+   Pops under the "✦" icon in the Bianca head. Tight popover, not
    a full modal.
    ============================================================ */
-.sara-appearance-menu {
+.bianca-appearance-menu {
   position: absolute;
   top: 44px;
   right: 8px;
@@ -4673,7 +5170,7 @@ body[data-privacy-blur="on"] .app-main::after {
   gap: 6px;
   min-width: 140px;
 }
-.sara-appearance-swatch {
+.bianca-appearance-swatch {
   width: 34px; height: 34px;
   border-radius: 50%;
   border: 2px solid var(--border);
@@ -4687,10 +5184,10 @@ body[data-privacy-blur="on"] .app-main::after {
   color: var(--text-subtle);
   transition: transform 120ms ease, border-color 120ms ease;
 }
-.sara-appearance-swatch:hover { transform: scale(1.08); border-color: var(--primary); }
-.sara-appearance-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft)); }
-.sara-appearance-upload,
-.sara-appearance-clear {
+.bianca-appearance-swatch:hover { transform: scale(1.08); border-color: var(--primary); }
+.bianca-appearance-swatch.is-active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft, var(--primary-soft)); }
+.bianca-appearance-upload,
+.bianca-appearance-clear {
   grid-column: 1 / -1;
   font-family: var(--font-sans);
   font-size: 11px;
@@ -4704,30 +5201,34 @@ body[data-privacy-blur="on"] .app-main::after {
   cursor: pointer;
   text-align: center;
 }
-.sara-appearance-upload:hover,
-.sara-appearance-clear:hover {
+.bianca-appearance-upload:hover,
+.bianca-appearance-clear:hover {
   border-style: solid;
   color: var(--accent-deep);
   border-color: var(--primary);
 }
-.sara-appearance-upload input { display: none; }
+.bianca-appearance-upload input { display: none; }
 
-/* Dark-background preset support — flip text/body colors so the
-   conversation stays readable on a dark chat backdrop. */
-.sara-panel.is-dark-bg .sara-body,
-.sara-panel.is-dark-bg .sara-pinned-tray,
-.sara-panel.is-dark-bg .sara-moods,
-.sara-panel.is-dark-bg .sara-quick-replies,
-.sara-panel.is-dark-bg .sara-compose {
+/* Custom-background preset support. `has-custom-bg` fires for any
+   non-default preset (cream, rose, sage, slate, night) and for
+   uploaded images — it makes the inner containers transparent so the
+   panel's background gradient/image shows through. `is-dark-bg` is a
+   separate, stricter flag that only fires for dark backdrops and
+   swaps the message-bubble + text colors for legibility. */
+.bianca-panel.has-custom-bg .bianca-body,
+.bianca-panel.has-custom-bg .bianca-pinned-tray,
+.bianca-panel.has-custom-bg .bianca-moods,
+.bianca-panel.has-custom-bg .bianca-quick-replies,
+.bianca-panel.has-custom-bg .bianca-compose {
   background: transparent;
 }
-.sara-panel.is-dark-bg .chat-msg.from-them,
-.sara-panel.is-dark-bg .sara-share-card {
+.bianca-panel.is-dark-bg .chat-msg.from-them,
+.bianca-panel.is-dark-bg .bianca-share-card {
   background: rgba(255,255,255,0.08);
   color: #f2ecdf;
   border-color: rgba(255,255,255,0.18);
 }
-.sara-panel.is-dark-bg .chat-msg.from-me {
+.bianca-panel.is-dark-bg .chat-msg.from-me {
   background: rgba(255,255,255,0.14);
   color: #f2ecdf;
 }
@@ -4759,9 +5260,12 @@ body[data-sidenav="overlay"] .app-side {
   box-shadow: 0 24px 60px -24px rgba(60, 38, 22, 0.35);
   overflow-y: auto;
 }
+/* Scrim stays invisible and click-through even in overlay mode —
+   the floating sidebar never darkens or blocks the Terminal so the
+   user can click nav-links and Terminal content freely. */
 body[data-sidenav="overlay"] #sidenav-scrim {
-  opacity: 1;
-  pointer-events: auto;
+  opacity: 0;
+  pointer-events: none;
 }
 body[data-sidenav="hidden"] .app-top {
   grid-column: 1 / -1;
@@ -4781,30 +5285,35 @@ body[data-sidenav="overlay"] .app-main {
   top: 50%;
   transform: translateY(-50%);
   z-index: 86;
-  width: 22px;
-  height: 56px;
-  border: 1px solid var(--border);
+  width: 36px;
+  height: 96px;
+  border: 1px solid var(--accent-deep);
   border-left: none;
-  border-radius: 0 var(--r-2) var(--r-2) 0;
-  background: var(--bg-raised);
-  color: var(--text-muted);
+  border-radius: 0 var(--r-3) var(--r-3) 0;
+  background: var(--accent-deep);
+  color: #fff;
   cursor: pointer;
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: 32px;
+  font-weight: 600;
   line-height: 1;
-  display: none;
   align-items: center;
   justify-content: center;
-  padding: 0;
-  transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease, width 160ms ease;
-  box-shadow: 0 6px 22px -10px rgba(60, 38, 22, 0.25);
+  padding: 0 4px 0 0;
+  transition: width 200ms var(--ease, ease), background 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45);
+  animation: sidenav-pulltab-pulse 2.6s ease-in-out infinite;
 }
 body[data-sidenav="hidden"] .sidenav-pulltab { display: inline-flex; }
 .sidenav-pulltab:hover {
-  width: 28px;
-  background: var(--accent-soft, var(--primary-soft));
-  color: var(--accent-deep);
-  box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.35);
+  width: 44px;
+  background: var(--accent);
+  box-shadow: 0 10px 32px -8px rgba(60, 38, 22, 0.55);
+  animation: none;
+}
+@keyframes sidenav-pulltab-pulse {
+  0%, 100% { box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45), 0 0 0 0 var(--accent-soft, rgba(184,74,98,0.35)); }
+  50%      { box-shadow: 0 8px 28px -8px rgba(60, 38, 22, 0.45), 0 0 0 10px transparent; }
 }
 
 /* Scrim — darkens the Terminal behind the sidebar overlay so
@@ -4829,3 +5338,44 @@ body[data-sidenav="overlay"] .lumen-terminal {
    .app-main content box, even when the nav is visible on
    narrow viewports. */
 .lumen-terminal { max-width: none; width: 100%; }
+
+/* ═══════════════════════════════════════════════════════════
+   MOBILE NAV — final override (must stay at EOF so it beats
+   the higher-specificity Signals sidenav rules above).
+   ═══════════════════════════════════════════════════════════ */
+@media (max-width: 880px) {
+  /* Restore single-column grid even when Signals hides its sidebar */
+  body[data-sidenav="hidden"] .app,
+  body[data-sidenav="overlay"] .app {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: var(--shell-topbar) auto 1fr !important;
+    grid-template-areas: "top" "side" "main" !important;
+  }
+
+  /* Ensure tab strip stays visible in ALL Signals sidenav states */
+  .app-side,
+  body[data-sidenav="hidden"] .app-side,
+  body[data-sidenav="overlay"] .app-side {
+    position: sticky !important;
+    top: var(--shell-topbar) !important;
+    bottom: auto !important;
+    left: auto !important;
+    right: auto !important;
+    width: auto !important;
+    height: auto !important;
+    transform: none !important;
+    pointer-events: auto !important;
+    z-index: 100 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    background: var(--bg-raised) !important;
+    border-right: none !important;
+    border-top: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    padding: 0 var(--s-2) !important;
+    gap: 0 !important;
+  }
+  .sidenav-pulltab { display: none !important; }
+}

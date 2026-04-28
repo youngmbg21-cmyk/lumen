@@ -41,7 +41,13 @@
         node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
       }
       return node;
-    }
+    },
+    // Detect Google Books' "Image not available" placeholder. That
+    // response is a 200 OK image (~60×90 px) so <img> onerror never
+    // fires; real book covers at zoom=1 are ≥128 wide. Call this in
+    // img.onload to decide whether to keep the cover or swap in an
+    // initials fallback.
+    isLikelyNoCover: (img) => !!img && img.naturalWidth > 0 && img.naturalWidth < 128
   };
 
   /* -------------------- store -------------------- */
@@ -56,14 +62,31 @@
       bookStates: {},
       tags: {},
       hidden: {},
+      // User-flagged favourites — keyed by bookId → timestamp. Used
+      // by the Library "Favorites" filter and by Daily Picks
+      // reweighting (a taste signal layered on top of the engine
+      // score).
+      favorites: {},
       discovered: [],
       journal: [],
       vault: { pinned: [], analyses: [], notes: [], locked: false, passcodeHash: null },
-      chats: { sara: [], saraPinned: [], friends: [] },
+      chats: { bianca: [], biancaPinned: [], friends: [] },
       // Daily Picks the user has rejected via "Not for me". These are
       // excluded from the Home top-3 but stay in the Library — a
       // pick-only signal, not a dismissal. { [bookId]: { rejectedAt } }.
       dailyPicksRejected: {},
+      // Editorial AI feature (replaces Daily Picks in the Today tab).
+      // currentPick is the last-generated piece; history keeps the
+      // last 10 for recall. generationsToday is a rolling list of
+      // ISO timestamps used for the 5-per-24h rate limit. lastError
+      // tracks the most recent failure so the Today view can
+      // surface a recoverable state without wiping currentPick.
+      editorial: {
+        currentPick: null,
+        history: [],
+        generationsToday: [],
+        lastError: null
+      },
       ui: {
         theme: "rose",
         discreet: false,
@@ -86,10 +109,34 @@
       // undefined. Applied to profile only — everything else is
       // already handled by the shallow Object.assign above.
       merged.profile = Object.assign({}, DEFAULT_PROFILE, merged.profile || {});
-      // Same for the chats submap so newer arrays (saraPinned,
+      // Migration v2: old DEFAULT_PROFILE had consent:5 and taboo:2 which
+      // compressed most scores below 65%. Reset to neutral 3 on first load
+      // after this release so existing users see meaningful score signal.
+      if (!merged._profileMigrated_v2) {
+        if (merged.profile.consent === 5) merged.profile.consent = 3;
+        if (merged.profile.taboo   === 2) merged.profile.taboo   = 3;
+        merged._profileMigrated_v2 = true;
+      }
+      // Same for the chats submap so newer arrays (biancaPinned,
       // dailyPicksRejected) exist on upgrade.
-      merged.chats = Object.assign({ sara: [], saraPinned: [], friends: [] }, merged.chats || {});
+      // Migration: rename legacy sara/saraPinned keys to bianca/biancaPinned.
+      if (merged.chats && merged.chats.sara !== undefined) {
+        if (!merged.chats.bianca || !merged.chats.bianca.length) merged.chats.bianca = merged.chats.sara;
+        delete merged.chats.sara;
+      }
+      if (merged.chats && merged.chats.saraPinned !== undefined) {
+        if (!merged.chats.biancaPinned || !merged.chats.biancaPinned.length) merged.chats.biancaPinned = merged.chats.saraPinned;
+        delete merged.chats.saraPinned;
+      }
+      merged.chats = Object.assign({ bianca: [], biancaPinned: [], friends: [] }, merged.chats || {});
       if (!merged.dailyPicksRejected) merged.dailyPicksRejected = {};
+      // Editorial feature state — back-fill the shape on older stores
+      // so rendering code can read merged.editorial.currentPick etc.
+      // without null-checking the parent.
+      merged.editorial = Object.assign(
+        { currentPick: null, history: [], generationsToday: [], lastError: null },
+        merged.editorial || {}
+      );
       return merged;
     } catch (e) {
       return initialState();
@@ -152,13 +199,13 @@
       const close = () => {
         host.classList.remove("open");
         setTimeout(() => (host.innerHTML = ""), 220);
-        // Clear Sara's focus-on-book so the head status line stops
+        // Clear Bianca's focus-on-book so the head status line stops
         // saying "Reading <title> with you" once the sheet is gone.
         try {
           if (typeof libState !== "undefined" && libState) libState.focusBookId = null;
-          if (window.LumenSara && window.LumenSara.setContext) {
+          if (window.LumenBianca && window.LumenBianca.setContext) {
             const r = router.current();
-            window.LumenSara.setContext(computeSaraContext(r.id));
+            window.LumenBianca.setContext(computeBiancaContext(r.id));
           }
         } catch (e) { /* ignore */ }
       };
@@ -306,46 +353,55 @@
 
   /* -------------------- router -------------------- */
   const ROUTES = [
-    { id: "discover",     label: "Home",          short: "Home",     group: "main",     render: () => views.discover() },
-    { id: "terminal",     label: "Terminal",      short: "Terminal", group: "main",     render: () => views.terminal() },
-    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
+    { id: "discover",     label: "Today",         short: "Today",    group: "main",     render: () => views.discover() },
+    { id: "terminal",     label: "Signals",       short: "Signals",  group: "main",     render: () => views.terminal() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
+    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "chat",         label: "Connections",   short: "Connect",  group: "main",     render: () => views.chat() },
     { id: "journal",      label: "Journal",       short: "Journal",  group: "personal", render: () => views.journal() },
     { id: "vault",        label: "Vault",         short: "Vault",    group: "personal", render: () => views.vault() },
     { id: "profile",      label: "Profile",       short: "Profile",  group: "settings", render: () => views.profile() },
-    { id: "settings",     label: "Settings",      short: "Settings", group: "settings", render: () => views.settings() },
+    { id: "settings",     label: "Settings",      short: "Settings", group: "hidden",   render: () => views.settings() },
     { id: "transparency", label: "Transparency",  short: "Trust",    group: "settings", render: () => views.transparency() }
   ];
 
   const router = {
     current() {
       const hash = location.hash.replace(/^#\/?/, "");
-      return ROUTES.find(r => r.id === hash) || ROUTES[0];
+      return ROUTES.find(r => r.id === hash) || ROUTES.find(r => r.id === "discovery") || ROUTES[0];
     },
     go(id) { location.hash = `#/${id}`; }
   };
 
+  // Discovery Phase: on a bare load (no hash) redirect to the
+  // Discovery view so testers land on the search experience, not
+  // the empty Today editorial tab.
+  (function setDiscoveryDefault() {
+    if (!location.hash || location.hash === "#" || location.hash === "#/") {
+      location.replace("#/discovery");
+    }
+  })();
+
   /* -------------------- view helpers -------------------- */
-  // Bookmark / share-with-Sara button used on every book-card surface.
-  // Toggling it opens Sara, drops the book into the chat as a rich
+  // Bookmark / share-with-Bianca button used on every book-card surface.
+  // Toggling it opens Bianca, drops the book into the chat as a rich
   // shared-card message, and adds it to the pinned tray. Tapping again
   // unpins. Stops event propagation so the card's own onclick (open
   // detail) doesn't also fire.
   function pinShareBtn(bookId, opts = {}) {
-    const Sara = window.LumenSara;
-    const pinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const Bianca = window.LumenBianca;
+    const pinned = !!(Bianca && Bianca.isPinned && Bianca.isPinned(bookId));
     const btn = util.el("button", {
       class: "card-pin" + (pinned ? " is-pinned" : "") + (opts.size === "lg" ? " card-pin-lg" : ""),
-      "aria-label": pinned ? "Unpin from Sara" : "Pin to Sara — share in chat",
+      "aria-label": pinned ? "Unpin from Bianca" : "Pin to Bianca — share in chat",
       "aria-pressed": pinned ? "true" : "false",
-      title: pinned ? "Unpin from Sara" : "Pin to Sara",
+      title: pinned ? "Unpin from Bianca" : "Pin to Bianca",
       onclick: (e) => {
         e.stopPropagation();
-        if (!Sara) return;
-        if (Sara.isPinned(bookId)) Sara.unpinBook(bookId);
-        else Sara.pinBook(bookId);
+        if (!Bianca) return;
+        if (Bianca.isPinned(bookId)) Bianca.unpinBook(bookId);
+        else Bianca.pinBook(bookId);
         // Re-render the host view so other pin icons in the same view
         // also reflect the new pinned state.
         try { renderView(); } catch (e2) { /* ignore */ }
@@ -364,16 +420,17 @@
   // heat bar pinned to the bottom matches the existing library card.
   function buildCoverBlock(book, { size = "md", showHeat = true } = {}) {
     const cover = util.el("div", { class: `book-cover book-cover-${size}` });
+    const showInitialsFallback = () => {
+      if (!cover.querySelector(".cover-fallback")) {
+        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      }
+    };
     if (book.thumbnail) {
       const url = book.thumbnail.replace(/^http:/, "https:");
       const img = util.el("img", {
         src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-        onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-          }
-        }
+        onerror: function () { this.remove(); showInitialsFallback(); },
+        onload:  function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
       });
       cover.appendChild(img);
     } else {
@@ -383,78 +440,6 @@
       cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     }
     return cover;
-  }
-
-  // Daily Picks card — cover on the left, body in the middle, compact
-  // fit-score ring on the right. Whole card is an <a> so it's clickable
-  // AND keyboard-activatable (Enter/Space). Clicking or activating
-  // opens the richer detail modal.
-  function dailyPickCard(scored, onClick) {
-    const { book, fitScore, confidence, why } = scored;
-    const card = util.el("div", {
-      class: "daily-pick-card",
-      role: "button",
-      tabindex: "0",
-      "aria-label": `Open details for ${book.title}`,
-      onclick: () => { onClick && onClick(scored); },
-      onkeydown: (e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick && onClick(scored);
-        }
-      }
-    });
-
-    card.appendChild(pinShareBtn(book.id));
-    // "Not for me" — pick-only rejection. Keeps the book in Library
-    // but replaces this slot with the next eligible match.
-    card.appendChild(util.el("button", {
-      class: "card-reject",
-      "aria-label": `Not for me — remove from Daily Picks`,
-      title: "Not for me — keep in Library but stop suggesting",
-      onclick: (e) => {
-        e.stopPropagation();
-        rejectDailyPick(book.id);
-        ui.toast(`Noted — I won't surface ${book.title} in picks`, {
-          action: "Undo",
-          onAction: () => { restoreDailyPick(book.id); renderView(); },
-          duration: 5500
-        });
-        // Let Sara acknowledge in the chat thread.
-        try {
-          if (window.LumenSara && window.LumenSara.post) {
-            window.LumenSara.post(`Noted — I won't surface **${book.title}** in picks again. Restore it any time from Settings → Rejected Daily Picks.`);
-          }
-        } catch (e2) { /* ignore */ }
-        renderView();
-      }
-    }, "×"));
-    card.appendChild(buildCoverBlock(book, { size: "sm", showHeat: true }));
-
-    const body = util.el("div", { class: "daily-pick-body" });
-    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || book.category || "") }));
-    body.appendChild(util.el("h4", { class: "daily-pick-title", text: book.title }));
-    body.appendChild(util.el("div", { class: "daily-pick-author", text: `${book.author} · ${util.fmtYear(book.year)}` }));
-    body.appendChild(util.el("p", { class: "daily-pick-blurb", text: (book.description || "").slice(0, 180) + ((book.description || "").length > 180 ? "…" : "") }));
-    if (why && why.reasons && why.reasons.length) {
-      const tags = util.el("div", { class: "daily-pick-tags" });
-      why.reasons.slice(0, 2).forEach(r => tags.appendChild(ui.tag(r, "accent")));
-      body.appendChild(tags);
-    }
-    body.appendChild(util.el("div", { class: "daily-pick-expand-hint", text: "Click to read full summary →" }));
-    card.appendChild(body);
-
-    const aside = util.el("div", { class: "daily-pick-aside" });
-    const fitFill = Math.max(0, Math.min(1, fitScore / 100));
-    aside.appendChild(util.el("div", { class: "daily-pick-ring" }, [
-      kpiRing(fitFill, String(fitScore), kpiToneFromFraction(fitFill))
-    ]));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-label", text: "Fit" }));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-sub", text: kpiDescriptorFit(fitScore) }));
-    aside.appendChild(util.el("div", { class: "daily-pick-aside-conf", text: `${confidence}% conf.` }));
-    card.appendChild(aside);
-
-    return card;
   }
 
   function bookCardMini(scored, onClick) {
@@ -593,12 +578,7 @@
     if (value >= 2) return "Cautious";
     return "Safe-first";
   }
-  function kpiDescriptorFit(value) {
-    if (value >= 75) return "Strong";
-    if (value >= 55) return "Moderate";
-    if (value >= 35) return "Loose";
-    return "Thin";
-  }
+  function kpiDescriptorFit(value) { return Engine.fitLabel(value); }
 
   // Small radial ring used by each KPI card. Takes a 0..1 fill and a
   // short inner text. Styled via .kpi-ring in CSS — stroke colour shifts
@@ -750,7 +730,29 @@
     readingFilter: "all",
     category: "all",
     sort: "fit",
-    minFit: 0
+    minFit: 0,
+    // Session-only — not persisted to localStorage. Default is
+    // Exact is always the default — it works without any API key and
+    // is the expected starting point for most searches. Semantic is
+    // opt-in once a Voyage key is configured.
+    searchMode: "exact"
+  };
+
+  // Closure for the semantic-search async flow. Reset on reload
+  // implicitly because libState itself isn't persisted. The seq
+  // counter discards stale embed responses when the user keeps
+  // typing.
+  const semanticState = {
+    lastQueryText: "",
+    lastQueryVec: null,
+    loading: false,
+    seq: 0,
+    debounceTimer: null,
+    // Last embed error. We keep Semantic selected on failure and
+    // surface this in the stats bar so the user understands why
+    // the ordering hasn't changed — flipping them back to Exact
+    // silently made the button feel "broken".
+    lastError: null
   };
 
   function setReadingState(bookId, state) {
@@ -762,6 +764,22 @@
 
   function getReadingState(bookId) {
     return store.get().bookStates[bookId] || "none";
+  }
+
+  // Favourites are orthogonal to reading state — a user can
+  // "favourite" something they've never read and something
+  // they've read multiple times. Stored as { [bookId]: timestamp }
+  // so Daily Picks can later weight recent favourites higher.
+  function isFavorite(bookId) {
+    return !!(store.get().favorites || {})[bookId];
+  }
+  function toggleFavorite(bookId) {
+    if (!bookId) return;
+    store.update(s => {
+      s.favorites = s.favorites || {};
+      if (s.favorites[bookId]) delete s.favorites[bookId];
+      else s.favorites[bookId] = Date.now();
+    });
   }
 
   function addCustomTag(bookId, tag) {
@@ -804,10 +822,10 @@
       category: "web-discovered",
       subgenre: "",
       heat_level: d.heat || 3,
-      explicitness: d.heat || 3,
+      explicitness: 3,
       emotional_intensity: 3,
       consent_clarity: 3,
-      taboo_level: 2,
+      taboo_level: 3,
       plot_weight: 3,
       tone: [], pacing: [], literary_style: [],
       relationship_dynamic: [], trope_tags: d.tropes || [],
@@ -817,7 +835,8 @@
       source_url: d.sourceUrl || null,
       thumbnail: d.thumbnail || null,
       aiInsight: d.aiInsight || null,
-      _discovered: true
+      _discovered: true,
+      _isPartial: true
     };
   }
   // Normalize an entry from the curated catalog (data/catalog.js).
@@ -860,7 +879,7 @@
     const seen = new Set(catalog.map(b => b.id));
     const merged = catalog.slice();
     discovered.forEach(b => { if (!seen.has(b.id)) { merged.push(b); seen.add(b.id); } });
-    return merged;
+    return merged.filter(b => b.thumbnail);
   }
   // Books the user has explicitly saved — currently the same as
   // listAllBooks() minus hidden. Compare will restrict to this set.
@@ -885,6 +904,12 @@
         st.discovered.push(Object.assign({}, b, { source: "seed", addedAt: Date.now() }));
       });
     });
+    // Queue each fresh seed book for silent embedding. The queue
+    // paces requests at 250ms to stay under Voyage rate limits.
+    fresh.forEach(b => {
+      const saved = (store.get().discovered || []).find(d => d.id === b.id);
+      if (saved) queueEmbedding(saved);
+    });
     return fresh.length;
   }
   function unloadStarterLibrary() {
@@ -905,29 +930,15 @@
     return (store.get().discovered || []).some(d => d.source === "seed");
   }
 
-  // Daily-Pick-only rejection. Unlike dismissFromLibrary, the book
-  // stays in the library — it just won't be chosen for the Home
-  // top-3 until restored. State lives at s.dailyPicksRejected so
-  // the Home view's ranker consumer can filter it cheaply.
-  function rejectDailyPick(bookId) {
-    if (!bookId) return;
-    store.update(st => {
-      st.dailyPicksRejected = st.dailyPicksRejected || {};
-      st.dailyPicksRejected[bookId] = { rejectedAt: Date.now() };
-    });
-  }
-
+  // Restore a previously rejected Daily Pick. The reject-from-card
+  // path is gone with the new Today view, but the Admin list still
+  // shows legacy rejections and offers per-row restore.
   function restoreDailyPick(bookId) {
     if (!bookId) return;
     store.update(st => {
       st.dailyPicksRejected = st.dailyPicksRejected || {};
       delete st.dailyPicksRejected[bookId];
     });
-  }
-
-  function isDailyPickRejected(bookId) {
-    const m = store.get().dailyPicksRejected || {};
-    return !!m[bookId];
   }
 
   function dismissFromLibrary(bookId) {
@@ -993,6 +1004,21 @@
       onclick: () => openBookDetail(book.id)
     });
     card.appendChild(pinShareBtn(book.id));
+    // Favourite toggle — star in the top-left. Filled when favourited.
+    // Click toggles; rerender redraws the filter chip count if we're
+    // looking at the Favorites filter.
+    const favBtn = util.el("button", {
+      class: "card-favorite",
+      "aria-pressed": isFavorite(book.id) ? "true" : "false",
+      "aria-label": (isFavorite(book.id) ? "Unfavorite " : "Favorite ") + book.title,
+      title: isFavorite(book.id) ? "Remove from favorites" : "Mark as favorite",
+      onclick: (e) => {
+        e.stopPropagation();
+        toggleFavorite(book.id);
+        renderView();
+      }
+    }, isFavorite(book.id) ? "★" : "☆");
+    card.appendChild(favBtn);
     // Dismiss control — top-right. Confirmation is handled inline via undo toast.
     card.appendChild(util.el("button", {
       class: "card-dismiss",
@@ -1014,20 +1040,24 @@
     // a two-letter initials block otherwise. Steam Engine bar is
     // anchored along the bottom of the cover.
     const cover = util.el("div", { class: "lib-card-cover" });
+    const showInitialsFallback = () => {
+      if (!cover.querySelector(".cover-fallback")) {
+        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      }
+    };
     if (book.thumbnail) {
       const url = book.thumbnail.replace(/^http:/, "https:");
       const img = util.el("img", {
         src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-        onerror: function () {
-          this.remove();
-          if (!cover.querySelector(".cover-fallback")) {
-            cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-          }
-        }
+        onerror: function () { this.remove(); showInitialsFallback(); },
+        // Google Books' "image not available" placeholder is a 200 OK
+        // image (~60×90), so onerror never fires. Swap to initials if
+        // the loaded cover is too small to be real.
+        onload: function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
       });
       cover.appendChild(img);
     } else {
-      cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+      showInitialsFallback();
     }
     cover.appendChild(util.el("div", { class: "steam-indicator " + steamClass(book.heat_level) }));
     card.appendChild(cover);
@@ -1054,16 +1084,16 @@
   function openBookDetail(bookId) {
     const book = findBook(bookId);
     if (!book) return;
-    // Signal focus to Sara so the panel's head reads "Reading <title>
+    // Signal focus to Bianca so the panel's head reads "Reading <title>
     // with you" while the sheet is open. libState.focusBookId is
-    // consumed by buildSaraContext; the direct setContext push is a
-    // fast path so Sara updates immediately without waiting for the
+    // consumed by buildBiancaContext; the direct setContext push is a
+    // fast path so Bianca updates immediately without waiting for the
     // store-subscription round trip.
     try {
       if (typeof libState !== "undefined" && libState) libState.focusBookId = bookId;
-      if (window.LumenSara && window.LumenSara.setContext) {
+      if (window.LumenBianca && window.LumenBianca.setContext) {
         const r = router.current();
-        window.LumenSara.setContext(computeSaraContext(r.id));
+        window.LumenBianca.setContext(computeBiancaContext(r.id));
       }
     } catch (e) { /* ignore */ }
     const s = store.get();
@@ -1087,7 +1117,7 @@
       const confCell = util.el("div", { class: "detail-ring-cell" });
       confCell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(confFill, `${scored.confidence}%`, kpiToneFromFraction(confFill))]));
       confCell.appendChild(util.el("div", { class: "detail-ring-label", text: "Confidence" }));
-      confCell.appendChild(util.el("div", { class: "detail-ring-sub", text: scored.confidence >= 70 ? "Signal-rich" : scored.confidence >= 45 ? "Moderate" : "Thin data" }));
+      confCell.appendChild(util.el("div", { class: "detail-ring-sub", text: Engine.confLabel(scored.confidence) }));
       aside.appendChild(confCell);
       headerAside = aside;
     }
@@ -1193,8 +1223,8 @@
     sections.push({ label: "Your notes", content: notes });
 
     // Actions — consolidated into the sticky footer of the detail sheet.
-    const Sara = window.LumenSara;
-    const saraPinned = !!(Sara && Sara.isPinned && Sara.isPinned(bookId));
+    const Bianca = window.LumenBianca;
+    const biancaPinned = !!(Bianca && Bianca.isPinned && Bianca.isPinned(bookId));
     const actions = [
       {
         label: "Pin to Vault",
@@ -1203,13 +1233,13 @@
         closeOnClick: false
       },
       {
-        label: saraPinned ? "Unpin from Sara" : "Share with Sara",
+        label: biancaPinned ? "Unpin from Bianca" : "Share with Bianca",
         onClick: () => {
-          if (!Sara) return;
-          if (Sara.isPinned(bookId)) Sara.unpinBook(bookId); else Sara.pinBook(bookId);
+          if (!Bianca) return;
+          if (Bianca.isPinned(bookId)) Bianca.unpinBook(bookId); else Bianca.pinBook(bookId);
           openBookDetail(bookId);
         },
-        variant: saraPinned ? "btn-primary" : "btn-ghost",
+        variant: biancaPinned ? "btn-primary" : "btn-ghost",
         closeOnClick: false
       },
       book.source_url ? { label: "View source", href: book.source_url } : null,
@@ -1261,11 +1291,56 @@
     const searchInput = util.el("input", {
       class: "input", placeholder: "Search titles or authors", style: { maxWidth: "260px" },
       value: libState.query,
-      oninput: (e) => { libState.query = e.target.value.toLowerCase(); updateGrid(); }
+      oninput: (e) => {
+        libState.query = e.target.value.toLowerCase();
+        if (libState.searchMode === "semantic") triggerSemanticEmbed();
+        else updateGrid();
+      }
     });
     filterRow.appendChild(searchInput);
 
-    const rfOptions = [{ id: "all", label: "All" }, ...READING_STATES.filter(r => r.id !== "none")];
+    // Search-mode segmented control — Exact (default) vs Semantic.
+    // Semantic is disabled when there's no Voyage key; tooltip
+    // points the user at Settings. Session-only: resets on reload.
+    const hasVoyageKey = !!(window.LumenEmbeddings && window.LumenEmbeddings.getApiKey && window.LumenEmbeddings.getApiKey());
+    const modeSeg = util.el("div", { class: "segmented", "aria-label": "Search mode" });
+    const modeOptions = [
+      { id: "exact",    label: "Exact" },
+      { id: "semantic", label: "Semantic" }
+    ];
+    modeOptions.forEach(opt => {
+      const b = util.el("button", Object.assign({
+        type: "button",
+        "aria-pressed": libState.searchMode === opt.id ? "true" : "false",
+        "data-v": opt.id,
+        onclick: () => {
+          if (opt.id === "semantic" && !hasVoyageKey) return;
+          libState.searchMode = opt.id;
+          setModeButton(opt.id);
+          if (opt.id === "semantic" && libState.query) triggerSemanticEmbed();
+          else updateGrid();
+        }
+      }, (opt.id === "semantic" && !hasVoyageKey) ? {
+        disabled: true,
+        title: "Add a Voyage API key in Settings → Voyage API key to enable semantic search"
+      } : {}), opt.label);
+      modeSeg.appendChild(b);
+    });
+    filterRow.appendChild(modeSeg);
+    function setModeButton(id) {
+      modeSeg.querySelectorAll("button").forEach(x =>
+        x.setAttribute("aria-pressed", x.dataset.v === id ? "true" : "false"));
+    }
+
+    // "Favorites" appears right after the last reading state ("already
+    // read") so the filter reads All → want → reading → read → Favorites.
+    // It's a distinct filter (books flagged via the star on each card),
+    // not a reading state.
+    const rfOptions = [
+      { id: "all", label: "All" },
+      ...READING_STATES.filter(r => r.id !== "none"),
+      { id: "favorites", label: "Favorites" }
+    ];
     const rfSegmented = util.el("div", { class: "segmented" });
     rfOptions.forEach(opt => {
       const b = util.el("button", {
@@ -1315,15 +1390,8 @@
     const grid = util.el("div", { id: "lib-grid", style: { display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "var(--s-4)" } });
     wrap.appendChild(grid);
 
-    function updateGrid() {
-      const q = libState.query;
-      let filtered = allBooks.filter(b => {
-        if (q && !(b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q))) return false;
-        if (libState.category !== "all" && b.category !== libState.category) return false;
-        if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) return false;
-        return true;
-      });
-      filtered.sort((a, b) => {
+    function normalSort(list) {
+      list.sort((a, b) => {
         if (libState.sort === "fit") {
           const sa = scoredMap[a.id]?.fitScore ?? -1;
           const sb = scoredMap[b.id]?.fitScore ?? -1;
@@ -1333,11 +1401,79 @@
         if (libState.sort === "year")  return (a.year || 0) - (b.year || 0);
         return 0;
       });
+      return list;
+    }
+
+    function updateGrid() {
+      const q = libState.query;
+      // Base pool always applies category + readingFilter. Text match
+      // and ordering are branched below by searchMode.
+      const basePool = allBooks.filter(b => {
+        if (libState.category !== "all" && b.category !== libState.category) return false;
+        if (libState.readingFilter === "favorites") {
+          if (!isFavorite(b.id)) return false;
+        } else if (libState.readingFilter !== "all" && getReadingState(b.id) !== libState.readingFilter) {
+          return false;
+        }
+        return true;
+      });
+
+      const isSemantic = libState.searchMode === "semantic" && !!q;
+      const usableSemantic = isSemantic
+        && semanticState.lastQueryText === q
+        && Array.isArray(semanticState.lastQueryVec);
+
+      let filtered;
+      const indexingIds = new Set();
+      // Per-book similarity for the semantic top-30, used to paint
+      // the "X% match" badge + hover tooltip (Batch 5).
+      const simById = new Map();
+
+      if (isSemantic && usableSemantic) {
+        // Rank by cosine similarity. Top 30 of books that have an
+        // embedding; books without one go to the bottom in normal
+        // sort order with an "indexing…" badge.
+        const sim = window.LumenEmbeddings.similarity;
+        const qVec = semanticState.lastQueryVec;
+        const withE = [];
+        const withoutE = [];
+        basePool.forEach(b => {
+          if (Array.isArray(b._embedding)) withE.push({ b, s: sim(qVec, b._embedding) });
+          else withoutE.push(b);
+        });
+        withE.sort((a, b) => b.s - a.s);
+        const top = withE.slice(0, 30);
+        top.forEach(x => simById.set(x.b.id, x.s));
+        normalSort(withoutE).forEach(b => indexingIds.add(b.id));
+        filtered = top.map(x => x.b).concat(withoutE);
+      } else if (isSemantic) {
+        // Semantic mode, query present, but vector not ready (still
+        // debouncing / embedding). Show the base pool in normal
+        // sort; mark books missing an embedding as indexing.
+        filtered = normalSort(basePool.slice());
+        filtered.forEach(b => { if (!Array.isArray(b._embedding)) indexingIds.add(b.id); });
+      } else {
+        // Exact mode — original behavior (title/author substring).
+        filtered = basePool.filter(b =>
+          !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+        normalSort(filtered);
+      }
 
       const excluded = allBooks.length - Engine.applyHardExclusions(allBooks, Engine.normalizeProfile(s.profile)).length;
       const hiddenCount = Object.keys(hidden).length;
       stats.innerHTML = "";
       stats.appendChild(util.el("span", {}, `Showing ${filtered.length} of ${allBooks.length}`));
+      if (isSemantic && semanticState.loading) {
+        stats.appendChild(util.el("span", { class: "tag" }, "semantic · embedding query…"));
+      } else if (isSemantic && usableSemantic) {
+        stats.appendChild(util.el("span", { class: "tag tag-accent" }, "semantic · top 30 by meaning"));
+      } else if (isSemantic && semanticState.lastError) {
+        const msg = semanticState.lastError === "quota"   ? "semantic · Voyage quota hit"
+                 : semanticState.lastError === "network" ? "semantic · network error — check connection"
+                 : semanticState.lastError === "no-key"  ? "semantic · no Voyage key — add one in Admin"
+                 :                                         "semantic · embed failed — see console";
+        stats.appendChild(util.el("span", { class: "tag tag-warn", title: "Semantic mode stays selected; re-edit the query to retry." }, msg));
+      }
       if (excluded > 0)   stats.appendChild(util.el("span", { class: "tag tag-warn" }, `${excluded} excluded by your filters`));
       if (hiddenCount)    stats.appendChild(util.el("a", { class: "tag tag-accent", href: "#/settings", style: { textDecoration: "none" } }, `${hiddenCount} dismissed — restore in Settings`));
 
@@ -1346,7 +1482,7 @@
         if (allBooks.length === 0) {
           grid.appendChild(ui.empty({
             title: "Your library is empty",
-            message: "Lumen has nothing saved yet. Search the web from Discovery to add titles, or load the starter library of historical classics from Settings.",
+            message: "Lumen has nothing saved yet. Search the web from Discovery to add titles, or load the starter library of historical classics from Admin.",
             actions: [
               { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
               { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
@@ -1357,49 +1493,130 @@
         }
         return;
       }
-      filtered.forEach(b => grid.appendChild(bookCardFull(b, scoredMap[b.id])));
+      filtered.forEach(b => {
+        const card = bookCardFull(b, scoredMap[b.id]);
+        if (indexingIds.has(b.id)) {
+          card.style.position = card.style.position || "relative";
+          card.appendChild(util.el("span", {
+            class: "tag",
+            style: {
+              position: "absolute", top: "10px", right: "10px",
+              fontSize: "10px", opacity: "0.75", pointerEvents: "none"
+            }
+          }, "indexing…"));
+        } else if (simById.has(b.id)) {
+          // Batch 5: "X% match" badge + "why this matched" tooltip.
+          const pct = Math.max(0, Math.round(simById.get(b.id) * 100));
+          const matches = matchExplanation(libState.query, b);
+          const tipText = matches && matches.length
+            ? "Matched on: " + matches.join(" · ")
+            : "Matched on description";
+          card.style.position = card.style.position || "relative";
+          card.appendChild(util.el("span", {
+            class: "tag tag-accent",
+            title: tipText,
+            tabindex: "0",
+            "aria-label": `${pct} percent match. ${tipText}`,
+            style: {
+              position: "absolute", top: "10px", right: "10px",
+              fontSize: "10px", fontWeight: "600", cursor: "help"
+            }
+          }, `${pct}% match`));
+        }
+        grid.appendChild(card);
+      });
+    }
+
+    // "Why this matched" — cheap approximation per spec: tokenize
+    // the query, tokenize each of the book's tone/trope/kink/dynamic
+    // tags, and return up to three tags that share a token with the
+    // query. Returns null if none overlap (caller shows "matched on
+    // description" instead).
+    function matchExplanation(queryText, book) {
+      const qTokens = new Set(
+        String(queryText || "").toLowerCase()
+          .split(/[^a-z0-9]+/).filter(t => t.length > 2)
+      );
+      if (!qTokens.size || !book) return null;
+      const tags = []
+        .concat(book.tone || [])
+        .concat(book.tropes || book.trope_tags || book.trope || [])
+        .concat(book.dynamic || book.relationship_dynamic || [])
+        .concat(book.kink || book.kink_tags || []);
+      const out = [];
+      const seen = new Set();
+      for (const raw of tags) {
+        if (!raw || typeof raw !== "string") continue;
+        const norm = raw.toLowerCase();
+        if (seen.has(norm)) continue;
+        const tagTokens = norm.split(/[^a-z0-9]+/).filter(Boolean);
+        if (tagTokens.some(t => qTokens.has(t))) {
+          out.push(raw.replace(/-/g, " "));
+          seen.add(norm);
+          if (out.length >= 3) break;
+        }
+      }
+      return out.length ? out : null;
+    }
+
+    // Debounced semantic search. Kicks a 300ms timer; when it fires
+    // we embed the current query, bump a seq counter so stale
+    // responses are dropped, and re-render. A failure flips the
+    // mode back to Exact silently and surfaces a non-blocking toast.
+    function triggerSemanticEmbed() {
+      if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) {
+        // Key actually gone (user cleared it mid-session). Only in
+        // this case do we revert mode — Semantic is impossible
+        // without a key.
+        libState.searchMode = "exact";
+        setModeButton("exact");
+        updateGrid();
+        return;
+      }
+      if (semanticState.debounceTimer) clearTimeout(semanticState.debounceTimer);
+      const thisSeq = ++semanticState.seq;
+      semanticState.loading = true;
+      semanticState.lastError = null;
+      updateGrid(); // paint the loading tag while waiting
+      semanticState.debounceTimer = setTimeout(async () => {
+        semanticState.debounceTimer = null;
+        const q = libState.query;
+        if (!q) {
+          semanticState.loading = false;
+          semanticState.lastQueryText = "";
+          semanticState.lastQueryVec = null;
+          if (thisSeq === semanticState.seq) updateGrid();
+          return;
+        }
+        try {
+          const vec = await window.LumenEmbeddings.embedText(q);
+          if (thisSeq !== semanticState.seq) return; // stale
+          semanticState.lastQueryText = q;
+          semanticState.lastQueryVec = vec;
+          semanticState.loading = false;
+          semanticState.lastError = null;
+          updateGrid();
+        } catch (err) {
+          if (thisSeq !== semanticState.seq) return;
+          semanticState.loading = false;
+          semanticState.lastError = err && err.code ? err.code : "unknown";
+          // Log full error to console for debugging but keep
+          // Semantic selected so the button "sticks" as expected.
+          try { console.warn("[Lumen] Semantic search failed:", err); } catch (_) { /* ignore */ }
+          updateGrid();
+        }
+      }, 300);
     }
 
     setTimeout(updateGrid, 0);
     return wrap;
   }
 
-  /* -------------------- discovery (web search + Claude) -------------------- */
+  /* -------------------- discovery -------------------- */
   const discoveryState = {
     lastQuery: "",
-    raw: [],           // Google Books results in insertion order
-    enrichments: {},   // id -> { heat, tropes, insight } | { error: true, message }
-    mode: "tailored",  // "tailored" (re-sorts by profile fit) | "broad"
-    originalOrder: []  // snapshot of ids in Google Books order for restoring Broad mode
+    raw: []   // Google Books results in insertion order
   };
-
-  // Lightweight fit score for Discovery's Tailored mode. Combines:
-  //   - heat proximity to user (absolute delta, 0 diff = 100)
-  //   - trope overlap with user profile's trope + kink sets
-  //   - hard-exclusion penalty if any Claude trope matches a user exclude
-  // Returns 0-100. Missing/error enrichments collapse to 50 (neutral).
-  function tailoredScore(enrich, profile) {
-    if (!enrich || enrich.error) return 50;
-    const userHeat = profile.heat || 3;
-    const heatDiff = Math.abs((enrich.heat || 3) - userHeat);
-    const heatScore = Math.max(0, 100 - heatDiff * 18);
-
-    const normalise = (s) => String(s || "").toLowerCase().replace(/\s+/g, "-");
-    const userWanted = new Set(
-      (profile.trope || []).concat(profile.kink || []).map(normalise)
-    );
-    const userExcluded = new Set((profile.exclude || []).map(normalise));
-    const claudeTropes = (enrich.tropes || []).map(normalise);
-
-    const overlap = claudeTropes.filter(t => userWanted.has(t)).length;
-    const tropeScore = userWanted.size
-      ? Math.min(100, Math.round((overlap / Math.max(userWanted.size, 2)) * 120))
-      : 60;
-
-    const exclusionHit = claudeTropes.some(t => userExcluded.has(t));
-    const base = Math.round(heatScore * 0.6 + tropeScore * 0.4);
-    return Math.max(0, exclusionHit ? base - 50 : base);
-  }
 
   function steamClass(heat) {
     if (heat >= 4) return "steam-high";
@@ -1415,7 +1632,7 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Discovery" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Search Google Books for any title, author, or topic. Claude reads the result and returns heat, tropes, and a one-line insight you can use to decide whether it belongs in your Library." })
+        util.el("p", { class: "lede", text: "Type a book title to find that exact book plus five reads in the same genre." })
       ])
     ]));
 
@@ -1427,53 +1644,15 @@
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
-    const searchBtn = util.el("button", { class: "btn btn-primary btn-lg", onclick: () => runSearch() }, "Search & analyze");
-    const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
+    const searchBtn = util.el("button", { class: "btn btn-primary btn-lg", onclick: () => runSearch() }, "Search");
 
     hero.appendChild(util.el("div", { class: "disco-hero-row" }, [
       searchInput,
-      searchBtn,
-      statusBadge
+      searchBtn
     ]));
 
-    // Tailored / Broad mode toggle (segmented). Tailored re-orders
-    // results by profile fit after Claude finishes analyzing each;
-    // Broad keeps Google Books' order.
-    const modeSegmented = util.el("div", { class: "segmented", role: "group", "aria-label": "Search mode" });
-    [
-      { id: "tailored", label: "Tailored to me" },
-      { id: "broad",    label: "Broad browse" }
-    ].forEach(opt => {
-      const btn = util.el("button", {
-        type: "button",
-        "aria-pressed": discoveryState.mode === opt.id ? "true" : "false",
-        "data-v": opt.id,
-        onclick: () => {
-          if (discoveryState.mode === opt.id) return;
-          discoveryState.mode = opt.id;
-          modeSegmented.querySelectorAll("button").forEach(b =>
-            b.setAttribute("aria-pressed", b.dataset.v === opt.id ? "true" : "false")
-          );
-          reorderResultsForMode();
-        }
-      }, opt.label);
-      modeSegmented.appendChild(btn);
-    });
-
     const hint = util.el("div", { class: "disco-hero-hint" });
-    const modeHint = util.el("span", { class: "disco-hero-mode", text: "" });
-    const hintLead = util.el("span");
-    if (!Disco.getApiKey()) {
-      hintLead.textContent = "Heads up — ";
-      hint.appendChild(hintLead);
-      hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Settings"));
-      hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
-    } else {
-      hintLead.textContent = "Up to six Google Books results · Claude reads each for heat, tropes, and a one-line insight.";
-      hint.appendChild(hintLead);
-    }
-    hint.appendChild(modeSegmented);
-    hint.appendChild(modeHint);
+    hint.appendChild(util.el("span", { text: "Your book + 5 reads in the same genre from Google Books." }));
     hero.appendChild(hint);
     wrap.appendChild(hero);
 
@@ -1484,61 +1663,35 @@
     if (discoveryState.raw.length) {
       resultsHead.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
         discoveryState.raw = [];
-        discoveryState.enrichments = {};
         discoveryState.lastQuery = "";
-        discoveryState.originalOrder = [];
         renderView();
       }}, "Clear results"));
     }
     wrap.appendChild(resultsHead);
 
-    function updateModeHint() {
-      const label = discoveryState.mode === "tailored"
-        ? "Re-sorted by profile fit"
-        : "In Google Books order";
-      modeHint.textContent = ` · ${label}`;
-    }
-    updateModeHint();
-
-    function reorderResultsForMode() {
-      updateModeHint();
-      if (!discoveryState.raw.length) return;
-      const fresh = store.get();
-      if (discoveryState.mode === "broad") {
-        // Restore the original Google Books order.
-        const orderIndex = new Map(discoveryState.originalOrder.map((id, i) => [id, i]));
-        discoveryState.raw.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0));
-      } else {
-        // Tailored: sort by computed fit against the user profile.
-        discoveryState.raw.sort((a, b) => {
-          const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
-          const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
-          return sb - sa;
-        });
-      }
-      paintGrid();
-    }
-
     const grid = util.el("div", { class: "discovery-grid", id: "disco-grid" });
     wrap.appendChild(grid);
-
-    // Status updates
-    const unsub = Disco.onStatus((s) => {
-      statusBadge.className = `api-status status-${s.status}`;
-      statusBadge.textContent = s.lastMessage;
-    });
-    // Re-render will drop the old node; we detach on a router change via a best-effort weak cleanup
-    setTimeout(() => {
-      if (!document.body.contains(statusBadge)) unsub();
-    }, 60_000);
 
     // Initial paint from cached results (if any)
     if (discoveryState.raw.length) paintGrid();
     else {
-      grid.appendChild(util.el("div", { class: "discovery-empty" }, [
-        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Discovery waits for your query" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a title, author, or theme and Claude will read each blurb as it arrives. Set your API key in Settings first." })
-      ]));
+      const catalogSuggestions = (window.LumenData && window.LumenData.CATALOG || []).slice(0, 3);
+      const emptyChildren = [
+        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "What are you in the mood for?" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a book title to find it and five reads in the same genre." })
+      ];
+      if (catalogSuggestions.length) {
+        const chips = util.el("div", { class: "row", style: { flexWrap: "wrap", gap: "var(--s-2)", marginTop: "var(--s-3)" } });
+        catalogSuggestions.forEach(b => {
+          chips.appendChild(util.el("button", {
+            class: "chip",
+            type: "button",
+            onclick: () => { searchInput.value = b.title; runSearch(); }
+          }, b.title));
+        });
+        emptyChildren.push(chips);
+      }
+      grid.appendChild(util.el("div", { class: "discovery-empty" }, emptyChildren));
     }
 
     function paintGrid() {
@@ -1556,21 +1709,17 @@
 
     async function runSearch() {
       const q = searchInput.value.trim();
-      if (!q) { ui.toast("Enter a title, author, or topic"); return; }
-      if (!Disco.getApiKey()) {
-        ui.toast("Add your Claude API key in Settings first", {
-          action: "Open Settings",
-          onAction: () => router.go("settings"),
-          duration: 4500
-        });
-        return;
-      }
+      if (!q) { ui.toast("Enter a book title to search"); return; }
 
       discoveryState.lastQuery = q;
       discoveryState.raw = [];
-      discoveryState.enrichments = {};
+      resultsLabel.textContent = `Searching for "${q}"…`;
+      searchBtn.disabled = true;
       grid.innerHTML = "";
-      resultsLabel.textContent = `Searching Google Books for "${q}"…`;
+      grid.appendChild(util.el("div", { class: "disco-loading" }, [
+        util.el("div", { class: "disco-spinner" }),
+        util.el("p", { class: "t-small t-muted", text: "Finding your book…" })
+      ]));
 
       let items;
       try {
@@ -1581,6 +1730,7 @@
         console.error("[Lumen Discovery] Search failed:", err);
         resultsLabel.textContent = `Search failed for "${q}"`;
         grid.innerHTML = "";
+        searchBtn.disabled = false;
         const emptyNode = util.el("div", { class: "discovery-empty" }, [
           util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
             text: isQuota ? "Google Books is rate-limiting this network" : "Couldn't reach Google Books" }),
@@ -1601,7 +1751,10 @@
         return;
       }
 
+      searchBtn.disabled = false;
+
       if (!items.length) {
+        grid.innerHTML = "";
         resultsLabel.textContent = `No results for "${q}"`;
         grid.appendChild(util.el("div", { class: "discovery-empty" }, [
           util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing matched that query" }),
@@ -1611,39 +1764,10 @@
       }
 
       discoveryState.raw = items;
-      discoveryState.originalOrder = items.map(b => b.id);
       paintGrid();
-
-      // Analyse sequentially so the status badge narrates progress.
-      // In Tailored mode we re-sort the whole list every time a new
-      // Enrich each result with Claude — heat, tropes, one calm
-      // insight. No category filter is applied; users are free to
-      // add any Google Books result to their Library.
-      for (const book of items) {
-        try {
-          const result = await Disco.analyzeWithClaude(book);
-          discoveryState.enrichments[book.id] = result;
-        } catch (err) {
-          discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
-        }
-        if (discoveryState.mode === "tailored") {
-          const fresh = store.get();
-          discoveryState.raw.sort((a, b) => {
-            const sa = tailoredScore(discoveryState.enrichments[a.id], fresh.profile);
-            const sb = tailoredScore(discoveryState.enrichments[b.id], fresh.profile);
-            return sb - sa;
-          });
-          paintGrid();
-        } else {
-          const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-          if (node) node.replaceWith(renderDiscoCard(book));
-        }
-      }
     }
 
     function renderDiscoCard(book) {
-      const enrich = discoveryState.enrichments[book.id];
-      const heat = enrich && !enrich.error ? enrich.heat : null;
       const card = util.el("div", {
         class: "disco-card has-dismiss is-clickable",
         "data-disco-id": book.id,
@@ -1664,7 +1788,7 @@
         }
       });
 
-      // Pin / share with Sara — sits next to the dismiss control.
+      // Pin / share with Bianca — sits next to the dismiss control.
       card.appendChild(pinShareBtn(book.id));
 
       // Dismiss — drops this card from the current results feed
@@ -1677,7 +1801,6 @@
           const idx = discoveryState.raw.findIndex(b => b.id === book.id);
           if (idx === -1) return;
           const removed = discoveryState.raw.splice(idx, 1)[0];
-          delete discoveryState.enrichments[book.id];
           const node = document.querySelector(`[data-disco-id="${book.id}"]`);
           if (node) node.remove();
           const countEl = document.getElementById("disco-count");
@@ -1699,26 +1822,22 @@
 
       // Cover frame — image if available, initials fallback otherwise
       const cover = util.el("div", { class: "disco-card-cover" });
+      const showInitialsFallback = () => {
+        if (!cover.querySelector(".cover-fallback")) {
+          cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        }
+      };
       if (book.thumbnail) {
         const url = book.thumbnail.replace(/^http:/, "https:");
         const img = util.el("img", {
           src: url, alt: `Cover of ${book.title}`, loading: "lazy",
-          onerror: function () {
-            this.remove();
-            if (!cover.querySelector(".cover-fallback")) {
-              cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
-            }
-          }
+          onerror: function () { this.remove(); showInitialsFallback(); },
+          onload:  function () { if (util.isLikelyNoCover(this)) { this.remove(); showInitialsFallback(); } }
         });
         cover.appendChild(img);
       } else {
-        cover.appendChild(util.el("div", { class: "cover-fallback", text: (book.title || "??").slice(0, 2).toUpperCase() }));
+        showInitialsFallback();
       }
-      // Steam Engine bar at the bottom of the cover (reveals once analyzed)
-      cover.appendChild(util.el("div", {
-        class: "steam-indicator" + (heat ? " " + steamClass(heat) : ""),
-        style: heat ? null : { background: "var(--bg-sunken)", opacity: "0.6" }
-      }));
       card.appendChild(cover);
 
       // Body — compact row layout. Title, author, 2-line blurb, then
@@ -1730,52 +1849,21 @@
       const head = util.el("div", { class: "disco-card-head" });
       head.appendChild(util.el("h4", { class: "disco-card-title", text: book.title }));
 
-      // Fit badge — in Tailored mode, show a tiny chip indicating
-      // alignment. Inline with the title rather than full-width banner.
-      if (discoveryState.mode === "tailored" && enrich && !enrich.error) {
-        const fresh = store.get();
-        const fit = tailoredScore(enrich, fresh.profile);
-        if (fit < 45) {
-          head.appendChild(util.el("span", { class: "disco-fit-chip tone-low", text: "low fit" }));
-        } else if (fit >= 75) {
-          head.appendChild(util.el("span", { class: "disco-fit-chip tone-high", text: "strong fit" }));
-        }
-      }
       body.appendChild(head);
 
       body.appendChild(util.el("div", { class: "disco-card-author",
         text: book.author + (book.year ? ` · ${book.year}` : "") }));
       body.appendChild(util.el("p", { class: "disco-card-blurb", text: book.description }));
 
-      // Status strip — heat dot + 1-3 tropes inline. Insight moves to
-      // the detail sheet so the card never balloons past ~150px tall.
-      const status = util.el("div", { class: "disco-card-status" });
-      if (enrich && !enrich.error) {
-        if (enrich.heat != null) {
-          status.appendChild(util.el("span", {
-            class: "disco-heat-dot " + steamClass(enrich.heat),
-            title: `Heat ${enrich.heat}/5`,
-            "aria-label": `Heat ${enrich.heat} of 5`
-          }));
-        }
-        (enrich.tropes || []).slice(0, 3).forEach(t => {
-          status.appendChild(util.el("span", { class: "disco-card-trope" }, t));
-        });
-      } else if (enrich && enrich.error) {
-        status.appendChild(util.el("span", { class: "disco-card-status-note", text: "analysis unavailable" }));
-      } else {
-        status.appendChild(util.el("span", { class: "disco-card-status-note pulse", text: "Claude is reading…" }));
-      }
-      body.appendChild(status);
 
-      // Icon-only action row — primary is "Add to library", source
+      // Icon-only action row — primary is "Add to your library", source
       // link tucked behind a second icon. Labels exposed via tooltips
       // so the card stays visually quiet at rest.
       const actions = util.el("div", { class: "disco-card-actions" });
       actions.appendChild(util.el("button", {
         class: "disco-card-iconbtn disco-card-iconbtn-primary",
-        title: "Add to library", "aria-label": "Add to library",
-        onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book, enrich); }
+        title: "Add to your library", "aria-label": "Add to your library",
+        onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book); }
       }, "+"));
       if (book.sourceUrl) {
         actions.appendChild(util.el("a", {
@@ -1795,77 +1883,25 @@
   }
 
   function openDiscoveryDetail(book) {
-    const enrich = discoveryState.enrichments[book.id];
     const inLibrary = (store.get().discovered || []).some(d => d.id === book.id);
+    const cover = buildCoverBlock(book, { size: "lg", showHeat: false });
 
-    // Cover block — reuse the shared buildCoverBlock. Discovery
-    // search results store heat inside the enrichment, so we mirror
-    // that onto a lightweight book shape the cover helper expects.
-    const coverBookShape = Object.assign({}, book, {
-      heat_level: enrich && !enrich.error && enrich.heat ? enrich.heat : null
-    });
-    const cover = buildCoverBlock(coverBookShape, { size: "lg", showHeat: !!coverBookShape.heat_level });
-
-    // Header aside — heat ring when Claude has finished analyzing.
-    let headerAside = null;
-    if (enrich && !enrich.error && enrich.heat != null) {
-      const aside = util.el("div", { class: "detail-rings" });
-      const fill = Math.max(0, Math.min(1, enrich.heat / 5));
-      const cell = util.el("div", { class: "detail-ring-cell" });
-      cell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(fill, String(enrich.heat), kpiToneFromFraction(fill))]));
-      cell.appendChild(util.el("div", { class: "detail-ring-label", text: "Heat" }));
-      cell.appendChild(util.el("div", { class: "detail-ring-sub", text: `${enrich.heat} / 5` }));
-      aside.appendChild(cell);
-      headerAside = aside;
-    }
-
-    const sections = [];
-
-    // Tropes chip strip
-    if (enrich && !enrich.error && (enrich.tropes || []).length) {
-      const pills = util.el("div", { class: "detail-pills" });
-      enrich.tropes.forEach(t => {
-        pills.appendChild(util.el("span", { class: "detail-pill" }, [
-          util.el("span", { class: "detail-pill-v", text: t })
-        ]));
-      });
-      sections.push({ content: pills });
-    }
-
-    // Full description — no line clamping
-    sections.push({
-      label: "Description",
-      content: util.el("p", {
-        class: "detail-sheet-prose detail-sheet-prose-hero",
-        style: { whiteSpace: "pre-wrap" },
-        text: book.description || "No description available for this title."
-      })
-    });
-
-    // AI insight / advisory
-    if (enrich && !enrich.error) {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose", text: enrich.insight || "No insight returned." })
-      });
-    } else if (enrich && enrich.error) {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose",
-          text: "Analysis failed — Claude couldn't be reached for this title. The description and source link are still valid." })
-      });
-    } else {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose", text: "Claude is still reading this title…" })
-      });
-    }
+    const sections = [
+      {
+        label: "Description",
+        content: util.el("p", {
+          class: "detail-sheet-prose detail-sheet-prose-hero",
+          style: { whiteSpace: "pre-wrap" },
+          text: book.description || "No description available for this title."
+        })
+      }
+    ];
 
     const actions = [
       book.sourceUrl ? { label: "View source", href: book.sourceUrl } : null,
       inLibrary
         ? { label: "Open in Library", variant: "btn-primary", onClick: () => router.go("library") }
-        : { label: "Add to library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book, enrich) }
+        : { label: "Add to your library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book) }
     ].filter(Boolean);
 
     ui.detailSheet({
@@ -1873,13 +1909,131 @@
       title: book.title,
       subtitle: book.author || "Unknown author",
       cover,
-      headerAside,
       sections,
       actions
     });
   }
 
-  function addDiscoveryToLibrary(book, enrich) {
+  /* ==================================================================
+     Embedding storage (Batch 3)
+     When a book enters the library via any of the three add-paths
+     (addDiscoveryToLibrary, loadStarterLibrary, applyCatalogOverride)
+     we fire a Voyage call in the background and write the vector
+     onto the book. The UI is never blocked and success is silent.
+
+     Book vectors live where the book itself lives:
+       · Discovered / seed books → state.discovered[i]._embedding
+       · Catalog books           → the override at lumen:catalog-override
+     The backfill pass on boot catches anything left behind, capped
+     at 20 per session to stay kind to the user's Voyage quota.
+     ================================================================== */
+  const embedQueue = [];
+  let embedTimer = null;
+  // Skip a book for this long after a failure before retrying on
+  // a subsequent backfill. Long enough to survive a transient quota
+  // bump, short enough to self-heal within a day.
+  const EMBED_RETRY_MS = 6 * 60 * 60 * 1000;
+
+  function composeEmbedText(b) {
+    if (!b) return "";
+    const title = b.title || "";
+    const desc  = b.description || b.short_summary || b.fit_notes || "";
+    const tags  = []
+      .concat(b.tropes || [])
+      .concat(b.trope_tags || b.trope || [])
+      .concat(b.tone || [])
+      .concat(b.relationship_dynamic || b.dynamic || [])
+      .concat(b.kink_tags || b.kink || [])
+      .concat(b.pacing || [])
+      .concat(b.literary_style || []);
+    return (title + "\n\n" + desc + "\n\n" + tags.join(" ")).trim();
+  }
+
+  // Find and mutate a single book wherever it lives. Returns true if
+  // it was touched, so the caller can persist the catalog override if
+  // the book wasn't in the main store.
+  function mutateBookEmbedding(bookId, mutator) {
+    let touched = false;
+    store.update(st => {
+      if (st.discovered) {
+        const d = st.discovered.find(x => x.id === bookId);
+        if (d) { mutator(d); touched = true; }
+      }
+    });
+    if (touched) return;
+    try {
+      const raw = localStorage.getItem("lumen:catalog-override");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.books)) return;
+      const b = parsed.books.find(x => x.id === bookId);
+      if (!b) return;
+      mutator(b);
+      localStorage.setItem("lumen:catalog-override", JSON.stringify(parsed));
+    } catch (e) { /* storage issues are non-fatal here */ }
+  }
+
+  function scheduleEmbedQueue() {
+    if (embedTimer || !embedQueue.length) return;
+    embedTimer = setTimeout(processEmbedQueue, 250);
+  }
+
+  async function processEmbedQueue() {
+    embedTimer = null;
+    const job = embedQueue.shift();
+    if (!job) return;
+    // Silent skip if the key disappeared mid-queue.
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) {
+      embedQueue.length = 0;
+      return;
+    }
+    const { id, text } = job;
+    try {
+      const vec = await window.LumenEmbeddings.embedText(text);
+      mutateBookEmbedding(id, b => {
+        b._embedding = vec;
+        b._embeddedAt = Date.now();
+        delete b._embeddingError;
+      });
+    } catch (err) {
+      const code = (err && err.code) || "unknown";
+      mutateBookEmbedding(id, b => { b._embeddingError = { code, at: Date.now() }; });
+      // Stop the queue on "no-key" — retrying would just fail again.
+      if (code === "no-key") { embedQueue.length = 0; return; }
+    }
+    if (embedQueue.length) scheduleEmbedQueue();
+  }
+
+  function queueEmbedding(book) {
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) return;
+    if (!book || !book.id) return;
+    // Skip if we already have an embedding and it's still fresh.
+    if (book._embedding) return;
+    // De-dupe — if the same id is already in the queue, skip it.
+    if (embedQueue.some(j => j.id === book.id)) return;
+    embedQueue.push({ id: book.id, text: composeEmbedText(book) });
+    scheduleEmbedQueue();
+  }
+
+  // Boot-time backfill: queue up to 20 books per session that are
+  // missing _embedding (and aren't in a recent-error cooldown).
+  // Silent if no Voyage key is set.
+  function backfillEmbeddings() {
+    if (!window.LumenEmbeddings || !window.LumenEmbeddings.getApiKey()) return;
+    let queued = 0;
+    const CAP = 20;
+    const now = Date.now();
+    for (const b of listAllBooks()) {
+      if (queued >= CAP) break;
+      if (!b || !b.id) continue;
+      if (b._embedding) continue;
+      if (b._embeddingError && (now - (b._embeddingError.at || 0)) < EMBED_RETRY_MS) continue;
+      queueEmbedding(b);
+      queued += 1;
+    }
+  }
+
+  function addDiscoveryToLibrary(book) {
     const s = store.get();
     const existing = (s.discovered || []).find(d => d.id === book.id);
     if (existing) {
@@ -1911,9 +2065,6 @@
         thumbnail: book.thumbnail || null,
         source: "Google Books",
         sourceUrl: book.sourceUrl || null,
-        heat: enrich && !enrich.error ? enrich.heat : null,
-        tropes: enrich && !enrich.error ? (enrich.tropes || []) : [],
-        aiInsight: enrich && !enrich.error ? enrich.insight : null,
         addedAt: Date.now()
       });
       st.bookStates[book.id] = "want";
@@ -1926,6 +2077,10 @@
     // button flips to "Open in Library", and if they navigate to Library
     // via the toast action the grid shows the new entry immediately.
     renderView();
+    // Silent background embedding (Batch 3). No toast on success; on
+    // failure the error tag stays on the book for the backfill to see.
+    const savedRecord = (store.get().discovered || []).find(d => d.id === book.id);
+    queueEmbedding(savedRecord || book);
     ui.toast(`Added ${book.title} to your library as "want to read"`, {
       action: "Open library",
       onAction: () => router.go("library"),
@@ -2158,8 +2313,8 @@
 
   async function enrichPending() {
     const Disco = window.LumenDiscovery;
-    if (!Disco || !Disco.getApiKey()) {
-      ui.toast("Add your Claude API key before enriching — Settings → Claude API key");
+    if (!Disco || !Disco.hasKey()) {
+      ui.toast("Add your Claude API key in Settings → Claude API key to enable enrichment");
       return;
     }
     catalogImport.enriching = true;
@@ -2309,18 +2464,19 @@
       } catch (e) { fails += 1; }
     }
 
-    // Persist: whether the catalog came from the committed file or an
-    // existing override, the refreshed version goes into the override
-    // slot so reloads see the new covers.
+    // Persist to localStorage for this device session.
     try {
       const payload = { version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books: catalog };
       localStorage.setItem("lumen:catalog-override", JSON.stringify(payload));
-    } catch (e) { /* quota */ }
+    } catch (e) { /* quota — user must rely on the downloaded catalog.js */ }
 
-    ui.toast(`Added ${hits} cover${hits === 1 ? "" : "s"}${fails ? ` · ${fails} not found` : ""} — reload to see them`, {
-      action: "Reload now",
-      onAction: () => location.reload(),
-      duration: 6000
+    if (hits > 0) {
+      // Auto-download updated catalog.js so covers become permanent on all devices after one commit.
+      downloadCatalogJS(catalog);
+    }
+
+    ui.toast(`Added ${hits} cover${hits === 1 ? "" : "s"}${fails ? ` · ${fails} not found` : ""}. catalog.js downloaded — commit it to make covers permanent.`, {
+      duration: 8000
     });
   }
 
@@ -2330,6 +2486,10 @@
     try {
       localStorage.setItem("lumen:catalog-override",
         JSON.stringify({ version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books }));
+      // Silent background embedding of each committed catalog book
+      // (Batch 3). Queue is paced at 250ms to stay under Voyage rate
+      // limits; vectors are written back into the override.
+      books.forEach(b => queueEmbedding(b));
       ui.toast(`Applied ${books.length} curated book${books.length === 1 ? "" : "s"} — reload to see them everywhere`, {
         action: "Reload now",
         onAction: () => location.reload(),
@@ -2340,35 +2500,106 @@
     }
   }
 
-  function downloadCatalogJS() {
-    const books = readyBooks();
-    if (!books.length) { ui.toast("Nothing ready to download"); return; }
-    const header =
-      "/* Lumen curated catalog — generated via Settings → Import catalog. */\n" +
-      "/* Schema: data/CATALOG.md. Do not edit large sections by hand. */\n";
-    const body =
-      "(function () {\n" +
-      "  \"use strict\";\n" +
-      "  const CATALOG_BUILTIN = " + JSON.stringify(books, null, 2) + ";\n" +
-      "  const CATALOG_VERSION = 1;\n" +
-      "  function resolveCatalog() {\n" +
-      "    try {\n" +
-      "      const raw = localStorage.getItem(\"lumen:catalog-override\");\n" +
-      "      if (!raw) return CATALOG_BUILTIN;\n" +
-      "      const parsed = JSON.parse(raw);\n" +
-      "      if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;\n" +
-      "      return parsed.books;\n" +
-      "    } catch (e) { return CATALOG_BUILTIN; }\n" +
-      "  }\n" +
-      "  window.LumenData = window.LumenData || {};\n" +
-      "  window.LumenData.CATALOG = resolveCatalog();\n" +
-      "  window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;\n" +
-      "  window.LumenData.CATALOG_VERSION = CATALOG_VERSION;\n" +
-      "})();\n";
-    const blob = new Blob([header + body], { type: "text/javascript" });
+  function downloadCatalogJS(prebuiltBooks) {
+    // Accept a prebuilt array (e.g. from refreshCatalogCovers), otherwise
+    // prefer the live importer session, then fall back to the active override.
+    let books = prebuiltBooks || null;
+    if (!books) {
+      books = readyBooks();
+      if (!books.length) {
+        const raw = localStorage.getItem("lumen:catalog-override");
+        if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+        try {
+          const parsed = JSON.parse(raw);
+          books = (parsed && Array.isArray(parsed.books)) ? parsed.books : [];
+        } catch (e) {}
+      }
+    }
+    if (!books || !books.length) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+
+    // Generate a drop-in replacement for data/catalog.js, preserving
+    // all helper functions so the file is fully compatible.
+    const ts = new Date().toISOString().slice(0, 10);
+    const out = [
+      "/* ============================================================",
+      "   Lumen — Curated catalog",
+      "   Generated " + ts + " via Settings → Admin → Curated catalog → Download catalog.js",
+      "   Drop this file into data/catalog.js and commit.",
+      "   Schema: data/CATALOG.md",
+      "   ============================================================ */",
+      "(function () {",
+      "  \"use strict\";",
+      "",
+      "  const CATALOG_BUILTIN = " + JSON.stringify(books, null, 2) + ";",
+      "",
+      "  const CATALOG_VERSION = 1;",
+      "",
+      "  function resolveCatalog() {",
+      "    try {",
+      "      const raw = localStorage.getItem(\"lumen:catalog-override\");",
+      "      if (!raw) return CATALOG_BUILTIN;",
+      "      const parsed = JSON.parse(raw);",
+      "      if (!parsed || !Array.isArray(parsed.books)) return CATALOG_BUILTIN;",
+      "      return parsed.books;",
+      "    } catch (e) {",
+      "      return CATALOG_BUILTIN;",
+      "    }",
+      "  }",
+      "",
+      "  function getCatalogPage(catalog, page, pageSize) {",
+      "    const size  = (typeof pageSize === \"number\" && pageSize > 0) ? pageSize : 50;",
+      "    const start = Math.max(0, (page || 0)) * size;",
+      "    return catalog.slice(start, start + size);",
+      "  }",
+      "",
+      "  function searchCatalog(catalog, query) {",
+      "    if (!query || !query.trim()) return catalog.slice(0, 50);",
+      "    const q = query.trim().toLowerCase();",
+      "    return catalog.filter(b => {",
+      "      const title  = (b.title  || \"\").toLowerCase();",
+      "      const author = (b.author || \"\").toLowerCase();",
+      "      const tags   = [",
+      "        ...(b.trope_tags || []),",
+      "        ...(b.kink_tags  || []),",
+      "        ...(b.tone       || [])",
+      "      ].join(\" \").toLowerCase();",
+      "      return title.includes(q) || author.includes(q) || tags.includes(q);",
+      "    });",
+      "  }",
+      "",
+      "  window.LumenData = window.LumenData || {};",
+      "  window.LumenData.CATALOG         = resolveCatalog();",
+      "  window.LumenData.CATALOG_BUILTIN = CATALOG_BUILTIN;",
+      "  window.LumenData.CATALOG_VERSION = CATALOG_VERSION;",
+      "  window.LumenData.getCatalogPage  = getCatalogPage;",
+      "  window.LumenData.searchCatalog   = searchCatalog;",
+      "})();",
+      ""
+    ].join("\n");
+
+    const blob = new Blob([out], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = "catalog.js";
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
+    ui.toast("Downloaded — replace data/catalog.js with this file and deploy once");
+  }
+
+  function downloadScoredJson() {
+    const ready = readyBooks();
+    let payload;
+    if (ready.length) {
+      payload = { version: (window.LumenData && window.LumenData.CATALOG_VERSION) || 1, books: ready };
+    } else {
+      const raw = localStorage.getItem("lumen:catalog-override");
+      if (!raw) { ui.toast("No scored books to download — enrich your catalog first"); return; }
+      try { payload = JSON.parse(raw); } catch (e) { ui.toast("Couldn't read stored catalog"); return; }
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "lumen-scores.json";
     document.body.appendChild(a); a.click();
     setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 200);
   }
@@ -2382,7 +2613,7 @@
     card.appendChild(util.el("div", { class: "settings-card-head" }, [
       util.el("div", {}, [
         util.el("h3", { text: "Curated catalog" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Import your 100-book corpus. Paste a title list or a CSV with any subset of the schema — the only required columns are title and author. Claude fills every other field on Enrich; anything you did provide is kept and marked human-sourced. See data/CATALOG.md for the full column list." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `Import your catalog${currentCount ? ` (${currentCount} books currently loaded)` : ""}. Paste a title list or a CSV with any subset of the schema — the only required columns are title and author. Claude fills every other field on Enrich; anything you did provide is kept and marked human-sourced. See data/CATALOG.md for the full column list.` })
       ]),
       util.el("span", {
         class: "settings-badge " + (currentCount ? "settings-badge-ok" : "settings-badge-missing"),
@@ -2458,6 +2689,40 @@
       disabled: !catalogImport.parsed.some(r => r.status === "ready") ? "disabled" : null,
       onclick: () => downloadCatalogJS()
     }, "Download catalog.js"));
+    btnRow.appendChild(util.el("button", {
+      class: "btn btn-sm",
+      disabled: (!catalogImport.parsed.some(r => r.status === "ready") && !localStorage.getItem("lumen:catalog-override")) ? "disabled" : null,
+      onclick: () => downloadScoredJson()
+    }, "Download scored JSON"));
+    const uploadLabel = util.el("label", { class: "btn btn-sm", style: { cursor: "pointer" }, title: "Upload a previously downloaded lumen-scores.json to restore scores without re-enriching" });
+    uploadLabel.appendChild(document.createTextNode("Upload scored JSON"));
+    const uploadInput = util.el("input", {
+      type: "file", accept: ".json,application/json",
+      style: { display: "none" },
+      onchange: (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          try {
+            const parsed = JSON.parse(ev.target.result);
+            if (!parsed || !Array.isArray(parsed.books) || !parsed.books.length) {
+              ui.toast("Invalid file — expected a Lumen scores JSON"); return;
+            }
+            localStorage.setItem("lumen:catalog-override", JSON.stringify(parsed));
+            ui.toast(`Loaded ${parsed.books.length} scored book${parsed.books.length === 1 ? "" : "s"} — reload to apply`, {
+              action: "Reload now", onAction: () => location.reload(), duration: 6000
+            });
+          } catch (_) {
+            ui.toast("Couldn't parse the file — is this a Lumen scores JSON?");
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = "";
+      }
+    });
+    uploadLabel.appendChild(uploadInput);
+    btnRow.appendChild(uploadLabel);
     // "Refresh covers" — for catalogs that were imported before
     // the Google Books lookup was wired in (or whose thumbnails
     // 404'd). Hits Google Books for every book in the currently-
@@ -2490,8 +2755,9 @@
     preview.appendChild(buildImporterPreview());
     card.appendChild(preview);
 
-    if (!Disco || !Disco.getApiKey()) {
-      card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs your API key set above. CSV-full imports work without it." }));
+    const hasAnyKey = Disco && (Disco.hasKey && Disco.hasKey());
+    if (!hasAnyKey) {
+      card.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Heads up — Claude enrichment needs an API key configured. CSV-full imports work without it." }));
     }
     return card;
   }
@@ -2500,13 +2766,134 @@
     const Disco = window.LumenDiscovery;
     const wrap = util.el("div", { class: "page settings-page" });
 
+    // ── Header ──────────────────────────────────────────────────────────
     wrap.appendChild(util.el("div", { class: "page-head settings-page-head" }, [
       util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Settings" }),
-        util.el("h1", { html: "<em>Settings</em>" }),
+        util.el("div", { class: "t-eyebrow", text: "Admin" }),
+        util.el("h1", { html: "<em>Admin</em>" }),
         util.el("p", { class: "lede", text: "Keys and configuration. Everything here is stored locally on this device." })
       ])
     ]));
+
+    // ── Operator controls ────────────────────────────────────────────────
+    const hasMasterKey = !!(Disco && Disco.getMasterKey && Disco.getMasterKey());
+    const demoOn       = !!(Disco && Disco.getDemoMode  && Disco.getDemoMode());
+    const currentCap   = (Disco && Disco.getSessionCap)    ? Disco.getSessionCap()    : 10;
+    const remaining    = (Disco && Disco.throttleRemaining) ? Disco.throttleRemaining() : "—";
+
+    const opCard = util.el("div", { class: "card settings-op-card stack" });
+    opCard.appendChild(util.el("div", { class: "settings-op-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Operator" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "2px" },
+          text: "Discovery Phase settings — only visible via the trapdoor." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (hasMasterKey ? "settings-badge-ok" : "settings-badge-missing"),
+        text: hasMasterKey ? (demoOn ? "Demo on" : "Key set") : "No key"
+      })
+    ]));
+
+    const opBody = util.el("div", { class: "settings-op-body" });
+
+    // Left: master key input
+    const keyCol = util.el("div", { class: "settings-op-col" });
+    keyCol.appendChild(util.el("div", { class: "settings-field-label", text: "Master Claude API key" }));
+    const masterInput = util.el("input", {
+      type: "password", class: "input", placeholder: "sk-ant-…",
+      value: (Disco && Disco.getMasterKey) ? Disco.getMasterKey() : "",
+      autocomplete: "off", spellcheck: "false"
+    });
+    keyCol.appendChild(masterInput);
+    const masterRevealLabel = util.el("label", { class: "toggle settings-reveal-toggle" });
+    const masterRevealCb = util.el("input", { type: "checkbox",
+      onchange: e => masterInput.setAttribute("type", e.target.checked ? "text" : "password") });
+    masterRevealLabel.appendChild(masterRevealCb);
+    masterRevealLabel.appendChild(util.el("span", { class: "toggle-track" }));
+    masterRevealLabel.appendChild(util.el("span", { class: "toggle-label", text: "Reveal" }));
+    keyCol.appendChild(masterRevealLabel);
+    opBody.appendChild(keyCol);
+
+    // Right: demo mode + session cap
+    const ctrlCol = util.el("div", { class: "settings-op-col" });
+
+    const demoCtrlRow = util.el("div", { class: "settings-op-control-row" });
+    demoCtrlRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "Demo Mode" }),
+      util.el("div", { class: "t-tiny t-subtle", text: "Bianca works for every visitor — no key prompt." })
+    ]));
+    const demoLabel = util.el("label", { class: "toggle" });
+    const demoCb    = util.el("input", { type: "checkbox" });
+    demoCb.checked  = demoOn;
+    demoLabel.appendChild(demoCb);
+    demoLabel.appendChild(util.el("span", { class: "toggle-track" }));
+    demoCtrlRow.appendChild(demoLabel);
+    ctrlCol.appendChild(demoCtrlRow);
+
+    const capCtrlRow = util.el("div", { class: "settings-op-control-row" });
+    capCtrlRow.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-small", text: "AI calls / hour" }),
+      util.el("div", { class: "t-tiny t-subtle", text: `${remaining} remaining this session` })
+    ]));
+    const capInput = util.el("input", {
+      type: "number", class: "input", min: "1", max: "100", value: String(currentCap),
+      style: { width: "64px", textAlign: "center" }
+    });
+    capCtrlRow.appendChild(capInput);
+    ctrlCol.appendChild(capCtrlRow);
+
+    opBody.appendChild(ctrlCol);
+    opCard.appendChild(opBody);
+
+    const opActions = util.el("div", { class: "settings-op-actions" });
+    opActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      const keyVal = masterInput.value.trim();
+      const capVal = parseInt(capInput.value, 10);
+      if (Disco.setMasterKey)  Disco.setMasterKey(keyVal);
+      if (Disco.setDemoMode)   Disco.setDemoMode(demoCb.checked);
+      if (Disco.setSessionCap && Number.isFinite(capVal) && capVal > 0) Disco.setSessionCap(capVal);
+      if (keyVal && demoCb.checked) {
+        store.update(s => { s.ui.adultConfirmed = true; });
+        ui.toast("Demo Mode ON · Bianca is live for all visitors");
+      } else if (keyVal) {
+        ui.toast("Master key saved");
+      } else {
+        ui.toast("Master key cleared");
+      }
+      renderView();
+    }}, "Save changes"));
+    if (hasMasterKey) {
+      opActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
+        if (Disco.clearMasterKey) Disco.clearMasterKey();
+        if (Disco.setDemoMode)    Disco.setDemoMode(false);
+        ui.toast("Master key cleared · Demo Mode off");
+        renderView();
+      }}, "Clear key"));
+    }
+    opCard.appendChild(opActions);
+    wrap.appendChild(opCard);
+
+    // ── API Keys (collapsible) ──────────────────────────────────────────
+    const Embed = window.LumenEmbeddings;
+    const hasVoyage = () => !!(Embed && Embed.getApiKey && Embed.getApiKey());
+    const keyStatusParts = [
+      Disco.getApiKey()  ? "Claude" : "",
+      hasVoyage()        ? "Voyage" : "",
+      Disco.getGoogleKey() ? "Google" : ""
+    ].filter(Boolean);
+    const keySummaryText = keyStatusParts.length
+      ? keyStatusParts.join(" · ") + " configured"
+      : "None configured";
+
+    const devDetails = document.createElement("details");
+    devDetails.className = "settings-advanced-section";
+    devDetails.appendChild(util.el("summary", { class: "settings-advanced-summary" }, [
+      util.el("span", { class: "t-eyebrow", text: "API Keys" }),
+      util.el("span", { class: "t-small t-subtle", style: { marginLeft: "var(--s-2)" }, text: keySummaryText })
+    ]));
+    if (Disco.getApiKey() || hasVoyage()) {
+      devDetails.open = true;
+    }
 
     // --- Claude API key ---------------------------------------------------
     const keyCard = util.el("div", { class: "card settings-card stack" });
@@ -2576,7 +2963,81 @@
         "."
       ])
     ]));
-    wrap.appendChild(keyCard);
+    devDetails.appendChild(keyCard);
+
+    // --- Voyage API key (for semantic search) ----------------------------
+    // Styled identically to the Claude card above. setApiKey("") in
+    // embeddings.js doubles as "clear" (removes the localStorage entry),
+    // so there's no separate clearApiKey() to call.
+    const voyageCard = util.el("div", { class: "card settings-card stack" });
+    voyageCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("h3", { text: "Voyage API key (for semantic search)" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Required for meaning-based search in your Library. Stored locally, never sent anywhere but Voyage AI." })
+      ]),
+      util.el("span", {
+        class: "settings-badge " + (hasVoyage() ? "settings-badge-ok" : "settings-badge-missing"),
+        text: hasVoyage() ? "Key saved" : "Not set"
+      })
+    ]));
+
+    const voyageInput = util.el("input", {
+      type: "password",
+      class: "input",
+      placeholder: "pa-…",
+      value: hasVoyage() ? Embed.getApiKey() : "",
+      autocomplete: "off",
+      spellcheck: "false"
+    });
+    voyageCard.appendChild(voyageInput);
+
+    const voyageReveal = util.el("label", { class: "toggle", style: { fontSize: "12px", color: "var(--text-muted)" } });
+    const voyageRevealInput = util.el("input", { type: "checkbox", onchange: (e) => {
+      voyageInput.setAttribute("type", e.target.checked ? "text" : "password");
+    }});
+    voyageReveal.appendChild(voyageRevealInput);
+    voyageReveal.appendChild(util.el("span", { class: "toggle-track" }));
+    voyageReveal.appendChild(util.el("span", { class: "toggle-label", text: "Show key" }));
+    voyageCard.appendChild(voyageReveal);
+
+    const voyageActions = util.el("div", { class: "row", style: { gap: "var(--s-2)" } });
+    voyageActions.appendChild(util.el("button", { class: "btn btn-primary btn-sm", onclick: () => {
+      if (!Embed || !Embed.setApiKey) { ui.toast("Embeddings module not loaded"); return; }
+      const val = voyageInput.value.trim();
+      if (!val) {
+        Embed.setApiKey("");
+        ui.toast("Voyage key cleared");
+        renderView();
+        return;
+      }
+      Embed.setApiKey(val);
+      ui.toast("Voyage key saved locally");
+      renderView();
+    }}, hasVoyage() ? "Update" : "Save"));
+    voyageActions.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", disabled: !hasVoyage() || null, onclick: () => {
+      ui.modal({
+        title: "Clear Voyage API key?",
+        body: "<p class=\"t-muted\">Removes the key from this device. You can paste it back in any time.</p>",
+        primary: { label: "Clear", onClick: () => {
+          if (Embed && Embed.setApiKey) Embed.setApiKey("");
+          voyageInput.value = "";
+          ui.toast("Voyage key cleared");
+          renderView();
+        }},
+        secondary: { label: "Cancel" }
+      });
+    }}, "Clear"));
+    voyageCard.appendChild(voyageActions);
+
+    voyageCard.appendChild(util.el("div", { class: "disclosure-note" }, [
+      util.el("div", {}, [
+        util.el("strong", { text: "Heads up · " }),
+        "Calling Voyage from the browser exposes this key to any script loaded on this page. Use a personal key, set a spend limit in the Voyage console, and don't paste a team key here. Full detail in ",
+        util.el("a", { href: "#/transparency", style: { color: "var(--accent)", textDecoration: "underline" } }, "Transparency"),
+        "."
+      ])
+    ]));
+    devDetails.appendChild(voyageCard);
 
     // --- Google Books API key (optional) ---------------------------------
     const gbCard = util.el("div", { class: "card settings-card stack" });
@@ -2631,100 +3092,90 @@
         "Google Cloud console → APIs & Services → Enable \"Books API\" → Credentials → Create API key. The Books API is free. Restrict the key to HTTP referrers if you want belt-and-braces safety."
       ])
     ]));
-    wrap.appendChild(gbCard);
+    devDetails.appendChild(gbCard);
+    wrap.appendChild(devDetails);
 
-    // --- Starter library -------------------------------------------------
-    const starterLoaded = hasStarterLibraryLoaded();
-    const starterCount = (SEED_BOOKS || []).length;
-    const loadedCount = (store.get().discovered || []).filter(d => d.source === "seed").length;
-    const starterCard = util.el("div", { class: "card settings-card stack" });
-    starterCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Starter library" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: `An optional bundle of ${starterCount} historical and classical titles (Fanny Hill, Kama Sutra, Venus in Furs, The Decameron, and more). Loading it populates your library so Home, Compare, and your profile preview have something to rank.` })
-      ]),
+    // ── Library management (single card, three rows) ──────────────────
+    const starterLoaded   = hasStarterLibraryLoaded();
+    const starterCount    = (SEED_BOOKS || []).length;
+    const loadedCount     = (store.get().discovered || []).filter(d => d.source === "seed").length;
+    const hiddenIds       = Object.keys(store.get().hidden || {});
+    const rejectedPickIds = Object.keys(store.get().dailyPicksRejected || {});
+
+    const libCard = util.el("div", { class: "card settings-mgmt-card stack" });
+    libCard.appendChild(util.el("h3", { class: "settings-mgmt-title", text: "Library" }));
+
+    function mgmtRow(label, description, badgeEl, actionEls, expandEl) {
+      const row = util.el("div", { class: "settings-mgmt-row" });
+      row.appendChild(util.el("div", { class: "settings-mgmt-row-info" }, [
+        util.el("div", { class: "t-small", text: label }),
+        util.el("div", { class: "t-tiny t-subtle", text: description })
+      ]));
+      const actions = util.el("div", { class: "settings-mgmt-row-actions" });
+      if (badgeEl) actions.appendChild(badgeEl);
+      actionEls.forEach(el => actions.appendChild(el));
+      row.appendChild(actions);
+      if (expandEl) row.appendChild(expandEl);
+      return row;
+    }
+
+    // Row 1 — Starter library
+    libCard.appendChild(mgmtRow(
+      "Starter library",
+      `${starterCount} historical and classical titles — Fanny Hill, Kama Sutra, Venus in Furs, The Decameron, and more.`,
       util.el("span", {
         class: "settings-badge " + (starterLoaded ? "settings-badge-ok" : "settings-badge-missing"),
         text: starterLoaded ? `${loadedCount} loaded` : "Not loaded"
-      })
-    ]));
-    starterCard.appendChild(util.el("div", { class: "row", style: { gap: "var(--s-2)" } }, [
-      util.el("button", {
-        class: "btn btn-primary btn-sm",
-        disabled: starterLoaded && loadedCount === starterCount ? "disabled" : null,
-        onclick: () => {
-          const added = loadStarterLibrary();
-          if (added) ui.toast(`Loaded ${added} title${added === 1 ? "" : "s"} into your library`);
-          else ui.toast("Starter library is already fully loaded");
-          renderView();
-        }
-      }, starterLoaded ? "Top up" : "Load starter library"),
-      util.el("button", {
-        class: "btn btn-sm",
-        disabled: !starterLoaded || null,
-        onclick: () => {
-          ui.modal({
-            title: "Remove the starter library?",
-            body: "<p class=\"t-muted\">Every starter title is removed from your library along with any reading state or tags you attached to them. Books you added from Discovery are untouched.</p>",
-            primary: { label: "Remove", onClick: () => {
-              const removed = unloadStarterLibrary();
-              ui.toast(`Removed ${removed} starter title${removed === 1 ? "" : "s"}`);
-              renderView();
-            } },
-            secondary: { label: "Cancel" }
-          });
-        }
-      }, "Remove starter titles")
-    ]));
-    starterCard.appendChild(util.el("p", { class: "t-tiny t-subtle", text: "Starter titles are tagged internally as seed data and live alongside anything you add from Discovery. You can dismiss individual titles from the Library at any time." }));
-    wrap.appendChild(starterCard);
-
-    // --- Curated catalog importer ----------------------------------------
-    wrap.appendChild(renderCatalogImporter());
-
-    // --- Hidden books -----------------------------------------------------
-    const hiddenIds = Object.keys(store.get().hidden || {});
-    const hiddenCard = util.el("div", { class: "card settings-card stack" });
-    hiddenCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Hidden books" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Titles you've dismissed from your library. Restore any of them here." })
-      ]),
-      util.el("span", { class: "settings-badge " + (hiddenIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: hiddenIds.length ? `${hiddenIds.length} hidden` : "None" })
-    ]));
-    if (!hiddenIds.length) {
-      hiddenCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing is hidden right now. Dismiss a card from the Library to send it here." }));
-    } else {
-      const list = util.el("div", { class: "stack-sm" });
-      hiddenIds.forEach(id => {
-        const book = findBook(id);
-        if (!book) {
-          // Orphaned id (discovered item fully removed). Show a minimal row.
-          list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
-            util.el("div", {}, [
-              util.el("div", { class: "t-small t-muted", text: "Untracked title" }),
-              util.el("div", { class: "t-tiny t-subtle", text: `id: ${id}` })
-            ]),
-            util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { unhideBook(id); renderView(); } }, "Forget")
-          ]));
-          return;
-        }
-        list.appendChild(util.el("div", { class: "settings-hidden-row" }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book.title }),
-            util.el("div", { class: "t-tiny t-subtle", text: `${book.author}${book._discovered ? " · from Discovery" : ""}` })
-          ]),
-          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
-            unhideBook(id);
-            ui.toast(`Restored ${book.title}`);
+      }),
+      [
+        util.el("button", {
+          class: "btn btn-sm btn-primary",
+          disabled: (starterLoaded && loadedCount === starterCount) ? "disabled" : null,
+          onclick: () => {
+            const added = loadStarterLibrary();
+            ui.toast(added ? `Loaded ${added} title${added === 1 ? "" : "s"}` : "Already fully loaded");
             renderView();
-          } }, "Restore")
+          }
+        }, starterLoaded ? "Top up" : "Load"),
+        starterLoaded ? util.el("button", {
+          class: "btn btn-sm btn-ghost",
+          onclick: () => ui.modal({
+            title: "Remove the starter library?",
+            body: "<p class=\"t-muted\">Every starter title is removed along with any reading state or tags you attached. Discovery adds are untouched.</p>",
+            primary: { label: "Remove", onClick: () => {
+              ui.toast(`Removed ${unloadStarterLibrary()} starter titles`);
+              renderView();
+            }},
+            secondary: { label: "Cancel" }
+          })
+        }, "Remove") : null
+      ].filter(Boolean)
+    ));
+
+    // Row 2 — Hidden books (with inline expand if any)
+    const hiddenExpand = hiddenIds.length ? (() => {
+      const d = util.el("div", { class: "settings-mgmt-expand" });
+      hiddenIds.slice(0, 8).forEach(id => {
+        const book = findBook(id);
+        const r = util.el("div", { class: "settings-mgmt-expand-row" });
+        r.appendChild(util.el("div", {}, [
+          util.el("div", { class: "t-small t-serif", text: book ? book.title : "Untracked title" }),
+          util.el("div", { class: "t-tiny t-subtle", text: book ? book.author : `id: ${id}` })
         ]));
+        r.appendChild(util.el("button", { class: "btn btn-xs btn-primary", onclick: () => {
+          if (book) { unhideBook(id); ui.toast(`Restored ${book.title}`); }
+          else store.update(s => { delete s.hidden[id]; });
+          renderView();
+        }}, "Restore"));
+        d.appendChild(r);
       });
-      hiddenCard.appendChild(list);
+      if (hiddenIds.length > 8) {
+        d.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { paddingTop: "var(--s-2)" },
+          text: `+ ${hiddenIds.length - 8} more` }));
+      }
       if (hiddenIds.length > 1) {
-        hiddenCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
-          ui.modal({
+        d.appendChild(util.el("button", { class: "btn btn-xs btn-ghost", style: { marginTop: "var(--s-2)" },
+          onclick: () => ui.modal({
             title: "Restore all hidden books?",
             body: "<p class=\"t-muted\">Brings every dismissed title back into your library.</p>",
             primary: { label: "Restore all", onClick: () => {
@@ -2733,64 +3184,115 @@
               renderView();
             }},
             secondary: { label: "Cancel" }
-          });
-        }}, "Restore all"));
+          })
+        }, "Restore all"));
       }
-    }
-    wrap.appendChild(hiddenCard);
+      return d;
+    })() : null;
 
-    // --- Rejected Daily Picks -------------------------------------------
-    // Books the user said "Not for me" to on Home. They stay in the
-    // library but are suppressed from the top-3 until restored here.
-    const rejectedPickIds = Object.keys(store.get().dailyPicksRejected || {});
-    const rejectCard = util.el("div", { class: "card settings-card stack" });
-    rejectCard.appendChild(util.el("div", { class: "settings-card-head" }, [
-      util.el("div", {}, [
-        util.el("h3", { text: "Rejected Daily Picks" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: "Books you marked \u201CNot for me\u201D on Home. They're still in your Library and Compare, just hidden from the Daily Picks top-3 until you restore them here." })
-      ]),
-      util.el("span", { class: "settings-badge " + (rejectedPickIds.length ? "settings-badge-missing" : "settings-badge-ok"), text: rejectedPickIds.length ? `${rejectedPickIds.length} rejected` : "None" })
-    ]));
-    if (!rejectedPickIds.length) {
-      rejectCard.appendChild(util.el("p", { class: "t-small t-subtle", text: "Nothing rejected. Use the × on any Daily Pick card to send it here." }));
-    } else {
-      const list = util.el("div", { class: "stack-sm" });
-      rejectedPickIds.forEach(id => {
+    libCard.appendChild(mgmtRow(
+      "Hidden books",
+      hiddenIds.length
+        ? `${hiddenIds.length} title${hiddenIds.length === 1 ? "" : "s"} dismissed from your library.`
+        : "None dismissed. Dismiss a card from the Library to send it here.",
+      util.el("span", {
+        class: "settings-badge " + (hiddenIds.length ? "settings-badge-missing" : "settings-badge-ok"),
+        text: hiddenIds.length ? `${hiddenIds.length} hidden` : "None"
+      }),
+      [],
+      hiddenExpand
+    ));
+
+    // Row 3 — Rejected Daily Picks (with inline expand if any)
+    const rejectedExpand = rejectedPickIds.length ? (() => {
+      const d = util.el("div", { class: "settings-mgmt-expand" });
+      rejectedPickIds.slice(0, 8).forEach(id => {
         const book = findBook(id);
-        const row = util.el("div", { class: "settings-hidden-row" }, [
-          util.el("div", {}, [
-            util.el("div", { class: "t-serif", style: { fontSize: "14px" }, text: book ? book.title : "Untracked title" }),
-            util.el("div", { class: "t-tiny t-subtle", text: book ? (book.author + (book._catalog ? " · curated" : book._discovered ? " · from Discovery" : "")) : `id: ${id}` })
-          ]),
-          util.el("button", { class: "btn btn-sm btn-primary", onclick: () => {
-            restoreDailyPick(id);
-            ui.toast(book ? `${book.title} is eligible for picks again` : "Restored");
-            renderView();
-          } }, "Restore")
-        ]);
-        list.appendChild(row);
-      });
-      rejectCard.appendChild(list);
-      if (rejectedPickIds.length > 1) {
-        rejectCard.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", style: { alignSelf: "flex-start" }, onclick: () => {
-          store.update(st => { st.dailyPicksRejected = {}; });
-          ui.toast("All rejected picks restored");
+        const r = util.el("div", { class: "settings-mgmt-expand-row" });
+        r.appendChild(util.el("div", {}, [
+          util.el("div", { class: "t-small t-serif", text: book ? book.title : "Untracked title" }),
+          util.el("div", { class: "t-tiny t-subtle", text: book
+            ? (book.author + (book._catalog ? " \u00b7 curated" : book._discovered ? " \u00b7 Discovery" : ""))
+            : `id: ${id}` })
+        ]));
+        r.appendChild(util.el("button", { class: "btn btn-xs btn-primary", onclick: () => {
+          restoreDailyPick(id);
+          ui.toast(book ? `${book.title} is eligible for picks again` : "Restored");
           renderView();
-        } }, "Restore all"));
+        }}, "Restore"));
+        d.appendChild(r);
+      });
+      if (rejectedPickIds.length > 8) {
+        d.appendChild(util.el("p", { class: "t-tiny t-subtle", style: { paddingTop: "var(--s-2)" },
+          text: `+ ${rejectedPickIds.length - 8} more` }));
       }
-    }
-    wrap.appendChild(rejectCard);
+      if (rejectedPickIds.length > 1) {
+        d.appendChild(util.el("button", { class: "btn btn-xs btn-ghost", style: { marginTop: "var(--s-2)" },
+          onclick: () => {
+            store.update(st => { st.dailyPicksRejected = {}; });
+            ui.toast("All rejected picks restored");
+            renderView();
+          }
+        }, "Restore all"));
+      }
+      return d;
+    })() : null;
 
-    // --- Quick links ------------------------------------------------------
-    const links = util.el("div", { class: "card settings-card stack" });
-    links.appendChild(util.el("h3", { text: "Other settings" }));
-    links.appendChild(util.el("p", { class: "t-small t-muted", text: "Your reader profile, data export, and full privacy controls live in their own sections." }));
-    links.appendChild(util.el("div", { class: "row-wrap" }, [
-      util.el("a", { class: "btn btn-sm", href: "#/profile" }, "Reader profile"),
-      util.el("a", { class: "btn btn-sm", href: "#/vault" }, "Privacy & Vault"),
-      util.el("a", { class: "btn btn-sm", href: "#/transparency" }, "Transparency & data")
+    libCard.appendChild(mgmtRow(
+      "Rejected Daily Picks",
+      rejectedPickIds.length
+        ? `${rejectedPickIds.length} title${rejectedPickIds.length === 1 ? "" : "s"} hidden from Home picks.`
+        : "None rejected. Use the \u00d7 on any Home Pick card to send it here.",
+      util.el("span", {
+        class: "settings-badge " + (rejectedPickIds.length ? "settings-badge-missing" : "settings-badge-ok"),
+        text: rejectedPickIds.length ? `${rejectedPickIds.length} rejected` : "None"
+      }),
+      [],
+      rejectedExpand
+    ));
+
+    wrap.appendChild(libCard);
+
+    // ── Curated catalog importer ────────────────────────────────────────
+    wrap.appendChild(renderCatalogImporter());
+
+    // ── Navigation links (no card) ──────────────────────────────────────
+    wrap.appendChild(util.el("div", { class: "settings-footer-nav" }, [
+      util.el("span", { class: "t-tiny t-subtle", text: "Also:" }),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/profile" }, "Reader profile"),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/vault" }, "Privacy & Vault"),
+      util.el("a", { class: "btn btn-sm btn-ghost", href: "#/transparency" }, "Transparency")
     ]));
-    wrap.appendChild(links);
+
+    // ── Danger zone (no card, red accent border) ────────────────────────
+    const dangerZone = util.el("div", { class: "settings-danger-zone" });
+    dangerZone.appendChild(util.el("div", { class: "settings-danger-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-small", style: { color: "var(--danger, #ef4444)", fontWeight: "600" },
+          text: "Delete entire library" }),
+        util.el("div", { class: "t-tiny t-subtle", style: { marginTop: "2px" },
+          text: "Wipes every book \u2014 Discovery saves, seed library, and curated catalogue \u2014 along with reading statuses, tags, and cached embeddings. Profile, API keys, journal, and vault stay intact." })
+      ]),
+      util.el("button", {
+        class: "btn btn-sm",
+        style: { color: "var(--danger, #ef4444)", borderColor: "var(--danger, #ef4444)", flexShrink: "0" },
+        onclick: () => ui.modal({
+          title: "Delete the entire library?",
+          body: "<p class=\"t-muted\">Removes every book on this device and clears their states, tags, hidden flags, rejected picks, and embeddings. Profile, API keys, journal, and vault are untouched. This cannot be undone.</p>",
+          primary: { label: "Delete everything", onClick: () => {
+            store.update(st => {
+              st.discovered = []; st.bookStates = {}; st.tags = {};
+              st.hidden = {}; st.dailyPicksRejected = {};
+            });
+            try { localStorage.removeItem("lumen:catalog-override"); } catch (_) {}
+            ui.toast("Library deleted \u2014 reloading\u2026");
+            setTimeout(() => location.reload(), 500);
+          }},
+          secondary: { label: "Cancel" }
+        })
+      }, "Delete entire library")
+    ]));
+    wrap.appendChild(dangerZone);
 
     return wrap;
   }
@@ -2821,12 +3323,14 @@
     // Privacy
     const privacy = util.el("div", { class: "card stack" }, [
       util.el("h3", { text: "What stays on your device" }),
-      util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Sara conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
+      util.el("p", { class: "t-muted", text: "Your profile, reading states, custom tags, journal entries, vault contents, Bianca conversation, and friend chat — all of it lives in localStorage on this device. There is no server. There is no account. There is no telemetry. Clearing browser data clears Lumen entirely." }),
       util.el("h3", { text: "What the vault passcode does and does not do" }),
       util.el("p", { class: "t-muted", text: "The vault passcode gates the Vault tab re-entry within this app. It is a simple hash check, not encryption. Anyone with access to this device (or your browser's dev tools) could inspect the localStorage directly. Treat it as a courtesy against over-the-shoulder glances, not as real security. Use your operating-system account password and device encryption for actual protection." }),
-      util.el("h3", { text: "About the Discovery tab — calling Claude from your browser" }),
-      util.el("p", { class: "t-muted", text: "The Discovery tab calls the Anthropic Messages API directly from this page using an opt-in header ('anthropic-dangerous-direct-browser-access'). That convenience carries a real tradeoff: your API key sits inside your browser's localStorage, and any script loaded on this page — including any browser extension — can read it. The key is also sent with every request, so any network intermediary could observe it." }),
-      util.el("p", { class: "t-muted", text: "Use a key dedicated to personal experimentation, set a low monthly spend limit in the Anthropic console, and never paste a team or production key here. If you want real safety, run a small server-side proxy and point Lumen at that instead. Google Books calls also go directly from your browser, but that API does not require authentication." })
+      util.el("h3", { text: "About Discovery and Bianca — calling Claude from your browser" }),
+      util.el("p", { class: "t-muted", text: "The Discovery tab and Bianca (the AI reading assistant) call the Anthropic Messages API directly from this page using an opt-in header ('anthropic-dangerous-direct-browser-access'). That convenience carries a real tradeoff: your API key sits inside your browser's localStorage, and any script loaded on this page — including any browser extension — can read it. The key is also sent with every request, so any network intermediary could observe it." }),
+      util.el("p", { class: "t-muted", text: "Use a key dedicated to personal experimentation, set a low monthly spend limit in the Anthropic console, and never paste a team or production key here. If you want real safety, run a small server-side proxy and point Lumen at that instead. Google Books calls also go directly from your browser, but that API does not require authentication." }),
+      util.el("h3", { text: "The Master Key and Demo Mode" }),
+      util.el("p", { class: "t-muted", text: "During the Discovery Phase, an operator can configure a Master Key via the admin panel (accessible via the 5-click logo trapdoor). The Master Key is a single Claude API key stored in the browser on the operator's device. When Demo Mode is on, Bianca and Discovery work for every visitor automatically — no visitor needs to supply their own key. The session cap (default: 10 calls/hour) limits how many AI calls any one visitor can make, protecting against runaway spend. The Master Key never leaves the operator's browser." })
     ]);
     wrap.appendChild(privacy);
 
@@ -2904,7 +3408,7 @@
         shortcutRow("Go to Profile",        "G then P"),
         shortcutRow("Toggle theme",         "T"),
         shortcutRow("Toggle discreet",      "D"),
-        shortcutRow("Toggle Sara",          "S")
+        shortcutRow("Toggle Bianca",        "S")
       ])
     ]);
     wrap.appendChild(keys);
@@ -3045,9 +3549,14 @@
         const book = findBook(p.bookId);
         if (!book) return;
         const tile = util.el("div", { class: "vault-tile" });
-        tile.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
-        tile.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: book.title }));
-        tile.appendChild(util.el("div", { class: "t-small t-subtle", text: book.author }));
+        const tileTop = util.el("div", { style: { display: "flex", gap: "var(--s-3)", alignItems: "flex-start" } });
+        tileTop.appendChild(buildCoverBlock(book, { size: "sm", showHeat: false }));
+        const tileMeta = util.el("div", { style: { minWidth: 0, flex: "1" } });
+        tileMeta.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.category) }));
+        tileMeta.appendChild(util.el("div", { class: "t-serif", style: { fontSize: "16px", marginTop: "4px" }, text: book.title }));
+        tileMeta.appendChild(util.el("div", { class: "t-small t-subtle", text: book.author }));
+        tileTop.appendChild(tileMeta);
+        tile.appendChild(tileTop);
         if (p.note) tile.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: p.note }));
         tile.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-3)", justifyContent: "space-between" } }, [
           util.el("button", { class: "btn btn-sm", onclick: () => openBookDetail(book.id) }, "Open"),
@@ -3357,6 +3866,19 @@
         ])
       ]));
 
+      // Linked book — at the top so it frames the entry context immediately
+      card.appendChild(util.el("div", { class: "field-label", text: "Linked book" }));
+      const bookSel = util.el("select", { class: "select", style: { maxWidth: "360px" }, onchange: (e) => {
+        store.update(s => {
+          const it = s.journal.find(x => x.id === entry.id);
+          if (it) it.bookId = e.target.value || null;
+        });
+        paintList();
+      }});
+      bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
+      listAllBooks().forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
+      card.appendChild(bookSel);
+
       if (entry.prompt) {
         card.appendChild(util.el("div", { class: "journal-prompt" }, entry.prompt));
       }
@@ -3403,18 +3925,20 @@
       })));
       card.appendChild(moodRow);
 
-      // Linked book
-      card.appendChild(util.el("div", { class: "field-label", text: "Linked book" }));
-      const bookSel = util.el("select", { class: "select", style: { maxWidth: "360px" }, onchange: (e) => {
+      const saveRow = util.el("div", { class: "row", style: { justifyContent: "flex-end", marginTop: "var(--s-3)" } });
+      const saveBtn = util.el("button", { class: "btn btn-primary", onclick: () => {
         store.update(s => {
           const it = s.journal.find(x => x.id === entry.id);
-          if (it) it.bookId = e.target.value || null;
+          if (!it) return;
+          it.title = titleInput.value;
+          it.body = bodyArea.value;
         });
-        paintList();
-      }});
-      bookSel.appendChild(util.el("option", { value: "" }, "— none —"));
-      listAllBooks().forEach(b => bookSel.appendChild(util.el("option", { value: b.id, selected: entry.bookId === b.id ? "selected" : null }, b.title)));
-      card.appendChild(bookSel);
+        saveBtn.textContent = "Saved";
+        saveBtn.disabled = true;
+        setTimeout(() => { saveBtn.textContent = "Save"; saveBtn.disabled = false; }, 1500);
+      } }, "Save");
+      saveRow.appendChild(saveBtn);
+      card.appendChild(saveRow);
 
       editorSide.appendChild(card);
     }
@@ -3423,8 +3947,8 @@
     return wrap;
   }
 
-  /* -------------------- chat (Sara + Friends) -------------------- */
-  const chatState = { active: "sara", friendId: null };
+  /* -------------------- chat (Bianca + Friends) -------------------- */
+  const chatState = { active: "bianca", friendId: null };
 
   function saraContextSummary() {
     const s = store.get();
@@ -3442,13 +3966,13 @@
   }
 
   // ============================================================
-  // Sara context model — single source of truth for what Sara
+  // Bianca context model — single source of truth for what Bianca
   // knows about the app. Rebuilt on renderView() and on every
-  // store update, then pushed to LumenSara.setContext(). Shape
+  // store update, then pushed to LumenBianca.setContext(). Shape
   // is documented in the batch plan; intent handlers below
   // depend on these fields being stable.
   // ============================================================
-  function buildSaraContext(routeId) {
+  function buildBiancaContext(routeId) {
     const s = store.get();
     const hidden = s.hidden || {};
     const rejectedPicks = s.dailyPicksRejected || {};
@@ -3458,7 +3982,7 @@
     const ranked = Engine.rankRecommendations(s.profile, s.weights, visible);
 
     // Daily picks = top 3 of ranked-and-not-rejected (mirror of
-    // views.discover()'s logic so Sara sees the same list).
+    // views.discover()'s logic so Bianca sees the same list).
     const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
     const picks = eligible.slice(0, 3).map(x => ({
       id: x.book.id, title: x.book.title, author: x.book.author,
@@ -3516,7 +4040,7 @@
         };
       });
 
-    const saraPinnedDetail = ((s.chats && s.chats.saraPinned) || [])
+    const biancaPinnedDetail = ((s.chats && s.chats.biancaPinned) || [])
       .map(p => { const b = findBook(p.bookId); return b ? { id: b.id, title: b.title } : null; })
       .filter(Boolean);
 
@@ -3546,14 +4070,14 @@
         lastQuery: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.lastQuery) || "",
         mode: (typeof discoveryState !== "undefined" && discoveryState && discoveryState.mode) || null,
         resultCount: (typeof discoveryState !== "undefined" && discoveryState && (discoveryState.raw || []).length) || 0,
-        hasApiKey: !!(window.LumenDiscovery && window.LumenDiscovery.getApiKey && window.LumenDiscovery.getApiKey())
+        hasApiKey: !!(window.LumenDiscovery && window.LumenDiscovery.hasKey && window.LumenDiscovery.hasKey())
       },
       compare: {
         slots: compareSlotsDetail,
         hasDeepAnalysis: !!(cmpState && cmpState.lastDeepAnalysis)
       },
       focus,
-      saraPinned: saraPinnedDetail,
+      biancaPinned: biancaPinnedDetail,
       vault: {
         pinnedCount: ((s.vault || {}).pinned || []).length,
         analysesCount: ((s.vault || {}).analyses || []).length,
@@ -3577,19 +4101,19 @@
     };
   }
 
-  // Back-compat — old callers of computeSaraContext(routeId) get
+  // Back-compat — old callers of computeBiancaContext(routeId) get
   // the same shape, but we discard everything except route/chips.
   // The richer data lives on the context object now.
   // ============================================================
-  // Sara system context — flattens buildSaraContext() into the
+  // Bianca system context — flattens buildBiancaContext() into the
   // prompt-ready string that's appended to the persona in
-  // chatWithSara(). Format is readable JSON-ish plain text so the
+  // chatWithBianca(). Format is readable JSON-ish plain text so the
   // model can cite fields back verbatim. Kept short — hard
   // constraints land loud, soft constraints read as hints, big
   // lists are truncated.
   // ============================================================
-  function buildSaraSystemContext(routeId) {
-    const ctx = buildSaraContext(routeId);
+  function buildBiancaSystemContext(routeId) {
+    const ctx = buildBiancaContext(routeId);
     const s = store.get();
     const now = new Date();
 
@@ -3611,7 +4135,7 @@
     // the model has usable ids to emit in ENHANCED_BOOK_CARD markers
     // without bloating the prompt.
     const topLibrary = (ctx.dailyPicks || []).concat(
-      ctx.saraPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
+      ctx.biancaPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
     );
     const rosterIds = new Set(topLibrary.map(b => b.id));
     for (const b of listAllBooks().slice(0, 12)) {
@@ -3673,7 +4197,7 @@
     const rosterLines = topLibrary.slice(0, 14).map(b =>
       `- ${b.title}${b.author ? " by " + b.author : ""} (id=${b.id})`);
 
-    const pinnedLines = (ctx.saraPinned || []).map(p => `- ${p.title} (id=${p.id})`);
+    const pinnedLines = (ctx.biancaPinned || []).map(p => `- ${p.title} (id=${p.id})`);
     const compareLines = (ctx.compare.slots || []).filter(Boolean).map(c => `- ${c.title} (id=${c.id}, fit=${c.fit})`);
 
     return [
@@ -3698,7 +4222,7 @@
       `--- daily picks on screen ---`,
       ...(pickLines.length ? pickLines : ["(none)"]),
       ``,
-      `--- pinned to Sara ---`,
+      `--- pinned to Bianca ---`,
       ...(pinnedLines.length ? pinnedLines : ["(none)"]),
       ``,
       `--- rejected (never recommend as a daily pick) ---`,
@@ -3716,7 +4240,7 @@
   }
 
   // Snapshot the Lumen Terminal's local view filters + selection so
-  // Sara can answer questions like "what am I filtering?" and "why
+  // Bianca can answer questions like "what am I filtering?" and "why
   // is this title in front of me?" without re-querying the engine.
   // Returns `(none)` lines when the Terminal module hasn't booted.
   function terminalContextLines() {
@@ -3739,14 +4263,14 @@
     return lines;
   }
 
-  function computeSaraContext(routeId) {
-    const ctx = buildSaraContext(routeId);
+  function computeBiancaContext(routeId) {
+    const ctx = buildBiancaContext(routeId);
     // Chips preserved for the top strip.
     const chips = [];
     const routeLabel = {
-      discover: "Home", library: "Library", discovery: "Discovery",
+      discover: "Today", library: "Library", discovery: "Discovery",
       compare: "Compare", chat: "Connections", journal: "Journal",
-      vault: "Vault", profile: "Profile", settings: "Settings",
+      vault: "Vault", profile: "Profile", settings: "Admin",
       transparency: "Transparency"
     }[routeId] || routeId;
     chips.push({ label: routeLabel });
@@ -3768,7 +4292,7 @@
   }
 
   // ============================================================
-  // Sara intent registry — replaces the old regex-chain
+  // Bianca intent registry — replaces the old regex-chain
   // responder. Each intent has a match predicate and a handler
   // that composes a reply from the structured context. The
   // first intent that wants the message handles it; a default
@@ -3778,7 +4302,7 @@
     {
       id: "greeting",
       match: (t) => /^\s*(hi|hello|hey|good\s*(morning|evening|afternoon))\b/i.test(t),
-      handler: () => `Hi. I'm here — ask what to read tonight, why a book landed where it did, or how to compare two titles.`
+      handler: () => `Hi. I'm here — ask what to read tonight, why a book landed where it did, or how to compare three titles.`
     },
     {
       id: "library-count",
@@ -3873,7 +4397,7 @@
     {
       id: "save-focus",
       match: (t, ctx) => ctx.focus.book && /\b(save|add|want|pin)\b/i.test(t),
-      handler: (ctx) => `**${ctx.focus.book.title}** is already in your library. Use **Pin to Vault** on the detail sheet to keep it for quick access, or **Share with Sara** to pin it here.`
+      handler: (ctx) => `**${ctx.focus.book.title}** is already in your library. Use **Pin to Vault** on the detail sheet to keep it for quick access, or **Share with Bianca** to pin it here.`
     },
     {
       id: "dismiss-focus",
@@ -3917,9 +4441,9 @@
     }
   ];
 
-  function saraRespond(userText, saraCtx) {
+  function saraRespond(userText, biancaCtx) {
     const text = String(userText || "");
-    const ctx = saraCtx && saraCtx.library ? saraCtx : buildSaraContext(saraCtx && saraCtx.route);
+    const ctx = biancaCtx && biancaCtx.library ? biancaCtx : buildBiancaContext(biancaCtx && biancaCtx.route);
     for (const intent of SARA_INTENTS) {
       try {
         const hit = intent.match(text, ctx);
@@ -3939,8 +4463,8 @@
 
   function appendChatMessage(threadKey, friendId, role, text) {
     store.update(s => {
-      if (threadKey === "sara") {
-        s.chats.sara.push({ id: util.id("m"), role, text, ts: Date.now() });
+      if (threadKey === "bianca") {
+        s.chats.bianca.push({ id: util.id("m"), role, text, ts: Date.now() });
       } else {
         const f = s.chats.friends.find(x => x.id === friendId);
         if (f) f.messages.push({ id: util.id("m"), role, text, ts: Date.now() });
@@ -3948,41 +4472,41 @@
     });
   }
 
-  function ensureSeedSara() {
+  function ensureSeedBianca() {
     const s = store.get();
-    if (s.chats.sara.length === 0) {
-      appendChatMessage("sara", null, "sara",
-        `Hi — I'm Sara. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare two titles, or to help you journal a reaction. Everything here is private.`);
+    if (s.chats.bianca.length === 0) {
+      appendChatMessage("bianca", null, "bianca",
+        `Hi — I'm Bianca. I'm a reading companion, not a recommender. Ask me what to read tonight, to compare three titles, or to help you journal a reaction. Everything here is private.`);
     }
   }
 
   function renderChat() {
-    ensureSeedSara();
+    ensureSeedBianca();
     const wrap = util.el("div", { class: "page stack-lg" });
     wrap.appendChild(util.el("div", { class: "page-head" }, [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Connections" }),
         util.el("h1", { html: "Your private <em>social</em> layer" }),
-        util.el("p", { class: "lede", text: "Sara lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
+        util.el("p", { class: "lede", text: "Bianca lives in the floating panel across every tab — this page is the place to review history and manage friends you share titles with. Everything is local." })
       ])
     ]));
 
-    // Sara summary card
-    const saraMsgs = store.get().chats.sara || [];
-    const lastMsg = saraMsgs[saraMsgs.length - 1];
+    // Bianca summary card
+    const biancaMsgs = store.get().chats.bianca || [];
+    const lastMsg = biancaMsgs[biancaMsgs.length - 1];
     const saraCard = util.el("div", { class: "card" });
     saraCard.appendChild(util.el("div", { class: "card-head" }, [
-      util.el("h3", { text: "Sara · conversation history" }),
+      util.el("h3", { text: "Bianca · conversation history" }),
       util.el("div", { class: "row" }, [
-        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenSara && window.LumenSara.open() }, "Open Sara"),
+        util.el("button", { class: "btn btn-sm btn-primary", onclick: () => window.LumenBianca && window.LumenBianca.open() }, "Open Bianca"),
         util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => {
           ui.modal({
-            title: "Clear Sara's memory?",
-            body: "<p class=\"t-muted\">Deletes every message between you and Sara on this device. A fresh greeting will replace it.</p>",
+            title: "Clear Bianca's memory?",
+            body: "<p class=\"t-muted\">Deletes every message between you and Bianca on this device. A fresh greeting will replace it.</p>",
             primary: { label: "Clear", onClick: () => {
-              store.update(s => { s.chats.sara = []; });
-              ensureSeedSara();
-              ui.toast("Sara's memory cleared");
+              store.update(s => { s.chats.bianca = []; });
+              ensureSeedBianca();
+              ui.toast("Bianca's memory cleared");
               renderView();
             }},
             secondary: { label: "Cancel" }
@@ -3991,13 +4515,13 @@
       ])
     ]));
     saraCard.appendChild(util.el("div", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" },
-      text: `${saraMsgs.length} message${saraMsgs.length === 1 ? "" : "s"} stored locally${lastMsg ? " · last: " + new Date(lastMsg.ts).toLocaleString() : ""}` }));
+      text: `${biancaMsgs.length} message${biancaMsgs.length === 1 ? "" : "s"} stored locally${lastMsg ? " · last: " + new Date(lastMsg.ts).toLocaleString() : ""}` }));
 
-    if (saraMsgs.length > 1) {
+    if (biancaMsgs.length > 1) {
       const transcript = util.el("div", { class: "stack-sm", style: { marginTop: "var(--s-4)", maxHeight: "320px", overflowY: "auto", padding: "var(--s-3)", background: "var(--bg-sunken)", borderRadius: "var(--r-2)", border: "1px solid var(--border)" } });
-      saraMsgs.slice(-10).forEach(m => {
+      biancaMsgs.slice(-10).forEach(m => {
         transcript.appendChild(util.el("div", { style: { padding: "6px 0", borderBottom: "1px dashed var(--border)" } }, [
-          util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Sara"} · ${new Date(m.ts).toLocaleTimeString()}` }),
+          util.el("div", { class: "t-tiny t-subtle", text: `${m.role === "user" ? "You" : "Bianca"} · ${new Date(m.ts).toLocaleTimeString()}` }),
           util.el("div", { class: "t-small", style: { marginTop: "2px" }, text: (m.text || "").replace(/\*\*(.+?)\*\*/g, "$1") })
         ]));
       });
@@ -4075,7 +4599,7 @@
             body: "<p class=\"t-muted\">The conversation is deleted from this device.</p>",
             primary: { label: "Remove", onClick: () => {
               store.update(s => { s.chats.friends = s.chats.friends.filter(x => x.id !== f.id); });
-              chatState.active = "sara"; chatState.friendId = null;
+              chatState.active = "bianca"; chatState.friendId = null;
               renderView();
             }},
             secondary: { label: "Cancel" }
@@ -4170,7 +4694,7 @@
     { key: "orientation", label: "Orientation", group: "tag" }
   ];
 
-  const cmpState = { slots: [null, null, null], lastDeepAnalysis: null };
+  const cmpState = { slots: [null, null, null], lastDeepAnalysis: null, analysisRun: false };
 
   function openSlotPicker(slotIdx) {
     const saved = listSavedBooks();
@@ -4216,6 +4740,7 @@
           onclick: () => {
             cmpState.slots[slotIdx] = b.id;
             cmpState.lastDeepAnalysis = null;
+            cmpState.analysisRun = false;
             handle.close();
             renderView();
           }
@@ -4474,14 +4999,43 @@
     cmpState.slots.forEach((id, idx) => {
       const b = id ? findBook(id) : null;
       if (b) {
-        const filled = util.el("div", { class: "cmp-slot" });
-        filled.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
-        filled.appendChild(util.el("div", { class: "cmp-slot-title", text: b.title }));
-        filled.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
-        filled.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
+        const filled = util.el("div", { class: "cmp-slot filled" });
+
+        // Cover column. Mirror the Library tile's approach (see
+        // bookCardFull's .lib-card-cover block): render b.thumbnail
+        // directly, fall back to an initials block on load error or
+        // when the loaded image is Google's "Image not available"
+        // placeholder. No on-the-fly Google lookup here — that path
+        // kept caching the placeholder URL and re-rendering it.
+        const initials = (b.title || "??").slice(0, 2).toUpperCase();
+        const placeholder = util.el("div", {
+          class: "cmp-slot-cover cmp-slot-cover-fallback"
+        }, initials);
+        const showFallback = () => {
+          if (!filled.querySelector(".cmp-slot-cover")) {
+            filled.insertBefore(placeholder, filled.firstChild);
+          }
+        };
+        if (b.thumbnail) {
+          const url = b.thumbnail.replace(/^http:/, "https:");
+          const cover = util.el("img", {
+            class: "cmp-slot-cover", src: url, alt: "", loading: "lazy",
+            onerror: function () { this.remove(); showFallback(); },
+            onload:  function () { if (util.isLikelyNoCover(this)) { this.remove(); showFallback(); } }
+          });
+          filled.appendChild(cover);
+        } else {
+          showFallback();
+        }
+        const body = util.el("div", { class: "cmp-slot-body" });
+        body.appendChild(util.el("div", { class: "cmp-slot-idx", text: `Slot ${idx + 1}` }));
+        body.appendChild(util.el("div", { class: "cmp-slot-title", text: b.title }));
+        body.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
+        body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
           util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => openSlotPicker(idx) }, "Replace"),
-          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; renderView(); } }, "Remove")
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } }, "Remove")
         ]));
+        filled.appendChild(body);
         slots.appendChild(filled);
       } else {
         slots.appendChild(util.el("div", { class: "cmp-slot empty", onclick: () => openSlotPicker(idx) }, [
@@ -4496,8 +5050,8 @@
     const filledCount = cmpState.slots.filter(Boolean).length;
     actionsRow.appendChild(util.el("div", { class: "t-small t-subtle", text: `${filledCount} of 3 slots filled` }));
     actionsRow.appendChild(util.el("div", { class: "row" }, [
-      util.el("button", { class: "btn btn-ghost btn-sm", disabled: filledCount === 0 || null, onclick: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } }, "Clear all"),
-      util.el("button", { class: "btn btn-primary", disabled: filledCount < 2 || null, onclick: () => runDeepAnalysis() }, "Run analysis")
+      util.el("button", { class: "btn btn-ghost btn-sm", disabled: filledCount === 0 || null, onclick: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } }, "Clear all"),
+      util.el("button", { class: "btn btn-primary" + (filledCount >= 2 && !cmpState.analysisRun ? " cmp-run-pulse" : ""), disabled: filledCount < 2 || null, onclick: () => runDeepAnalysis() }, "Run analysis")
     ]));
     slotsCard.appendChild(actionsRow);
 
@@ -4538,14 +5092,15 @@
         return;
       }
       if (filled.length === 1) {
-        const scored = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks())[0];
         body.appendChild(ui.empty({
-          title: "Add at least one more",
-          message: "Comparison needs two titles minimum. Below is your first slot, scored against your profile."
+          title: "Add at least one more title, then run the analysis",
+          message: "Comparison needs two titles minimum."
         }));
-        body.appendChild(cmpCard(scored));
         return;
       }
+
+      // Wait for the user to explicitly run the analysis.
+      if (!cmpState.analysisRun) return;
 
       const scoredList = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks());
 
@@ -4582,13 +5137,14 @@
     function runDeepAnalysis() {
       const filled = cmpState.slots.filter(Boolean);
       if (filled.length < 2) return;
+      cmpState.analysisRun = true;
       const fresh = store.get();
       const scoredList = Engine.compareBooks(filled, fresh.profile, fresh.weights, listAllBooks());
       if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
         cmpState.lastDeepAnalysis = window.LumenAnalysis.deepAnalysis(scoredList, fresh.profile);
         ui.toast("Deep analysis ready · scroll down to read it", {
-          action: "Open in Sara",
-          onAction: () => openInSara(cmpState.lastDeepAnalysis),
+          action: "Open in Bianca",
+          onAction: () => openInBianca(cmpState.lastDeepAnalysis),
           duration: 5000
         });
         renderView();
@@ -4626,7 +5182,7 @@
       util.el("h3", { text: "Deep analysis" }),
       util.el("div", { class: "row" }, [
         util.el("span", { class: "card-sub t-subtle", text: new Date(payload.timestamp).toLocaleString() }),
-        util.el("button", { class: "btn btn-sm", onclick: () => openInSara(payload) }, "Open in Sara"),
+        util.el("button", { class: "btn btn-sm", onclick: () => openInBianca(payload) }, "Open in Bianca"),
         util.el("button", { class: "btn btn-sm", onclick: () => {
           saveAnalysis({
             titleA: payload.titles[0],
@@ -4822,121 +5378,260 @@
     return card;
   }
 
-  function openInSara(payload) {
-    if (!window.LumenSara) return;
+  function openInBianca(payload) {
+    if (!window.LumenBianca) return;
     const titles = payload.titles.join(" · ");
-    window.LumenSara.post(`I just ran a deep analysis on **${titles}**. Here's the headline:\n\n${payload.headline}\n\nAsk me for any part of it — tradeoffs, moods, confidence, or reading order.`);
-    window.LumenSara.setContext({
+    window.LumenBianca.post(`I just ran a deep analysis on **${titles}**. Here's the headline:\n\n${payload.headline}\n\nAsk me for any part of it — tradeoffs, moods, confidence, or reading order.`);
+    window.LumenBianca.setContext({
       route: "compare",
       chips: [{ label: "Deep analysis active" }, ...payload.titles.map(t => ({ label: t }))]
     });
-    window.LumenSara.open();
+    window.LumenBianca.open();
+  }
+
+  /* ==================================================================
+     Editorial feature — Batch 4: Today view + generation flow.
+     Public entry from the router: renderEditorial(). The old
+     renderLegacyHome body below is kept commented for the duration
+     of batch 4 so nothing is lost if we need to revert; batch 5
+     deletes it outright.
+     ================================================================== */
+  let editorialLoading = false;
+
+  function editorialRateLimit() {
+    const st = store.get();
+    const now = Date.now();
+    const recent = ((st.editorial && st.editorial.generationsToday) || [])
+      .filter(ts => typeof ts === "number" && now - ts < 24 * 60 * 60 * 1000);
+    return { count: recent.length, list: recent, allowed: recent.length < 5, unlockAt: recent.length >= 5 ? new Date(recent[0] + 24 * 60 * 60 * 1000) : null };
+  }
+
+  function editorialBooksFor(pick) {
+    const byId = new Map((pick.books || []).map(p => [p.bookId, p.summary]));
+    const books = [];
+    byId.forEach((_summary, id) => { const b = findBook(id); if (b) books.push(b); });
+    return { books, byId };
+  }
+
+  function editorialFavorites() {
+    const st = store.get();
+    const favs = st.favorites || {};
+    return Object.entries(favs)
+      .sort((a, b) => (b[1] || 0) - (a[1] || 0))
+      .map(([id]) => findBook(id)).filter(Boolean).slice(0, 8);
+  }
+
+  function editorialRecentReads() {
+    const st = store.get();
+    const states = st.bookStates || {};
+    // Heuristic: books currently marked "reading" or most recently added.
+    const reading = Object.entries(states).filter(([, v]) => v === "reading" || v === "read").map(([id]) => id);
+    const recent = (st.discovered || []).slice(0, 10).map(d => d.id);
+    const seen = new Set();
+    const merged = reading.concat(recent).filter(id => { if (seen.has(id)) return false; seen.add(id); return true; });
+    return merged.map(id => findBook(id)).filter(Boolean).slice(0, 5);
+  }
+
+  async function generateEditorialPick() {
+    const rl = editorialRateLimit();
+    if (!rl.allowed) {
+      store.update(s => { s.editorial.lastError = { at: Date.now(), code: "rate-limit",
+        message: `Regeneration unlocks at ${rl.unlockAt.toLocaleTimeString()}` }; });
+      renderView();
+      return;
+    }
+    if (!window.LumenEditorial || typeof window.LumenEditorial.generate !== "function") {
+      store.update(s => { s.editorial.lastError = { at: Date.now(), code: "unknown", message: "Editorial module missing" }; });
+      renderView();
+      return;
+    }
+    const st = store.get();
+    const hidden = st.hidden || {};
+    const pool = listAllBooks().filter(b => !hidden[b.id]);
+    const coldStart = pool.length < 5;
+    const candidates = selectEditorialCandidates(st.profile, pool, { pickCount: 3, topN: 20 });
+    const angle = chooseEditorialAngle();
+    const favorites = editorialFavorites();
+    const recentReads = editorialRecentReads();
+
+    editorialLoading = true;
+    // Clear any previous error so the skeleton view isn't shadowed by it.
+    store.update(s => { s.editorial.lastError = null; });
+    renderView();
+
+    try {
+      const out = await window.LumenEditorial.generate({
+        profile: st.profile, candidates, angle, favorites, recentReads, coldStart
+      });
+      const pick = {
+        id: "ed_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        generatedAt: Date.now(),
+        angle, anglePrompt: angle.label,
+        books: out.picks.map(p => ({ bookId: p.bookId, summary: p.summary })),
+        angleStatement: out.angleStatement
+      };
+      store.update(s => {
+        s.editorial = s.editorial || {};
+        if (s.editorial.currentPick) {
+          s.editorial.history = [s.editorial.currentPick].concat(s.editorial.history || []).slice(0, 10);
+        }
+        s.editorial.currentPick = pick;
+        s.editorial.generationsToday = ((s.editorial.generationsToday || []).concat(Date.now()))
+          .filter(ts => Date.now() - ts < 24 * 60 * 60 * 1000);
+        s.editorial.lastError = null;
+      });
+    } catch (e) {
+      // Failure does NOT consume the rate limit (per spec).
+      store.update(s => { s.editorial.lastError = { at: Date.now(), code: (e && e.code) || "unknown",
+        message: (e && e.message) || "Generation failed" }; });
+    } finally {
+      editorialLoading = false;
+      renderView();
+    }
+  }
+
+  function editorialHumanAgo(ts) {
+    const d = Math.max(0, Date.now() - ts);
+    const mins = Math.round(d / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+    const days = Math.round(hrs / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
+  function editorialBookBlock(book, summary, pick) {
+    const card = util.el("div", { class: "card editorial-block" });
+    const row = util.el("div", { class: "editorial-block-row" });
+    const coverWrap = util.el("div", { class: "editorial-block-cover", onclick: () => openBookDetail(book.id) });
+    coverWrap.appendChild(buildCoverBlock(book, { size: "lg", showHeat: true }));
+    row.appendChild(coverWrap);
+
+    const body = util.el("div", { class: "editorial-block-body" });
+    body.appendChild(util.el("div", { class: "t-eyebrow", text: util.humanise(book.subgenre || book.category || "book") }));
+    body.appendChild(util.el("h3", { class: "editorial-block-title", onclick: () => openBookDetail(book.id), text: book.title }));
+    body.appendChild(util.el("div", { class: "editorial-block-meta", text: `${book.author} · ${util.fmtYear(book.year)}` }));
+    body.appendChild(util.el("p", { class: "editorial-block-summary", text: summary }));
+
+    // Up to 4 tags — subgenre first, then top tropes.
+    const tags = [];
+    if (book.subgenre) tags.push(book.subgenre);
+    (book.trope_tags || book.trope || []).slice(0, 4 - tags.length).forEach(t => tags.push(t));
+    if (tags.length) {
+      const tagRow = util.el("div", { class: "row-wrap editorial-block-tags" });
+      tags.slice(0, 4).forEach(t => tagRow.appendChild(ui.tag(t)));
+      body.appendChild(tagRow);
+    }
+
+    // Action row — reading state tells us whether it's "in" or "add".
+    const rs = getReadingState(book.id);
+    const inLibrary = rs && rs !== "none";
+    const actions = util.el("div", { class: "row", style: { gap: "var(--s-2)", marginTop: "var(--s-3)" } });
+    if (inLibrary) {
+      actions.appendChild(util.el("button", { class: "btn btn-sm", onclick: () => openBookDetail(book.id) }, "Open"));
+    } else {
+      actions.appendChild(util.el("button", { class: "btn btn-sm btn-primary", onclick: () => { setReadingState(book.id, "want"); renderView(); } }, "Add to your library"));
+    }
+    body.appendChild(actions);
+
+    row.appendChild(body);
+    card.appendChild(row);
+    return card;
+  }
+
+  function renderEditorial() {
+    const s = store.get();
+    const ed = s.editorial || {};
+    const wrap = util.el("div", { class: "page stack-lg" });
+    const rlTop = editorialRateLimit();
+    const pageHeadChildren = [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Today" }),
+        util.el("h1", { html: ed.currentPick && ed.currentPick.angleStatement
+          ? `<em>${String(ed.currentPick.angleStatement).replace(/[<>]/g, "")}</em>`
+          : "Three books, chosen and <em>written</em> for you." })
+      ])
+    ];
+    if (ed.currentPick && !editorialLoading) {
+      pageHeadChildren.push(util.el("button", {
+        class: "btn btn-primary",
+        disabled: rlTop.allowed ? null : true,
+        title: rlTop.allowed ? "" : `Regeneration unlocks at ${rlTop.unlockAt.toLocaleTimeString()}`,
+        onclick: () => generateEditorialPick()
+      }, "Regenerate"));
+    }
+    wrap.appendChild(util.el("div", { class: "page-head" }, pageHeadChildren));
+
+    // --- Loading state --------------------------------------------------
+    if (editorialLoading) {
+      const wait = util.el("div", { class: "card", style: { textAlign: "center", padding: "var(--s-6)" } });
+      wait.appendChild(util.el("div", { class: "t-serif", style: { fontStyle: "italic", fontSize: "18px" }, text: "Writing your editorial…" }));
+      wait.appendChild(util.el("p", { class: "t-muted", style: { marginTop: "var(--s-3)" }, text: "This usually takes 15–25 seconds." }));
+      wrap.appendChild(wait);
+      for (let i = 0; i < 3; i++) {
+        wrap.appendChild(util.el("div", { class: "card editorial-block editorial-skeleton" }, [
+          util.el("div", { class: "editorial-block-row" }, [
+            util.el("div", { class: "editorial-block-cover skel-box" }),
+            util.el("div", { class: "editorial-block-body" }, [
+              util.el("div", { class: "skel-line skel-line-sm" }),
+              util.el("div", { class: "skel-line skel-line-lg" }),
+              util.el("div", { class: "skel-line" }),
+              util.el("div", { class: "skel-line" }),
+              util.el("div", { class: "skel-line" }),
+              util.el("div", { class: "skel-line skel-line-sm" })
+            ])
+          ])
+        ]));
+      }
+      return wrap;
+    }
+
+    // --- Empty state ----------------------------------------------------
+    if (!ed.currentPick) {
+      const empty = util.el("div", { class: "card", style: { textAlign: "center", padding: "var(--s-7) var(--s-5)" } });
+      empty.appendChild(util.el("p", { class: "lede", style: { marginBottom: "var(--s-5)" }, text: "Three books, chosen and written for you. Different every time." }));
+      empty.appendChild(util.el("button", {
+        class: "btn btn-primary", style: { fontSize: "16px", padding: "var(--s-3) var(--s-5)" },
+        onclick: () => generateEditorialPick()
+      }, "Generate"));
+      empty.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-4)" }, text: "Uses your profile, your library, and what you've been reading." }));
+      const showErr = ed.lastError && !(ed.lastError.code === "no-key");
+      if (showErr) {
+        empty.appendChild(util.el("p", { class: "t-small", style: { color: "var(--danger)", marginTop: "var(--s-3)" }, text: ed.lastError.message || "Claude didn't respond — try again?" }));
+      }
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    // --- Loaded state ---------------------------------------------------
+    const pick = ed.currentPick;
+    const sub = util.el("div", { class: "row-wrap t-small t-subtle", style: { marginTop: "var(--s-2)" } });
+    sub.appendChild(util.el("span", { text: `Generated ${editorialHumanAgo(pick.generatedAt)}` }));
+    sub.appendChild(util.el("span", { class: "tag tag-accent", text: (pick.angle && pick.angle.id) || "editorial" }));
+    wrap.appendChild(sub);
+
+    const { byId } = editorialBooksFor(pick);
+    pick.books.forEach(p => {
+      const b = findBook(p.bookId);
+      if (!b) return;
+      wrap.appendChild(editorialBookBlock(b, byId.get(p.bookId) || p.summary, pick));
+    });
+
+    // Footer: transparency note.
+    const librarySize = listAllBooks().filter(b => !(s.hidden || {})[b.id]).length;
+    wrap.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-5)" }, text: `Based on your ${librarySize} saved book${librarySize === 1 ? "" : "s"}, your profile, and your recent favorites.` }));
+
+    if (ed.lastError && !(ed.lastError.code === "no-key")) {
+      wrap.appendChild(util.el("p", { class: "t-small", style: { color: "var(--danger)", marginTop: "var(--s-3)" }, text: ed.lastError.message || "Claude didn't respond — try again?" }));
+    }
+    return wrap;
   }
 
   /* -------------------- views -------------------- */
   const views = {
     discover() {
-      const s = store.get();
-      const greeting = s.ui.onboardingDone ? "Welcome back." : "Welcome to Lumen.";
-      const pool = listAllBooks();
-      const result = Engine.rankRecommendations(s.profile, s.weights, pool);
-      // Filter out books the user marked "Not for me" as picks —
-      // they stay in Library but never bubble to the Home top-3.
-      // The next-best eligible book takes the freed slot.
-      const rejected = s.dailyPicksRejected || {};
-      const eligible = result.scored.filter(x => !rejected[x.book.id]);
-      const picks = eligible.slice(0, 3);
-      const rejectedIds = Object.keys(rejected);
-
-      const currentReadingIds = Object.entries(s.bookStates).filter(([, v]) => v === "reading").map(([k]) => k);
-      const currentReading = currentReadingIds.map(id => findBook(id)).filter(Boolean);
-
-      const wrap = util.el("div", { class: "page stack-lg" });
-
-      wrap.appendChild(util.el("div", { class: "page-head" }, [
-        util.el("div", {}, [
-          util.el("div", { class: "t-eyebrow", text: "Home" }),
-          util.el("h1", { html: greeting.replace(/Lumen/, "<em>Lumen</em>").replace(/back/, "<em>back</em>") }),
-          util.el("p", { class: "lede", text: "A private, taste-aware reading companion. Nothing leaves your device." })
-        ]),
-        util.el("div", { class: "row" }, [
-          util.el("button", { class: "btn", onclick: () => router.go("profile") }, "Edit profile"),
-          util.el("button", { class: "btn btn-primary", onclick: () => router.go("library") }, "Browse library")
-        ])
-      ]));
-
-      // Sara check-in
-      wrap.appendChild(util.el("div", { class: "card card-accent" }, [
-        util.el("div", { class: "t-eyebrow", text: "Sara · your guide" }),
-        util.el("h3", { class: "t-serif", style: { marginTop: "4px" }, text: "What are you in the mood for today?" }),
-        util.el("p", { class: "t-muted", style: { marginTop: "var(--s-2)" }, text: "I can help you narrow down by mood, compare two titles side by side, or reflect on what you just read." }),
-        util.el("div", { class: "row-wrap", style: { marginTop: "var(--s-4)" } }, [
-          util.el("button", { class: "btn btn-sm", onclick: () => router.go("chat") }, "Talk with Sara"),
-          util.el("button", { class: "btn btn-sm", onclick: () => router.go("compare") }, "Compare two titles"),
-          util.el("button", { class: "btn btn-sm", onclick: () => router.go("journal") }, "Write a reflection")
-        ])
-      ]));
-
-      // Daily picks
-      const picksCard = util.el("div", { class: "card" });
-      picksCard.appendChild(util.el("div", { class: "card-head" }, [
-        util.el("h3", { text: "Daily picks" }),
-        util.el("span", { class: "card-sub t-subtle", text: pool.length ? `Drawn from your profile · ${result.matched} matches` : "your library is the source" })
-      ]));
-      if (!pool.length) {
-        picksCard.appendChild(ui.empty({
-          title: "Your library is empty",
-          message: "Lumen has no titles to rank yet. Search the web from Discovery, or load the starter library of historical classics from Settings.",
-          actions: [
-            { label: "Open Discovery", variant: "btn-primary", onClick: () => router.go("discovery") },
-            { label: "Open Settings",  variant: "btn",         onClick: () => router.go("settings") }
-          ]
-        }));
-      } else if (!picks.length) {
-        picksCard.appendChild(ui.empty({
-          title: "Nothing passes your filters yet",
-          message: "Your exclusions or warning strictness are ruling everything out. Loosen one of them in your profile.",
-          actions: [{ label: "Edit profile", variant: "btn-primary", onClick: () => router.go("profile") }]
-        }));
-      } else {
-        const grid = util.el("div", { class: "daily-picks-grid" });
-        picks.forEach(p => grid.appendChild(dailyPickCard(p, (sc) => openBookDetail(sc.book.id))));
-        picksCard.appendChild(grid);
-      }
-      wrap.appendChild(picksCard);
-
-      // Weekly insight — a quiet recap of your week
-      const entriesThisWeek = s.journal.filter(e => Date.now() - e.ts < 1000 * 60 * 60 * 24 * 7).length;
-      const pinnedCount = s.vault.pinned.length;
-      const readingStateCount = Object.keys(s.bookStates).length;
-      if (entriesThisWeek || pinnedCount || readingStateCount) {
-        const insightsCard = util.el("div", { class: "card" });
-        insightsCard.appendChild(util.el("div", { class: "card-head" }, [
-          util.el("h3", { text: "This week" }),
-          util.el("span", { class: "card-sub t-subtle", text: "A quiet summary" })
-        ]));
-        const row = util.el("div", { class: "row-wrap", style: { gap: "var(--s-5)" } });
-        if (entriesThisWeek)     row.appendChild(kpiBlock(entriesThisWeek, entriesThisWeek === 1 ? "journal entry" : "journal entries"));
-        if (pinnedCount)         row.appendChild(kpiBlock(pinnedCount,     pinnedCount === 1 ? "book pinned" : "books pinned"));
-        if (readingStateCount)   row.appendChild(kpiBlock(readingStateCount, "books tracked"));
-        insightsCard.appendChild(row);
-        wrap.appendChild(insightsCard);
-      }
-
-      // Currently reading
-      if (currentReading.length) {
-        const reading = util.el("div", { class: "card" });
-        reading.appendChild(util.el("div", { class: "card-head" }, [
-          util.el("h3", { text: "Currently reading" }),
-          util.el("span", { class: "card-sub t-subtle", text: `${currentReading.length} in progress` })
-        ]));
-        const row = util.el("div", { class: "row-wrap" });
-        currentReading.forEach(b => row.appendChild(util.el("div", { class: "tag tag-outline", style: { padding: "var(--s-2) var(--s-3)" } }, b.title)));
-        reading.appendChild(row);
-        wrap.appendChild(reading);
-      }
-
-      return wrap;
+      return renderEditorial();
     },
 
     library() {
@@ -5043,14 +5738,14 @@
       excludeCard.appendChild(util.el("p", { class: "field-help", style: { marginTop: "var(--s-3)" }, text: "Any book tagged with these is removed entirely" }));
       col.appendChild(excludeCard);
 
-      // --- Companion preferences (Sara) ------------------------------------
-      // How Sara tailors her tone and what she filters out of her
+      // --- Companion preferences (Bianca) ------------------------------------
+      // How Bianca tailors her tone and what she filters out of her
       // replies. Hard constraint: spoilers. Soft constraints:
       // reading level, format preference.
       const companionCard = util.el("div", { class: "card stack" });
       companionCard.appendChild(util.el("div", { class: "card-head" }, [
         util.el("h3", { html: "Companion <em>preferences</em>" }),
-        util.el("span", { class: "card-sub t-subtle", text: "Sara reads these on every turn" })
+        util.el("span", { class: "card-sub t-subtle", text: "Bianca reads these on every turn" })
       ]));
 
       companionCard.appendChild(buildFieldLabel("Reading level", "register"));
@@ -5059,7 +5754,7 @@
         { label: "Literary", value: "literary" },
         { label: "Academic", value: "academic" }
       ]));
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "Guides Sara's vocabulary and sentence rhythm. Casual = a friend over coffee; Academic = a seminar aside." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Guides Bianca's vocabulary and sentence rhythm. Casual = a friend over coffee; Academic = a seminar aside." }));
 
       companionCard.appendChild(buildFieldLabel("Format preference", "medium"));
       companionCard.appendChild(segmented("formatPreference", [
@@ -5069,7 +5764,7 @@
         { label: "Hardcover", value: "hardcover" },
         { label: "Paperback", value: "paperback" }
       ]));
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "If you pick Audiobook, Sara leads with narrator quality when she names a book." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "If you pick Audiobook, Bianca leads with narrator quality when she names a book." }));
 
       const spoilersToggle = util.el("label", { class: "toggle", style: { marginTop: "var(--s-3)" } });
       const spoilerInput = util.el("input", {
@@ -5085,7 +5780,7 @@
       spoilersToggle.appendChild(util.el("span", { class: "toggle-track" }));
       spoilersToggle.appendChild(util.el("span", { class: "toggle-label", text: "Allow plot spoilers" }));
       companionCard.appendChild(spoilersToggle);
-      companionCard.appendChild(util.el("p", { class: "field-help", text: "Off by default — Sara will name themes and beats but not twists. Flip on if you prefer a full read-out." }));
+      companionCard.appendChild(util.el("p", { class: "field-help", text: "Off by default — Bianca will name themes and beats but not twists. Flip on if you prefer a full read-out." }));
 
       col.appendChild(companionCard);
 
@@ -5228,7 +5923,7 @@
     fitRow.appendChild(donutSVG(fitScore, "Fit"));
     fitRow.appendChild(util.el("div", { class: "donut-meta" }, [
       "Fit",
-      util.el("div", { class: "donut-note", text: fitScore >= 70 ? "strong match" : fitScore >= 45 ? "moderate fit" : "loose fit" })
+      util.el("div", { class: "donut-note", text: Engine.fitLabel(fitScore).toLowerCase() })
     ]));
     aside.appendChild(fitRow);
 
@@ -5236,7 +5931,7 @@
     confRow.appendChild(donutSVG(confidence, "Confidence"));
     confRow.appendChild(util.el("div", { class: "donut-meta" }, [
       "Confidence",
-      util.el("div", { class: "donut-note", text: confidence >= 70 ? "signal-rich" : confidence >= 45 ? "moderate signal" : "thin data" })
+      util.el("div", { class: "donut-note", text: Engine.confLabel(confidence).toLowerCase() })
     ]));
     aside.appendChild(confRow);
 
@@ -5410,22 +6105,47 @@
   }
 
   /* -------------------- shell rendering -------------------- */
+  // Secret admin dashboard — opened by clicking the Lumen logo 5 times.
+  // Never linked from the UI. All operator controls live here only.
   function renderSidebar() {
     const current = router.current();
     const groups = {
       main:     { label: "Read" },
       personal: { label: "You" },
-      settings: { label: "Settings" }
+      settings: { label: "More" }
     };
     const side = document.getElementById("side-nav");
     side.innerHTML = "";
-    side.appendChild(util.el("div", { class: "app-brand" }, [
+
+    // Clean up any previously rendered mobile drawer/scrim
+    document.querySelector(".nav-more-drawer")?.remove();
+    document.querySelector(".nav-more-scrim")?.remove();
+    document.body.classList.remove("nav-more-open");
+
+    // Secret admin trapdoor: click the "Lumen" mark 5 times within 2 s.
+    let _adminClickCount = 0, _adminClickTimer = null;
+    const brand = util.el("div", { class: "app-brand", onclick: () => {
+      _adminClickCount++;
+      clearTimeout(_adminClickTimer);
+      if (_adminClickCount >= 5) {
+        _adminClickCount = 0;
+        router.go("settings");
+        return;
+      }
+      _adminClickTimer = setTimeout(() => { _adminClickCount = 0; }, 2000);
+    }}, [
       util.el("span", { class: "mark", text: "Lumen" }),
       util.el("span", { class: "tag", text: "Private" })
-    ]));
+    ]);
+    side.appendChild(brand);
+
+    const secondaryGroups = ["personal", "settings"];
+    const currentIsSecondary = secondaryGroups.some(g =>
+      ROUTES.filter(r => r.group === g).some(r => r.id === current.id)
+    );
 
     for (const [gid, g] of Object.entries(groups)) {
-      const group = util.el("div", { class: "nav-group" });
+      const group = util.el("div", { class: "nav-group", "data-group": gid });
       group.appendChild(util.el("div", { class: "nav-group-label", text: g.label }));
       for (const r of ROUTES.filter(r => r.group === gid)) {
         const link = util.el("a", {
@@ -5438,6 +6158,56 @@
       }
       side.appendChild(group);
     }
+
+    // "More" button — visible only on mobile (CSS hides it on desktop).
+    // Opens a slide-up drawer with personal + settings routes.
+    const moreBtn = util.el("button", {
+      class: "nav-more-btn" + (currentIsSecondary ? " has-active-child" : ""),
+      "aria-label": "More pages"
+    });
+    moreBtn.appendChild(util.el("span", { class: "nav-more-dots", text: "···" }));
+    moreBtn.appendChild(util.el("span", { text: "More" }));
+    side.appendChild(moreBtn);
+
+    // Scrim (appended to body so it covers the full viewport)
+    const scrim = util.el("div", { class: "nav-more-scrim" });
+    document.body.appendChild(scrim);
+
+    // Slide-up drawer with personal + settings links
+    const drawer = util.el("div", { class: "nav-more-drawer", "aria-label": "More navigation" });
+    drawer.appendChild(util.el("div", { class: "nav-more-drawer-handle" }));
+
+    for (const [gid, g] of Object.entries(groups)) {
+      if (!secondaryGroups.includes(gid)) continue;
+      const section = util.el("div", { class: "nav-more-drawer-section" });
+      section.appendChild(util.el("div", { class: "nav-more-drawer-label", text: g.label }));
+      for (const r of ROUTES.filter(r => r.group === gid)) {
+        section.appendChild(util.el("a", {
+          class: "nav-link",
+          href: `#/${r.id}`,
+          "aria-current": r.id === current.id ? "page" : null,
+          "data-route": r.id
+        }, [util.el("span", { text: r.label })]));
+      }
+      drawer.appendChild(section);
+    }
+    document.body.appendChild(drawer);
+
+    function openMore() {
+      document.body.classList.add("nav-more-open");
+      moreBtn.classList.add("is-active");
+    }
+    function closeMore() {
+      document.body.classList.remove("nav-more-open");
+      moreBtn.classList.remove("is-active");
+    }
+
+    moreBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      document.body.classList.contains("nav-more-open") ? closeMore() : openMore();
+    });
+    scrim.addEventListener("click", closeMore);
+    drawer.querySelectorAll(".nav-link").forEach(l => l.addEventListener("click", closeMore));
   }
 
   function renderTopbar() {
@@ -5467,13 +6237,13 @@
     const ageBadge = util.el("span", { class: "badge-pill", title: "Adults only" }, "18 · adults only");
 
     const saraLauncher = util.el("button", {
-      class: "sara-launcher",
-      "aria-label": "Open Sara",
-      title: "Open Sara (your reading companion)",
-      onclick: () => window.LumenSara && window.LumenSara.toggle()
+      class: "bianca-launcher",
+      "aria-label": "Open Bianca",
+      title: "Open Bianca (your reading companion)",
+      onclick: () => window.LumenBianca && window.LumenBianca.toggle()
     }, [
       util.el("span", { class: "dot" }),
-      util.el("span", { text: "Ask Sara" })
+      util.el("span", { text: "Ask Bianca" })
     ]);
 
     top.appendChild(saraLauncher);
@@ -5496,8 +6266,8 @@
       }));
     }
     root.focus();
-    if (window.LumenSara) {
-      window.LumenSara.setContext(computeSaraContext(r.id));
+    if (window.LumenBianca) {
+      window.LumenBianca.setContext(computeBiancaContext(r.id));
     }
     // Auto-collapse the left nav when on the Terminal — the
     // dashboard needs every pixel to breathe. A pull-tab on the
@@ -5513,6 +6283,9 @@
   // fixed positioning with a scrim). Toggling handled by the
   // pull-tab; routing out of the Terminal resets to normal.
   function applySidenavMode(routeId) {
+    // Terminal: collapse the sidebar so the dashboard gets every pixel.
+    // A pull-tab (chevron) docks at the left edge so the user can
+    // re-open the nav at any time. Routing away clears the state.
     const b = document.body;
     if (routeId === "terminal") {
       if (b.dataset.sidenav !== "overlay") b.dataset.sidenav = "hidden";
@@ -5554,7 +6327,7 @@
     }, true);
   }
 
-  // computeSaraContext is now defined alongside buildSaraContext
+  // computeBiancaContext is now defined alongside buildBiancaContext
   // above — this second definition was the legacy regex-driven
   // version and has been removed. Keeping the comment so future
   // greps find the old symbol.
@@ -5686,6 +6459,14 @@
 
   function adultGate() {
     if (store.get().ui.adultConfirmed) return;
+    // Discovery Phase: operator has pre-vouched for the environment
+    // when an admin key is configured — skip the gate so testers
+    // land directly on the app without any blocking prompt.
+    const Disco = window.LumenDiscovery;
+    if (Disco && Disco.getAdminKey && Disco.getAdminKey()) {
+      store.update(s => { s.ui.adultConfirmed = true; });
+      return;
+    }
     ui.modal({
       title: "Before you begin",
       body: `<p class="t-muted">Lumen discusses adult literature — erotic classics, sexuality texts, and works with mature themes. Please confirm you are an adult and understand the material may include historically problematic content.</p>
@@ -5720,15 +6501,15 @@
       } },
       { label: "Open Transparency", hint: "", run: () => router.go("transparency") },
       { label: "Open Settings",     hint: "", run: () => router.go("settings") },
-      { label: "Open Sara",          hint: "S", run: () => window.LumenSara && window.LumenSara.open() },
-      { label: "Close Sara",         hint: "",  run: () => window.LumenSara && window.LumenSara.close() }
+      { label: "Open Bianca",        hint: "S", run: () => window.LumenBianca && window.LumenBianca.open() },
+      { label: "Close Bianca",       hint: "",  run: () => window.LumenBianca && window.LumenBianca.close() }
     ];
 
     if (cmpState.slots && cmpState.slots.filter(Boolean).length >= 2) {
       commands.push({ label: "Compare: run deep analysis", hint: "", run: () => { router.go("compare"); setTimeout(() => renderCompare._runDeep && renderCompare._runDeep(), 80); } });
     }
     if (cmpState.slots && cmpState.slots.some(Boolean)) {
-      commands.push({ label: "Compare: clear all slots", hint: "", run: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } });
+      commands.push({ label: "Compare: clear all slots", hint: "", run: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } });
     }
 
     let host = document.getElementById("palette-host");
@@ -5821,7 +6602,7 @@
         store.update(s => { s.ui.discreet = !s.ui.discreet; });
         applyUIFlags();
       } else if (e.key.toLowerCase() === "s" && !e.metaKey && !e.ctrlKey) {
-        if (window.LumenSara) window.LumenSara.toggle();
+        if (window.LumenBianca) window.LumenBianca.toggle();
       }
     });
   }
@@ -5847,30 +6628,118 @@
 
     setupKeyboard();
 
-    // Mount Sara (persistent floating assistant) once at shell level.
-    if (window.LumenSara) {
-      window.LumenSara.boot();
-      // Keep Sara's context in sync with every state change —
+    // Mount Bianca (persistent floating assistant) once at shell level.
+    if (window.LumenBianca) {
+      window.LumenBianca.boot();
+      // Keep Bianca's context in sync with every state change —
       // slider tweaks, chip toggles, imports, rejections all push
       // a fresh structured context object without needing a
       // renderView() bounce through the hash router.
       store.subscribe(() => {
         try {
           const r = router.current();
-          window.LumenSara.setContext(computeSaraContext(r.id));
+          window.LumenBianca.setContext(computeBiancaContext(r.id));
         } catch (e) { /* ignore */ }
       });
     }
 
     adultGate();
+
+    // Boot-time embedding backfill (Batch 3). Silent if no Voyage
+    // key; capped at 20 books per session so a huge library doesn't
+    // burn quota on one visit.
+    backfillEmbeddings();
   }
 
-  // Expose a small surface for later batches to hook into.
-  // Public surface for sara.js — keep this list small and intentional.
+  /* ==================================================================
+     Editorial feature — Batch 2: selection helpers only.
+
+     selectEditorialCandidates(profile, pool, options)
+       Ranks the pool via LumenEngine, keeps the top `topN` (default
+       20), then draws `pickCount` (default 3) via weighted-random
+       sampling without replacement. Weight = fitScore^2 — squaring
+       biases toward higher-fit titles without being deterministic
+       across generations. If the pool has fewer than pickCount
+       eligible items, returns what's available (no fabrication).
+       Each returned entry is { book, fitScore, confidence,
+       contributions }. contributions falls back to the engine's
+       `why` field when available, else null.
+
+     chooseEditorialAngle()
+       Returns one of six fixed editorial angles at random, avoiding
+       whatever angle the most recent history entry used. Shape:
+       { id, label }.
+     ================================================================== */
+  const EDITORIAL_ANGLES = [
+    { id: "deepen",     label: "Three books that would deepen what you're already drawn to" },
+    { id: "stretch",    label: "Three books that would stretch you somewhere new" },
+    { id: "comfort",    label: "Three books for when you want something familiar and easy" },
+    { id: "mood",       label: "Three books that share a mood your library keeps returning to" },
+    { id: "overlook",   label: "Three books you might have overlooked" },
+    { id: "complement", label: "Three books that pair with what you've been reading lately" }
+  ];
+
+  function selectEditorialCandidates(profile, pool, options) {
+    const opts = options || {};
+    const topN = typeof opts.topN === "number" ? opts.topN : 20;
+    const pickCount = typeof opts.pickCount === "number" ? opts.pickCount : 3;
+    if (!Array.isArray(pool) || !pool.length) return [];
+    const Engine = window.LumenEngine;
+    if (!Engine || typeof Engine.rankRecommendations !== "function") return [];
+    const st = store.get() || {};
+    const weights = st.weights || {};
+    const ranked = Engine.rankRecommendations(profile, weights, pool) || {};
+    const scored = Array.isArray(ranked.scored) ? ranked.scored : [];
+    const shape = (s) => ({
+      book: s.book,
+      fitScore: typeof s.fitScore === "number" ? s.fitScore : 0,
+      confidence: typeof s.confidence === "number" ? s.confidence : 0,
+      contributions: s.contributions || s.why || null
+    });
+    const top = scored.slice(0, topN);
+    if (top.length <= pickCount) return top.map(shape);
+
+    // Weighted-random without replacement. Weight = fitScore^2.
+    // Falls back to uniform when every weight collapses to zero.
+    const remaining = top.slice();
+    const picks = [];
+    while (picks.length < pickCount && remaining.length) {
+      const ws = remaining.map(s => {
+        const f = Math.max(0, typeof s.fitScore === "number" ? s.fitScore : 0);
+        return f * f;
+      });
+      const total = ws.reduce((a, b) => a + b, 0);
+      let idx;
+      if (total <= 0) {
+        idx = Math.floor(Math.random() * remaining.length);
+      } else {
+        let r = Math.random() * total;
+        idx = 0;
+        for (; idx < ws.length; idx++) {
+          r -= ws[idx];
+          if (r <= 0) break;
+        }
+        if (idx >= remaining.length) idx = remaining.length - 1;
+      }
+      picks.push(remaining.splice(idx, 1)[0]);
+    }
+    return picks.map(shape);
+  }
+
+  function chooseEditorialAngle() {
+    const st = store.get() || {};
+    const history = (st.editorial && st.editorial.history) || [];
+    const lastAngleId = history[0] && history[0].angle && history[0].angle.id;
+    const pool = EDITORIAL_ANGLES.filter(a => a.id !== lastAngleId);
+    const list = pool.length ? pool : EDITORIAL_ANGLES; // defensive
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  // Public surface for bianca.js — keep this list small and intentional.
   window.Lumen = {
     store, router, ui, util, views, ROUTES, saraRespond,
     findBook, listAllBooks, openBookDetail,
-    buildSaraSystemContext
+    buildBiancaSystemContext
   };
   document.addEventListener("DOMContentLoaded", boot);
 })();

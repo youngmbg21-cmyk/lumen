@@ -1,0 +1,17 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[context.production]
+  publish = "."
+
+[context.branch-deploy]
+  publish = "."
+
+[context.deploy-preview]
+  publish = "."
+
+[[redirects]]
+  from = "/api/analyze"
+  to   = "/.netlify/functions/analyze"
+  status = 200

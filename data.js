@@ -413,11 +413,11 @@
   };
 
   const DEFAULT_PROFILE = {
-    heat: 3, explicit: 3, emotion: 3, consent: 5, taboo: 2, plot: 3,
+    heat: 3, explicit: 3, emotion: 3, consent: 3, taboo: 3, plot: 3,
     tone: [], pacing: [], style: [], dynamic: [], trope: [], kink: [],
     orientation: [], exclude: [],
     warnStrict: "moderate",
-    // Conversational-companion preferences used by Sara to tailor
+    // Conversational-companion preferences used by Bianca to tailor
     // tone and filtering. Hard constraints land in the system
     // prompt; soft ones become hints.
     readingLevel: "casual",         // "casual" | "literary" | "academic"

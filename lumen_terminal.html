@@ -1,0 +1,1983 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lumen Terminal — Editorial Analytics for Discerning Readers</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   THEME TOKENS — four feminine atmospheres, terminal density
+   ============================================================ */
+:root, body.theme-rose {
+  --bg-base: #f7ece6; --bg-surface: #fdf8f4; --bg-sunk: #f0e0d8; --bg-deep: #e5cec3;
+  --panel-bg: #ffffff; --panel-alt: #faf3ee;
+  --border: #e2c9bd; --border-strong: #b88c7c; --border-faint: #eddfd6;
+  --text: #261816; --text-soft: #553a34; --text-mute: #8f746c; --text-dim: #b09b93;
+  --accent: #b84a62; --accent-deep: #8e2e44; --accent-soft: rgba(184,74,98,0.10); --accent-mid: rgba(184,74,98,0.22);
+  --gold: #c19565; --gold-deep: #9a7545; --gold-soft: rgba(193,149,101,0.14);
+  --sage: #7a8c6f; --sage-soft: rgba(122,140,111,0.12);
+  --warn: #c17c3c; --warn-soft: rgba(193,124,60,0.15);
+  --danger: #a63a3a; --danger-soft: rgba(166,58,58,0.12);
+  --violet: #8e6a94; --violet-soft: rgba(142,106,148,0.12);
+  --blush: #d98ea0;
+  --grid-line: rgba(184,140,124,0.18);
+  --shadow-soft: 0 1px 2px rgba(139,68,68,0.04), 0 4px 16px rgba(139,68,68,0.06);
+  --shadow-lift: 0 2px 6px rgba(139,68,68,0.10), 0 16px 36px rgba(139,68,68,0.08);
+}
+body.theme-plum {
+  --bg-base: #1a0f1d; --bg-surface: #241428; --bg-sunk: #1d1020; --bg-deep: #140a17;
+  --panel-bg: #26172a; --panel-alt: #1f1224;
+  --border: #3c2342; --border-strong: #5a3a63; --border-faint: #2d1a32;
+  --text: #f5e7eb; --text-soft: #d4b8c1; --text-mute: #a58596; --text-dim: #7a6570;
+  --accent: #e0829a; --accent-deep: #c05d78; --accent-soft: rgba(224,130,154,0.10); --accent-mid: rgba(224,130,154,0.28);
+  --gold: #d4a574; --gold-deep: #b38855; --gold-soft: rgba(212,165,116,0.14);
+  --sage: #9cb89a; --sage-soft: rgba(156,184,154,0.14);
+  --warn: #e0a060; --warn-soft: rgba(224,160,96,0.16);
+  --danger: #e07070; --danger-soft: rgba(224,112,112,0.14);
+  --violet: #b89bc0; --violet-soft: rgba(184,155,192,0.14);
+  --blush: #e8a5b6;
+  --grid-line: rgba(212,184,193,0.12);
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.3);
+  --shadow-lift: 0 2px 6px rgba(0,0,0,0.4), 0 16px 36px rgba(0,0,0,0.35);
+}
+body.theme-pearl {
+  --bg-base: #f7f0de; --bg-surface: #fdf9ec; --bg-sunk: #ede2c5; --bg-deep: #dfd0a8;
+  --panel-bg: #ffffff; --panel-alt: #faf4e3;
+  --border: #d9c694; --border-strong: #a68a4c; --border-faint: #e8dab4;
+  --text: #2d2416; --text-soft: #5c4d32; --text-mute: #9c8a66; --text-dim: #bfae8a;
+  --accent: #9c7a3c; --accent-deep: #7a5c28; --accent-soft: rgba(156,122,60,0.10); --accent-mid: rgba(156,122,60,0.22);
+  --gold: #c9a050; --gold-deep: #a68236; --gold-soft: rgba(201,160,80,0.14);
+  --sage: #8a9c70; --sage-soft: rgba(138,156,112,0.12);
+  --warn: #b88a3c; --warn-soft: rgba(184,138,60,0.15);
+  --danger: #a85040; --danger-soft: rgba(168,80,64,0.12);
+  --violet: #9c7a94; --violet-soft: rgba(156,122,148,0.12);
+  --blush: #d99880;
+  --grid-line: rgba(166,138,76,0.18);
+  --shadow-soft: 0 1px 2px rgba(120,90,30,0.05), 0 4px 16px rgba(120,90,30,0.07);
+  --shadow-lift: 0 2px 6px rgba(120,90,30,0.10), 0 16px 36px rgba(120,90,30,0.09);
+}
+body.theme-botanical {
+  --bg-base: #eae4d4; --bg-surface: #f5efdf; --bg-sunk: #ddd3b9; --bg-deep: #c4b799;
+  --panel-bg: #ffffff; --panel-alt: #f0e9d4;
+  --border: #c4b797; --border-strong: #8a7856; --border-faint: #d7cdad;
+  --text: #22281c; --text-soft: #4a5240; --text-mute: #8a8e78; --text-dim: #a5a888;
+  --accent: #a86670; --accent-deep: #7d4450; --accent-soft: rgba(168,102,112,0.10); --accent-mid: rgba(168,102,112,0.22);
+  --gold: #b89a60; --gold-deep: #8f7744; --gold-soft: rgba(184,154,96,0.14);
+  --sage: #6a7e5a; --sage-soft: rgba(106,126,90,0.14);
+  --warn: #b87244; --warn-soft: rgba(184,114,68,0.15);
+  --danger: #a65040; --danger-soft: rgba(166,80,64,0.12);
+  --violet: #7a6984; --violet-soft: rgba(122,105,132,0.12);
+  --blush: #c5918b;
+  --grid-line: rgba(138,120,86,0.18);
+  --shadow-soft: 0 1px 2px rgba(60,70,40,0.05), 0 4px 16px rgba(60,70,40,0.07);
+  --shadow-lift: 0 2px 6px rgba(60,70,40,0.10), 0 16px 36px rgba(60,70,40,0.09);
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { min-height: 100%; }
+body {
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: 'DM Sans', -apple-system, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.4s ease;
+  overflow-x: hidden;
+}
+
+/* Subtle noise overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.03 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 1;
+  mix-blend-mode: multiply;
+}
+body.theme-plum::before { mix-blend-mode: overlay; opacity: 0.3; }
+
+.wrap { position: relative; z-index: 2; }
+
+/* ============================================================
+   COMMAND BAR
+   ============================================================ */
+.command-bar {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 20px;
+  background: var(--panel-bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand-mark {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 28px;
+  letter-spacing: -0.04em;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.brand-mark::after { content: '.'; color: var(--gold); }
+.brand-sub {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+}
+.brand-divider {
+  width: 1px;
+  height: 22px;
+  background: var(--border);
+}
+.brand-mode {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--text-soft);
+}
+
+/* Ticker */
+.ticker-wrap {
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-soft);
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-faint);
+  border-radius: 999px;
+  padding: 6px 0;
+  position: relative;
+}
+.ticker-wrap::before,
+.ticker-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 32px;
+  z-index: 2;
+  pointer-events: none;
+}
+.ticker-wrap::before { left: 0; background: linear-gradient(90deg, var(--bg-sunk), transparent); }
+.ticker-wrap::after { right: 0; background: linear-gradient(-90deg, var(--bg-sunk), transparent); }
+.ticker {
+  display: inline-block;
+  animation: tick 60s linear infinite;
+  padding-left: 100%;
+}
+@keyframes tick {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+.ticker-item {
+  display: inline-block;
+  padding: 0 28px;
+  border-right: 1px solid var(--border-faint);
+}
+.ticker-title {
+  color: var(--accent-deep);
+  font-weight: 600;
+  margin-right: 6px;
+}
+.ticker-val { color: var(--text); font-weight: 500; }
+.ticker-trope { color: var(--sage); margin-left: 6px; font-style: italic; font-weight: 400; }
+
+/* Theme switcher */
+.theme-switcher {
+  display: flex;
+  gap: 5px;
+  padding: 4px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-faint);
+  border-radius: 999px;
+}
+.theme-dot {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s;
+}
+.theme-dot:hover { transform: scale(1.12); }
+.theme-dot.active { border-color: var(--accent-deep); transform: scale(1.08); }
+.theme-dot[data-theme="rose"]      { background: linear-gradient(135deg, #f9f0ec, #b84a62); }
+.theme-dot[data-theme="plum"]      { background: linear-gradient(135deg, #3a2340, #e0829a); }
+.theme-dot[data-theme="pearl"]     { background: linear-gradient(135deg, #faf6ef, #c9a050); }
+.theme-dot[data-theme="botanical"] { background: linear-gradient(135deg, #d4c6a7, #6a7e5a); }
+
+.sys-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.live-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  background: var(--sage);
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(122,140,111,0.55); }
+  50% { opacity: 0.7; box-shadow: 0 0 0 5px rgba(122,140,111,0); }
+}
+
+/* ============================================================
+   DASHBOARD GRID
+   ============================================================ */
+.dashboard {
+  display: grid;
+  grid-template-columns: 280px 1fr 320px;
+  gap: 14px;
+  padding: 14px;
+  max-width: 1800px;
+  margin: 0 auto;
+  align-items: start;
+}
+
+/* ============================================================
+   PANEL BASE
+   ============================================================ */
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border-faint);
+}
+.panel-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  font-weight: 600;
+}
+.panel-title::before {
+  content: '▸';
+  color: var(--gold);
+  margin-right: 6px;
+  font-weight: 700;
+}
+.panel-sub {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--accent-deep);
+}
+.panel-body { padding: 12px 14px; }
+.panel-body.compact { padding: 8px 10px; }
+.panel-body.flush { padding: 0; }
+
+/* ============================================================
+   LEFT COLUMN — taste profile + filters
+   ============================================================ */
+.profile-panel .panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.taste-compass {
+  position: relative;
+  padding: 4px;
+}
+.compass-label {
+  text-align: center;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-mute);
+  margin-bottom: 2px;
+}
+.compass-svg { width: 100%; height: 220px; display: block; }
+.compass-axis { stroke: var(--grid-line); stroke-width: 1; fill: none; }
+.compass-ring { stroke: var(--border-faint); stroke-width: 1; fill: none; }
+.compass-label-text {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  fill: var(--text-mute);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+.compass-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  fill: var(--text-dim);
+}
+.compass-shape {
+  fill: var(--accent-soft);
+  stroke: var(--accent-deep);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  opacity: 0.9;
+}
+.compass-point {
+  fill: var(--accent-deep);
+  stroke: var(--panel-bg);
+  stroke-width: 1.5;
+}
+
+/* Slider mini */
+.slider-mini {
+  display: grid;
+  grid-template-columns: 80px 1fr 24px;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+.slider-mini-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+}
+.slider-mini input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--bg-deep), var(--accent-mid));
+  border-radius: 3px;
+  outline: none;
+}
+.slider-mini input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  background: var(--accent-deep);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--panel-bg);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+.slider-mini input[type="range"]::-moz-range-thumb {
+  width: 12px; height: 12px;
+  background: var(--accent-deep);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--panel-bg);
+}
+.slider-mini-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 14px;
+  color: var(--accent-deep);
+  font-weight: 500;
+  text-align: right;
+}
+
+/* Filter chips */
+.filter-section { padding-top: 10px; border-top: 1px dashed var(--border-faint); }
+.filter-section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.chip-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--bg-sunk);
+  border: 1px solid var(--border-faint);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+  font-weight: 500;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip.active {
+  background: var(--accent-deep);
+  color: #fff;
+  border-color: var(--accent-deep);
+  box-shadow: 0 1px 4px var(--accent-mid);
+}
+
+/* ============================================================
+   CENTRE COLUMN — KPIs, charts, grid
+   ============================================================ */
+.centre-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+/* KPI row */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+}
+.kpi-cell {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.18s, box-shadow 0.18s;
+  box-shadow: var(--shadow-soft);
+}
+.kpi-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.kpi-cell::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+.kpi-cell.good::before { background: var(--sage); }
+.kpi-cell.warn::before { background: var(--warn); }
+.kpi-cell.gold::before { background: var(--gold); }
+.kpi-cell.violet::before { background: var(--violet); }
+.kpi-cell.blush::before { background: var(--blush); }
+
+.kpi-cell-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+.kpi-cell-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.kpi-cell-val em { font-style: italic; color: var(--accent-deep); }
+.kpi-cell-val .unit {
+  font-size: 13px;
+  color: var(--text-mute);
+  font-weight: 400;
+  margin-left: 2px;
+}
+.kpi-cell-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--text-mute);
+}
+.kpi-delta {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  font-size: 10px;
+}
+.kpi-delta.up { color: var(--sage); }
+.kpi-delta.down { color: var(--warn); }
+.kpi-spark {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 44px;
+  height: 18px;
+  opacity: 0.55;
+}
+
+/* Charts row */
+.charts-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 14px;
+}
+
+/* Heat matrix (heatmap) */
+.heatmap-wrap {
+  padding: 12px 14px 14px;
+}
+.heatmap-row {
+  display: grid;
+  grid-template-columns: 90px repeat(5, 1fr);
+  gap: 3px;
+  align-items: center;
+  margin-bottom: 3px;
+}
+.heatmap-row.hdr {
+  margin-bottom: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+}
+.heatmap-row.hdr > div:not(:first-child) { text-align: center; }
+.heatmap-row-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  font-weight: 600;
+}
+.heatmap-cell {
+  height: 24px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: default;
+  transition: transform 0.12s;
+}
+.heatmap-cell:hover { transform: scale(1.08); outline: 1px solid var(--border-strong); }
+.heatmap-cell.empty { background: var(--bg-sunk); color: var(--text-dim); }
+
+/* Bar charts */
+.barchart {
+  padding: 12px 14px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.bar-label {
+  font-size: 10px;
+  color: var(--text-soft);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.bar-track {
+  height: 14px;
+  background: var(--bg-sunk);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+  border-radius: 3px;
+  position: relative;
+  transition: width 0.4s ease;
+}
+.bar-fill.sage { background: linear-gradient(90deg, var(--sage-soft), var(--sage)); }
+.bar-fill.violet { background: linear-gradient(90deg, var(--violet-soft), var(--violet)); }
+.bar-fill.blush { background: linear-gradient(90deg, var(--accent-soft), var(--blush)); }
+.bar-val {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-soft);
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Data grid — Bloomberg-style dense table */
+.grid-panel .panel-body { padding: 0; }
+.data-grid {
+  width: 100%;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+.data-grid thead {
+  background: var(--panel-alt);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.data-grid thead th {
+  padding: 7px 8px;
+  text-align: left;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.data-grid thead th:hover { color: var(--accent-deep); }
+.data-grid thead th.sorted { color: var(--accent-deep); }
+.data-grid thead th.sorted::after {
+  content: ' ▾';
+  font-size: 8px;
+}
+.data-grid thead th.sorted.asc::after { content: ' ▴'; }
+.data-grid tbody tr {
+  border-bottom: 1px solid var(--border-faint);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.data-grid tbody tr:hover { background: var(--bg-sunk); }
+.data-grid tbody tr.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 3px 0 0 var(--accent-deep);
+}
+.data-grid td {
+  padding: 6px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.data-grid td.title-col {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+  max-width: 240px;
+}
+.data-grid td.author-col {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-mute);
+  max-width: 130px;
+}
+.data-grid td.num-col {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-soft);
+}
+.data-grid td.fit-col {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  text-align: center;
+}
+.data-grid td.fit-col.strong { color: var(--sage); }
+.data-grid td.fit-col.mid { color: var(--warn); }
+.data-grid td.fit-col.low { color: var(--text-dim); }
+.data-grid td.sub-col {
+  font-size: 10px;
+  color: var(--text-mute);
+  max-width: 120px;
+}
+
+/* Pills inside grid */
+.rate-pill {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  border-radius: 4px;
+  min-width: 18px;
+  text-align: center;
+}
+.rate-h1 { background: rgba(122,140,111,0.15); color: var(--sage); }
+.rate-h2 { background: rgba(122,140,111,0.22); color: var(--sage); }
+.rate-h3 { background: rgba(193,149,101,0.20); color: var(--gold-deep); }
+.rate-h4 { background: rgba(193,124,60,0.20); color: var(--warn); }
+.rate-h5 { background: var(--accent-mid); color: var(--accent-deep); }
+
+.mini-bar {
+  display: inline-block;
+  width: 40px;
+  height: 4px;
+  background: var(--bg-deep);
+  border-radius: 2px;
+  overflow: hidden;
+  vertical-align: middle;
+  position: relative;
+}
+.mini-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold), var(--accent));
+  border-radius: 2px;
+}
+
+/* Grid controls */
+.grid-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border-faint);
+}
+.search-input {
+  flex: 1;
+  padding: 6px 12px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-faint);
+  border-radius: 999px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+}
+.search-input:focus { border-color: var(--accent-deep); }
+.grid-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+.grid-count em {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  color: var(--accent-deep);
+  margin-right: 4px;
+}
+
+.grid-scroll {
+  max-height: 540px;
+  overflow-y: auto;
+}
+.grid-scroll::-webkit-scrollbar { width: 6px; }
+.grid-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+/* ============================================================
+   RIGHT COLUMN — book detail, insights
+   ============================================================ */
+.right-col { display: flex; flex-direction: column; gap: 14px; }
+
+.detail-panel .panel-body { padding: 0; }
+.detail-cover {
+  position: relative;
+  height: 220px;
+  background: linear-gradient(135deg, var(--bg-sunk), var(--bg-deep));
+  overflow: hidden;
+}
+.detail-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  opacity: 0.85;
+}
+.detail-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 40%, var(--panel-bg) 100%);
+  pointer-events: none;
+}
+.detail-cover-meta {
+  position: absolute;
+  bottom: 10px;
+  left: 14px;
+  right: 14px;
+  z-index: 2;
+}
+.detail-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.1;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  margin-bottom: 3px;
+}
+.detail-author {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.detail-content { padding: 14px; }
+.detail-fit-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.detail-fit-cell {
+  background: var(--bg-sunk);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+.detail-fit-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.detail-fit-val {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 28px;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.detail-fit-val.sage { color: var(--sage); }
+.detail-fit-val.warn { color: var(--warn); }
+
+.detail-summary {
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.65;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--bg-sunk);
+  border-radius: 8px;
+  border-left: 2px solid var(--gold);
+  font-style: italic;
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 14px;
+}
+.detail-summary::before {
+  content: '"';
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 32px;
+  color: var(--gold);
+  line-height: 0;
+  position: relative;
+  top: 10px;
+  margin-right: 4px;
+}
+
+.detail-kv {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 4px 10px;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.detail-kv dt {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  padding: 4px 0;
+}
+.detail-kv dd {
+  color: var(--text-soft);
+  padding: 4px 0;
+}
+
+.detail-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; }
+.detail-tag {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-sunk);
+  color: var(--text-soft);
+  border: 1px solid var(--border-faint);
+  font-weight: 500;
+}
+.detail-tag.warn {
+  background: transparent;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+.detail-tag.gold {
+  background: var(--gold-soft);
+  border-color: var(--gold);
+  color: var(--gold-deep);
+}
+
+.detail-radar-wrap {
+  background: var(--bg-sunk);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+.detail-radar-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  font-weight: 600;
+  text-align: center;
+  margin-bottom: 2px;
+}
+.detail-radar-sub {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 11px;
+  color: var(--text-soft);
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+/* Similar books */
+.similar-item {
+  display: grid;
+  grid-template-columns: 34px 1fr 44px;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--border-faint);
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.similar-item:last-child { border-bottom: none; }
+.similar-item:hover { background: var(--bg-sunk); }
+.similar-item-cover {
+  width: 34px; height: 44px;
+  border-radius: 3px;
+  background: var(--bg-deep);
+  object-fit: cover;
+  object-position: center;
+}
+.similar-item-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.similar-item-author {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 10px;
+  color: var(--text-mute);
+}
+.similar-item-score {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--accent-deep);
+  text-align: right;
+}
+
+/* Insight cards */
+.insight {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow-soft);
+  position: relative;
+  overflow: hidden;
+}
+.insight::before {
+  content: '';
+  position: absolute;
+  top: 0; right: 0;
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle at top right, var(--accent-soft), transparent 70%);
+  pointer-events: none;
+}
+.insight-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-deep);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.insight-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 16px;
+  font-weight: 500;
+  margin-bottom: 4px;
+  line-height: 1.25;
+}
+.insight-title em { font-style: italic; color: var(--accent-deep); }
+.insight-body {
+  font-size: 11px;
+  color: var(--text-soft);
+  line-height: 1.55;
+}
+
+/* ============================================================
+   FOOTER STRIP — category distribution
+   ============================================================ */
+.footer-strip {
+  padding: 14px;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+.distribution-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+}
+.distribution-head {
+  padding: 10px 16px;
+  background: var(--panel-alt);
+  border-bottom: 1px solid var(--border-faint);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.distribution-body {
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.genre-tile {
+  background: var(--bg-sunk);
+  border-radius: 8px;
+  padding: 10px 12px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.18s;
+  border: 1px solid transparent;
+}
+.genre-tile:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-surface);
+}
+.genre-tile.filter-active {
+  border-color: var(--accent-deep);
+  background: var(--accent-soft);
+}
+.genre-tile-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.genre-tile-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.genre-tile-count {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--accent-deep);
+  line-height: 1;
+}
+.genre-tile-avg {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+}
+
+/* Toast */
+#toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--text);
+  color: var(--bg-surface);
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: var(--shadow-lift);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.25s;
+  pointer-events: none;
+  z-index: 999;
+  font-family: 'DM Sans', sans-serif;
+}
+#toast.show { opacity: 1; transform: translateY(0); }
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 1400px) {
+  .dashboard { grid-template-columns: 240px 1fr 280px; }
+  .charts-row { grid-template-columns: 1fr 1fr; }
+  .charts-row > :nth-child(3) { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .dashboard { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+  .ticker-wrap { display: none; }
+}
+@media (max-width: 720px) {
+  .dashboard { padding: 8px; gap: 8px; }
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .charts-row { grid-template-columns: 1fr; }
+  .data-grid { font-size: 10px; }
+  .data-grid td { padding: 5px 6px; }
+  .command-bar { grid-template-columns: auto auto; gap: 10px; padding: 8px 12px; }
+  .command-bar > :nth-child(2) { display: none; }
+  .distribution-body { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body class="theme-rose">
+
+<div class="wrap">
+
+  <!-- ============= COMMAND BAR ============= -->
+  <header class="command-bar">
+    <div class="brand">
+      <div class="brand-mark">Lumen</div>
+      <div class="brand-sub">TERMINAL</div>
+      <div class="brand-divider"></div>
+      <div class="brand-mode">Editorial analytics for discerning readers</div>
+    </div>
+
+    <div class="ticker-wrap">
+      <div class="ticker" id="ticker"></div>
+    </div>
+
+    <div class="theme-switcher" id="themeSwitcher">
+      <div class="theme-dot active" data-theme="rose" title="Rose Atelier"></div>
+      <div class="theme-dot" data-theme="plum" title="Midnight Plum"></div>
+      <div class="theme-dot" data-theme="pearl" title="Pearl & Gold"></div>
+      <div class="theme-dot" data-theme="botanical" title="Botanical Dusk"></div>
+    </div>
+
+    <div class="sys-status">
+      <span class="live-dot"></span>
+      <span id="sysTime">—</span>
+      <span style="color:var(--border-strong);">·</span>
+      <span id="sysCount">100 titles</span>
+    </div>
+  </header>
+
+  <!-- ============= DASHBOARD GRID ============= -->
+  <div class="dashboard">
+
+    <!-- ============ LEFT: TASTE COMPASS ============ -->
+    <aside class="left-col">
+      <div class="panel profile-panel">
+        <div class="panel-head">
+          <span class="panel-title">Your Compass</span>
+          <span class="panel-sub">her taste</span>
+        </div>
+        <div class="panel-body">
+          <div class="taste-compass">
+            <div class="compass-label">Profile radar</div>
+            <svg class="compass-svg" id="userRadar" viewBox="-110 -110 220 220"></svg>
+          </div>
+
+          <div class="slider-mini"><div class="slider-mini-label">Heat</div><input type="range" id="s_heat" min="1" max="5" value="3"><div class="slider-mini-val" id="v_heat">3</div></div>
+          <div class="slider-mini"><div class="slider-mini-label">Explicit</div><input type="range" id="s_explicit" min="1" max="5" value="3"><div class="slider-mini-val" id="v_explicit">3</div></div>
+          <div class="slider-mini"><div class="slider-mini-label">Emotion</div><input type="range" id="s_emotion" min="1" max="5" value="4"><div class="slider-mini-val" id="v_emotion">4</div></div>
+          <div class="slider-mini"><div class="slider-mini-label">Consent ≥</div><input type="range" id="s_consent" min="1" max="5" value="4"><div class="slider-mini-val" id="v_consent">4</div></div>
+          <div class="slider-mini"><div class="slider-mini-label">Taboo</div><input type="range" id="s_taboo" min="1" max="5" value="3"><div class="slider-mini-val" id="v_taboo">3</div></div>
+          <div class="slider-mini"><div class="slider-mini-label">Plot</div><input type="range" id="s_plot" min="1" max="5" value="4"><div class="slider-mini-val" id="v_plot">4</div></div>
+
+          <div class="filter-section">
+            <div class="filter-section-label">Tone filter</div>
+            <div class="chip-row" id="toneChips"></div>
+          </div>
+
+          <div class="filter-section">
+            <div class="filter-section-label">Dynamic filter</div>
+            <div class="chip-row" id="dynamicChips"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ CENTRE: KPIS + CHARTS + GRID ============ -->
+    <main class="centre-col">
+
+      <!-- KPI strip -->
+      <div class="kpi-strip" id="kpiStrip"></div>
+
+      <!-- Charts row -->
+      <div class="charts-row">
+        <!-- Heat × Explicit matrix -->
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Heat × Explicitness matrix</span>
+            <span class="panel-sub">catalogue distribution</span>
+          </div>
+          <div class="heatmap-wrap" id="heatmap"></div>
+        </div>
+        <!-- Top tropes -->
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Trope frequency</span>
+            <span class="panel-sub">top signals</span>
+          </div>
+          <div class="barchart" id="tropeBar"></div>
+        </div>
+        <!-- Era distribution -->
+        <div class="panel">
+          <div class="panel-head">
+            <span class="panel-title">Publication era</span>
+            <span class="panel-sub">across time</span>
+          </div>
+          <div class="barchart" id="eraBar"></div>
+        </div>
+      </div>
+
+      <!-- Main data grid -->
+      <div class="panel grid-panel">
+        <div class="panel-head">
+          <span class="panel-title">Catalogue Grid</span>
+          <span class="panel-sub">every title, every signal</span>
+        </div>
+        <div class="grid-controls">
+          <input type="text" class="search-input" id="searchInput" placeholder="/ search title, author, trope…" />
+          <div class="grid-count"><em id="gridCount">100</em>SHOWING</div>
+        </div>
+        <div class="grid-scroll">
+          <table class="data-grid" id="dataGrid">
+            <thead>
+              <tr>
+                <th data-sort="fit" class="sorted">Fit</th>
+                <th data-sort="title">Title</th>
+                <th data-sort="author">Author</th>
+                <th data-sort="year">Year</th>
+                <th data-sort="subgenre">Subgenre</th>
+                <th data-sort="heat" title="Heat">H</th>
+                <th data-sort="explicit" title="Explicit">E</th>
+                <th data-sort="emotion" title="Emotion">M</th>
+                <th data-sort="consent" title="Consent">C</th>
+                <th data-sort="taboo" title="Taboo">T</th>
+                <th data-sort="plot" title="Plot">P</th>
+                <th>Signals</th>
+              </tr>
+            </thead>
+            <tbody id="gridBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ============ RIGHT: BOOK DETAIL ============ -->
+    <aside class="right-col">
+
+      <div class="panel detail-panel">
+        <div class="panel-head">
+          <span class="panel-title">Selected Title</span>
+          <span class="panel-sub">in detail</span>
+        </div>
+        <div class="panel-body flush">
+          <div class="detail-cover" id="detailCover">
+            <div class="detail-cover-meta">
+              <div class="detail-title" id="detailTitle">Select a title</div>
+              <div class="detail-author" id="detailAuthor">from the grid</div>
+            </div>
+          </div>
+          <div class="detail-content" id="detailContent">
+            <div class="detail-fit-strip">
+              <div class="detail-fit-cell">
+                <div class="detail-fit-label">Fit for her</div>
+                <div class="detail-fit-val" id="detFit">—</div>
+              </div>
+              <div class="detail-fit-cell">
+                <div class="detail-fit-label">Confidence</div>
+                <div class="detail-fit-val sage" id="detConf">—</div>
+              </div>
+            </div>
+
+            <div class="detail-radar-wrap">
+              <div class="detail-radar-title">Overlap</div>
+              <div class="detail-radar-sub">her profile vs this title</div>
+              <svg class="compass-svg" id="detailRadar" viewBox="-95 -95 190 190" style="height:160px;"></svg>
+            </div>
+
+            <div class="detail-summary" id="detailSummary">Choose a title from the grid to see its profile, signal overlap with yours, and editorial notes.</div>
+
+            <dl class="detail-kv" id="detailKV"></dl>
+
+            <div class="filter-section-label" style="margin-bottom:6px;">Signals</div>
+            <div class="detail-tags" id="detailTags"></div>
+
+            <div class="filter-section-label" style="margin-bottom:6px;">Advisory flags</div>
+            <div class="detail-tags" id="detailWarnings"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="panel-title">Similar to this</span>
+          <span class="panel-sub">by signal overlap</span>
+        </div>
+        <div class="panel-body compact" id="similarList">
+          <div style="font-family:'Cormorant Garamond',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>
+        </div>
+      </div>
+
+      <div class="insight">
+        <div class="insight-label">Editor's brief</div>
+        <div class="insight-title" id="insightTitle">Your <em>signature</em> lands here.</div>
+        <div class="insight-body" id="insightBody">Your current compass favours emotionally-weighted narratives with moderate heat. The catalogue has strong coverage here — lean into Erotic Romance and Historical Erotica for highest fit.</div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- ============= FOOTER: GENRE DISTRIBUTION ============= -->
+  <div class="footer-strip">
+    <div class="distribution-panel">
+      <div class="distribution-head">
+        <span class="panel-title">Subgenre distribution</span>
+        <span class="panel-sub" id="distSub">click to filter</span>
+      </div>
+      <div class="distribution-body" id="distributionBody"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script id="bookData" type="application/json">[{"id":1,"title":"Fifty Shades of Grey","author":"E.L. James","year":2011,"series":"Fifty Shades #1","subgenre":"Erotic Romance","short_summary":"College graduate Anastasia Steele begins a passionate affair with billionaire Christian Grey, who introduces her to the world of BDSM.","cover_url":"https://covers.openlibrary.org/b/isbn/9780345803481-L.jpg","source_url":"https://www.goodreads.com/book/show/10818853-fifty-shades-of-grey","heat":4,"explicit":4,"emotion":5,"consent":3,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["measured"],"style":["commercial","contemporary"],"dynamic":["dominance-submission","power-exchange"],"trope":["billionaire","age-gap","virgin-heroine","power-exchange"],"kink":["bdsm","dominance-submission","power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["BDSM","dubious consent elements","controlling behavior","emotional manipulation"],"fit_notes":"The defining mainstream erotic romance crossover, this book single-handedly expanded the women's erotica market.","tags_raw":"bestseller, BDSM, billionaire romance, erotic romance, contemporary, dominant hero, age gap"},{"id":2,"title":"Bared to You","author":"Sylvia Day","year":2012,"series":"Crossfire #1","subgenre":"Erotic Romance","short_summary":"Eva Tramell and billionaire Gideon Cross share an explosive attraction complicated by their respective traumatic pasts.","cover_url":"https://covers.openlibrary.org/b/isbn/9780425263907-L.jpg","source_url":"https://www.goodreads.com/book/show/13572249-bared-to-you","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","obsessive"],"pacing":["measured"],"style":["commercial","contemporary"],"dynamic":["power-exchange"],"trope":["billionaire","damaged-hero","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["references to childhood sexual abuse","PTSD","possessive behavior"],"fit_notes":"Often considered a more emotionally complex companion to Fifty Shades, with a heroine who is equally powerful and damaged as the hero.","tags_raw":"bestseller, billionaire romance, erotic romance, contemporary, emotional depth, trauma, possessive hero"},{"id":3,"title":"Beautiful Bastard","author":"Christina Lauren","year":2013,"series":"Beautiful Bastard #1","subgenre":"Erotic Romance","short_summary":"An ambitious intern and her arrogant boss can't stand each other—until their antagonism combusts into a scorching secret affair.","cover_url":"https://covers.openlibrary.org/b/isbn/9781476730097-L.jpg","source_url":"https://www.goodreads.com/book/show/16102004-beautiful-bastard","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["wry","playful"],"pacing":["dialogue-heavy","scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","enemies-to-lovers","mutual-longing"],"trope":["power-exchange","workplace"],"kink":["heat-cycles","power-exchange"],"orientation":["m/f-primary"],"warnings":["power imbalance (boss/employee)","explicit sex in workplace settings"],"fit_notes":"A fun, feminist-leaning erotic romance where the heroine gives as good as she gets, perfect for readers who want heat with humor.","tags_raw":"office romance, enemies to lovers, contemporary, steamy, humor, alpha male, fanfic origin"},{"id":4,"title":"The Siren","author":"Tiffany Reisz","year":2012,"series":"The Original Sinners #1","subgenre":"Erotic Romance","short_summary":"Erotica writer Nora Sutherlin works with a new editor while hiding her secret life as a dominatrix and her complicated history with a powerful priest.","cover_url":"https://covers.openlibrary.org/b/isbn/9780778313533-L.jpg","source_url":"https://www.goodreads.com/book/show/11422601-the-siren","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["measured"],"style":["literary"],"dynamic":["dominance-submission","power-exchange","forbidden"],"trope":["age-gap","forbidden-desire","power-exchange"],"kink":["bdsm","dominance-submission","praise-kink","power-exchange"],"orientation":["m/f-primary"],"warnings":["BDSM","sacrilege themes","age gap","power dynamics","references to past abuse"],"fit_notes":"Considered one of the most literarily ambitious erotic romance series ever written, with a brilliant, unapologetic female protagonist.","tags_raw":"BDSM, literary erotica, dominatrix, forbidden love, priest, emotionally complex, series starter"},{"id":5,"title":"Priest","author":"Sierra Simone","year":2015,"series":"Priest #1","subgenre":"Erotic Romance","short_summary":"A Catholic priest falls into a passionate, forbidden affair with a mysterious woman who arrives at his parish, forcing him to choose between his vows and his desires.","cover_url":"https://covers.openlibrary.org/b/isbn/9781949364248-L.jpg","source_url":"https://www.goodreads.com/book/show/25507389-priest","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry","transgressive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["forbidden"],"trope":["forbidden-desire"],"kink":[],"orientation":["m/f-primary"],"warnings":["sacrilege themes","religious guilt","explicit sexual content in sacred settings"],"fit_notes":"A beautifully written indie phenomenon that treats female desire and spiritual conflict with equal weight and zero shame.","tags_raw":"forbidden romance, priest, religious themes, taboo, emotional, indie published, TikTok popular"},{"id":6,"title":"The Submissive","author":"Tara Sue Me","year":2013,"series":"The Submissive Trilogy #1","subgenre":"Erotic Romance","short_summary":"Librarian Abby King applies to become the submissive of powerful Nathaniel West, entering a carefully negotiated BDSM arrangement that becomes something more.","cover_url":"https://covers.openlibrary.org/b/isbn/9780451466228-L.jpg","source_url":"https://www.goodreads.com/book/show/15848131-the-submissive","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry","playful"],"pacing":["measured"],"style":["contemporary"],"dynamic":["dominance-submission","power-exchange"],"trope":["billionaire","power-exchange"],"kink":["bdsm","dominance-submission","power-exchange"],"orientation":["m/f-primary"],"warnings":["BDSM","power exchange","dom/sub dynamics"],"fit_notes":"A consent-forward BDSM romance that predated Fifty Shades as fan fiction, offering a heroine who actively chooses submission.","tags_raw":"BDSM, dominant/submissive, billionaire, erotic romance, fanfic origin, consent-focused"},{"id":7,"title":"Rush","author":"Maya Banks","year":2013,"series":"Breathless #1","subgenre":"Erotic Romance","short_summary":"When Gabe Hamilton spots Mia Crestwell—his best friend's younger sister—all grown up, he proposes a secret, no-strings sexual arrangement with strict rules.","cover_url":"https://covers.openlibrary.org/b/isbn/9780425267042-L.jpg","source_url":"https://www.goodreads.com/book/show/15843523-rush","heat":4,"explicit":4,"emotion":4,"consent":2,"taboo":2,"plot":4,"tone":["intense","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","multiple-partners"],"trope":["billionaire","age-gap","power-exchange"],"kink":["multi-partner","power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["possessive behavior","power imbalance","explicit sexual content","mild dubious consent"],"fit_notes":"A high-heat billionaire erotic romance from a prolific bestselling author, ideal for readers who enjoy possessive alpha heroes.","tags_raw":"billionaire, erotic romance, possessive hero, age gap, best friend's sister, contract romance"},{"id":8,"title":"On Dublin Street","author":"Samantha Young","year":2012,"series":"On Dublin Street #1","subgenre":"Contemporary Erotica","short_summary":"Jocelyn Butler moves to Edinburgh and tries to keep everyone at a distance, but her new roommate's older brother Braden Carmichael won't let her hide from their intense connection.","cover_url":"https://covers.openlibrary.org/b/isbn/9780451419705-L.jpg","source_url":"https://www.goodreads.com/book/show/15760001-on-dublin-street","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["contemporary"],"dynamic":["fated-mates"],"trope":[],"kink":[],"orientation":["m/f-primary"],"warnings":["parental death","grief","PTSD","abandonment issues"],"fit_notes":"A self-published sensation turned traditional bestseller, beloved for pairing genuinely steamy scenes with deep emotional storytelling.","tags_raw":"contemporary, Scottish setting, emotional, grief, alpha male, indie to traditional, slow burn"},{"id":9,"title":"Real","author":"Katy Evans","year":2013,"series":"Real #1","subgenre":"Erotic Romance","short_summary":"Sports rehab specialist Brooke Dumas becomes obsessed with underground fighter Remington Tate, whose raw physicality and hidden vulnerabilities ignite an all-consuming passion.","cover_url":"https://covers.openlibrary.org/b/isbn/9781476755595-L.jpg","source_url":"https://www.goodreads.com/book/show/17617277-real","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry","transgressive"],"pacing":["measured"],"style":["contemporary"],"dynamic":["forbidden"],"trope":["forbidden-desire"],"kink":[],"orientation":["m/f-primary"],"warnings":["depictions of bipolar disorder","underground fighting violence","intense possessive behavior"],"fit_notes":"A visceral, high-heat sports romance that appeals to readers who love intensely alpha heroes with hidden vulnerability.","tags_raw":"sports romance, fighter, alpha male, instant attraction, bipolar representation, erotic romance"},{"id":10,"title":"This Man","author":"Jodi Ellen Malpas","year":2012,"series":"This Man #1","subgenre":"Erotic Romance","short_summary":"Interior designer Ava O'Shea meets the impossibly handsome and relentlessly pursuing Jesse Ward, the enigmatic owner of a luxury manor with dark secrets.","cover_url":"https://covers.openlibrary.org/b/isbn/9781455578313-L.jpg","source_url":"https://www.goodreads.com/book/show/15735960-this-man","heat":4,"explicit":4,"emotion":4,"consent":2,"taboo":2,"plot":4,"tone":["intense","wry","obsessive"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["courtship"],"trope":["age-gap","obsession"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["extreme possessiveness","controlling behavior","dubious consent elements","addiction themes"],"fit_notes":"A self-published juggernaut with a massive female fanbase, perfect for readers who enjoy intensely possessive, boundary-pushing heroes.","tags_raw":"possessive hero, age gap, mystery, luxury, self-published, obsessive love, alpha male"},{"id":11,"title":"Wallbanger","author":"Alice Clayton","year":2013,"series":"Cocktail #1","subgenre":"Contemporary Erotica","short_summary":"Caroline Reynolds is kept awake nightly by her neighbor's loud sexcapades through the thin apartment walls, leading to hilarious confrontations and undeniable chemistry.","cover_url":"https://covers.openlibrary.org/b/isbn/9781476741185-L.jpg","source_url":"https://www.goodreads.com/book/show/15858248-wallbanger","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["wry","playful"],"pacing":["slow-burn","scene-heavy"],"style":["contemporary"],"dynamic":["enemies-to-lovers","mutual-longing"],"trope":[],"kink":[],"orientation":["m/f-primary"],"warnings":["none significant"],"fit_notes":"A perfect entry point for readers who want erotica with humor and heart—lighthearted but genuinely steamy.","tags_raw":"romantic comedy, neighbors, slow burn, humor, San Francisco, contemporary, light erotica"},{"id":12,"title":"Calendar Girl: Volume One","author":"Audrey Carlan","year":2015,"series":"Calendar Girl #1-3","subgenre":"Contemporary Erotica","short_summary":"To pay off her father's gambling debts, Mia Saunders becomes a high-end escort, spending one month with a different wealthy client in a different city.","cover_url":"https://covers.openlibrary.org/b/isbn/9781943893034-L.jpg","source_url":"https://www.goodreads.com/book/show/28220841-calendar-girl","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["wry"],"pacing":["quick","scene-heavy"],"style":["commercial","contemporary"],"dynamic":["courtship"],"trope":["billionaire","found-family"],"kink":[],"orientation":["m/f-primary"],"warnings":["sex work","violence against family member","financial coercion"],"fit_notes":"A global indie bestseller with a resourceful heroine and episodic structure that keeps readers hooked month to month.","tags_raw":"escort, serial format, travel, multiple love interests, contemporary, indie published, bestseller"},{"id":13,"title":"Addicted","author":"Zane","year":1998,"series":null,"subgenre":"Contemporary Erotica","short_summary":"Successful businesswoman Zoe Reynard leads a double life, secretly maintaining multiple affairs to feed a sex addiction that threatens to destroy her marriage and family.","cover_url":"https://covers.openlibrary.org/b/isbn/9780743442848-L.jpg","source_url":"https://www.goodreads.com/book/show/227282.Addicted","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["wry"],"pacing":["scene-heavy"],"style":["literary","contemporary"],"dynamic":["marriage"],"trope":[],"kink":["heat-cycles"],"orientation":["m/f-primary"],"warnings":["sex addiction","infidelity","mental health themes","explicit sexual content"],"fit_notes":"A pioneering work in Black women's erotica that brought diverse sexuality into the mainstream, adapted into a 2014 film.","tags_raw":"Black author, Black protagonist, sex addiction, contemporary, literary erotica, adapted to film, diverse"},{"id":14,"title":"The Kiss Quotient","author":"Helen Hoang","year":2018,"series":"The Kiss Quotient #1","subgenre":"Erotic Romance","short_summary":"An autistic econometrician hires a male escort to teach her about sex and intimacy, but their lessons quickly become something real.","cover_url":"https://covers.openlibrary.org/b/isbn/9780451490803-L.jpg","source_url":"https://www.goodreads.com/book/show/36199084-the-kiss-quotient","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry","playful"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["courtship"],"trope":["fake-relationship"],"kink":[],"orientation":["m/f-primary"],"warnings":["none significant; discussions of social anxiety and autism-related challenges"],"fit_notes":"A consent-centered, diverse erotic romance with an autistic heroine, representing the best of inclusive modern erotica.","tags_raw":"neurodivergent, diverse, Vietnamese-American, fake relationship, escort, consent-focused, own voices, autism"},{"id":15,"title":"Gabriel's Inferno","author":"Sylvain Reynard","year":2011,"series":"Gabriel's Inferno #1","subgenre":"Erotic Romance","short_summary":"Graduate student Julia Mitchell is reunited with the magnetic Professor Gabriel Emerson, a Dante specialist with a dark past and no memory of the night they shared years ago.","cover_url":"https://covers.openlibrary.org/b/isbn/9780425265963-L.jpg","source_url":"https://www.goodreads.com/book/show/10140661-gabriel-s-inferno","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry","playful"],"pacing":["slow-burn"],"style":["literary"],"dynamic":["power-exchange","forbidden"],"trope":["forbidden-desire","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["power imbalance (professor/student)","references to past substance abuse and trauma","emotional manipulation"],"fit_notes":"Appeals to readers who want intellectual seduction and slow-building desire, with literary depth unusual for the genre.","tags_raw":"professor/student, forbidden, slow burn, literary, Dante, fanfic origin, adapted to film, redemption"},{"id":16,"title":"Twist Me","author":"Anna Zaires","year":2014,"series":"Twist Me #1","subgenre":"Contemporary Erotica","short_summary":"Eighteen-year-old Nora is kidnapped by the darkly seductive Julian, a dangerous man who is determined to possess her completely.","cover_url":"https://covers.openlibrary.org/b/isbn/9781631420030-L.jpg","source_url":"https://www.goodreads.com/book/show/20639631-twist-me","heat":4,"explicit":5,"emotion":3,"consent":2,"taboo":2,"plot":2,"tone":["dark","tender","intense"],"pacing":["measured"],"style":["commercial","contemporary"],"dynamic":["power-exchange"],"trope":["power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["kidnapping","captivity","dubious/non-consent","violence","power imbalance","Stockholm syndrome themes"],"fit_notes":"A top-selling dark erotica title that serves the significant reader demand for intense, boundary-pushing captive romance.","tags_raw":"dark romance, captor/captive, kidnapping, indie published, morally grey hero, possessive, intense"},{"id":17,"title":"Captive in the Dark","author":"CJ Roberts","year":2011,"series":"The Dark Duet #1","subgenre":"Contemporary Erotica","short_summary":"A young woman is kidnapped and trained by a mysterious man named Caleb, who intends to sell her as a sex slave—but their captor-captive dynamic becomes far more complicated.","cover_url":"https://covers.openlibrary.org/b/isbn/9780615429502-L.jpg","source_url":"https://www.goodreads.com/book/show/11306327-captive-in-the-dark","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["dark","intense","wry"],"pacing":["measured"],"style":["contemporary","psychological-novel"],"dynamic":["power-exchange"],"trope":["power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["kidnapping","sexual slavery","non-consent","physical abuse","human trafficking","childhood trauma"],"fit_notes":"A landmark of dark erotica with a Latina protagonist, essential for platforms serving readers who seek intense, taboo-pushing narratives.","tags_raw":"dark romance, captor/captive, trafficking themes, psychological, indie published, Latina protagonist, controversial"},{"id":18,"title":"Birthday Girl","author":"Penelope Douglas","year":2018,"series":null,"subgenre":"Erotic Romance","short_summary":"When Jordan moves in with her boyfriend's father Pike, a simmering forbidden attraction develops between them that neither can deny.","cover_url":"https://covers.openlibrary.org/b/isbn/9781976333088-L.jpg","source_url":"https://www.goodreads.com/book/show/39555142-birthday-girl","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry","transgressive"],"pacing":["slow-burn"],"style":["contemporary"],"dynamic":["power-exchange","forbidden"],"trope":["age-gap","forbidden-desire","power-exchange"],"kink":["heat-cycles","power-exchange"],"orientation":["m/f-primary"],"warnings":["significant age gap (19/38)","quasi-parental power dynamic","cheating adjacent"],"fit_notes":"One of the most popular taboo romances on BookTok, handling a controversial age-gap premise with emotional intelligence and enthusiastic consent.","tags_raw":"age gap, forbidden, taboo, slow burn, indie published, TikTok popular, standalone, emotional"},{"id":19,"title":"Comfort Food","author":"Kitty Thomas","year":2010,"series":null,"subgenre":"Contemporary Erotica","short_summary":"Emily Vargas is held captive by a man who never speaks, conditioning her through silence, sensory deprivation, and reward until she surrenders completely.","cover_url":null,"source_url":"https://www.goodreads.com/book/show/7950502-comfort-food","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["dark","wry"],"pacing":["dialogue-heavy"],"style":["contemporary","psychological-novel"],"dynamic":["power-exchange"],"trope":["power-exchange"],"kink":["dominance-submission","power-exchange"],"orientation":["m/f-primary"],"warnings":["kidnapping","captivity","non-consent","psychological manipulation","conditioning","complete power removal"],"fit_notes":"A cult classic of dark erotica praised for its psychological depth and experimental approach, essential for readers seeking boundary-pushing fiction.","tags_raw":"dark erotica, psychological, captor/captive, indie published, no dialogue, experimental, conditioning"},{"id":20,"title":"King of Wrath","author":"Ana Huang","year":2022,"series":"Kings of Sin #1","subgenre":"Erotic Romance","short_summary":"Billionaire Dante Russo is forced into an arranged engagement with socialite Vivian Lau, and their mutual resentment slowly transforms into blazing passion.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728289724-L.jpg","source_url":"https://www.goodreads.com/book/show/60149680-king-of-wrath","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["slow-burn"],"style":["commercial","contemporary"],"dynamic":["marriage","enemies-to-lovers"],"trope":["billionaire","marriage-of-convenience"],"kink":["heat-cycles"],"orientation":["m/f-primary"],"warnings":["blackmail","family manipulation","mild violence"],"fit_notes":"A BookTok mega-hit with a Chinese-American heroine, representing the new wave of diverse, high-heat erotic romance.","tags_raw":"arranged marriage, billionaire, enemies to lovers, BookTok, contemporary, diverse heroine, Asian-American"},{"id":21,"title":"The Story of O","author":"Pauline Réage","year":1954,"series":null,"subgenre":"BDSM Erotica","short_summary":"A young Parisian woman is taken by her lover to a château where she is trained in sexual submission and offered to other men.","cover_url":"https://covers.openlibrary.org/b/isbn/9780345301116-L.jpg","source_url":"https://www.goodreads.com/book/show/1803483.The_Story_of_O","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["sensual"],"pacing":["measured"],"style":["literary","classical"],"dynamic":["dominance-submission","power-exchange"],"trope":["awakening","power-exchange"],"kink":["bdsm","dominance-submission","power-exchange","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["non-consensual elements","branding","sexual slavery","extreme submission"],"fit_notes":"The foundational classic of women-authored BDSM erotica, exploring female submission from a deeply interior female perspective.","tags_raw":"classic erotica, BDSM, submission, french literature, literary erotica, power exchange"},{"id":22,"title":"The Claiming of Sleeping Beauty","author":"A.N. Roquelaure (Anne Rice)","year":1983,"series":"Sleeping Beauty Quartet #1","subgenre":"BDSM Erotica","short_summary":"In this erotic fairy tale retelling, Sleeping Beauty is awakened not with a kiss but through sexual initiation, beginning her enslavement in a kingdom devoted to carnal training.","cover_url":"https://covers.openlibrary.org/b/isbn/9780452266568-L.jpg","source_url":"https://www.goodreads.com/book/show/26582.The_Claiming_of_Sleeping_Beauty","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["sensual"],"pacing":["measured"],"style":["classical"],"dynamic":["dominance-submission","courtship"],"trope":["mythology-retelling"],"kink":["bdsm","dominance-submission","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["non-consensual sex","forced submission","public humiliation","corporal punishment"],"fit_notes":"Anne Rice's iconic erotic fairy tale is a gateway classic for women readers curious about BDSM fantasy in a safe fictional framework.","tags_raw":"classic erotica, fairy tale retelling, BDSM, Anne Rice, fantasy erotica, sexual slavery"},{"id":23,"title":"Delta of Venus","author":"Anaïs Nin","year":1977,"series":null,"subgenre":"Kink Erotica","short_summary":"A collection of fifteen exquisitely written erotic short stories exploring a vast range of sexual experiences, fetishes, and desires.","cover_url":"https://covers.openlibrary.org/b/isbn/9780156029032-L.jpg","source_url":"https://www.goodreads.com/book/show/11041.Delta_of_Venus","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["sensual","lyrical","transgressive"],"pacing":["measured"],"style":["literary","classical"],"dynamic":["power-exchange","forbidden","multiple-partners"],"trope":["forbidden-desire","power-exchange"],"kink":["multi-partner","power-exchange","sensuality-focus","voyeurism"],"orientation":["m/f-primary"],"warnings":["taboo scenarios","age-ambiguous characters in some stories","non-consensual elements in some stories"],"fit_notes":"The gold standard of women-authored literary erotica, with a sensual feminine gaze that pioneered the genre for female readers.","tags_raw":"classic erotica, short stories, literary erotica, women authors, voyeurism, bohemian, feminist erotica"},{"id":24,"title":"Venus in Furs","author":"Leopold von Sacher-Masoch","year":1870,"series":null,"subgenre":"BDSM Erotica","short_summary":"A nobleman begs the woman he adores to dominate and enslave him, exploring the origins of masochism through obsessive devotion.","cover_url":"https://covers.openlibrary.org/b/isbn/9780140447811-L.jpg","source_url":"https://www.goodreads.com/book/show/164895.Venus_in_Furs","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["wry","obsessive"],"pacing":["measured"],"style":["literary","classical"],"dynamic":["dominance-submission","power-exchange"],"trope":["obsession","power-exchange"],"kink":["bdsm","dominance-submission","power-exchange"],"orientation":["m/f-primary"],"warnings":["psychological cruelty","humiliation","power imbalance"],"fit_notes":"A classic centering female dominance and male submission—an empowering reversal that appeals to women interested in femdom dynamics.","tags_raw":"classic erotica, femdom, masochism, literary erotica, power exchange, 19th century"},{"id":25,"title":"Club Shadowlands","author":"Cherise Sinclair","year":2009,"series":"Masters of the Shadowlands #1","subgenre":"BDSM Erotica","short_summary":"When a tropical storm strands accountant Jessica Randall at an isolated house that turns out to be a private BDSM club, she discovers desires she never knew she had.","cover_url":"https://covers.openlibrary.org/b/isbn/9781947219458-L.jpg","source_url":"https://www.goodreads.com/book/show/6357022-club-shadowlands","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["sensual","intense","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission"],"trope":["awakening"],"kink":["bdsm","dominance-submission","praise-kink","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["BDSM scenes","bondage","spanking"],"fit_notes":"The gold standard for consensual BDSM club romance—approachable, sex-positive, and perfect for women exploring kink fiction.","tags_raw":"BDSM club, safe sane consensual, dom/sub, series starter, erotic romance, protective dom"},{"id":26,"title":"Tears of Tess","author":"Pepper Winters","year":2013,"series":"Monsters in the Dark #1","subgenre":"Dark Erotic Romance","short_summary":"While vacationing with her boyfriend, Tess Snow is kidnapped and sold into slavery, only to find herself drawn to the damaged man who bought her.","cover_url":"https://covers.openlibrary.org/b/isbn/9781492103745-L.jpg","source_url":"https://www.goodreads.com/book/show/18134894-tears-of-tess","heat":5,"explicit":5,"emotion":5,"consent":3,"taboo":4,"plot":4,"tone":["dark","sensual","wry"],"pacing":["measured"],"style":["contemporary"],"dynamic":["power-exchange"],"trope":["damaged-hero","obsession","power-exchange"],"kink":["power-exchange","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["kidnapping","sexual slavery","non-consensual situations","violence","human trafficking"],"fit_notes":"A dark romance bestseller with a massive female fanbase, blending captivity horror with redemptive love and intense eroticism.","tags_raw":"dark romance, captivity, trafficking themes, broken hero, emotional intensity, series starter"},{"id":27,"title":"The Pawn","author":"Skye Warren","year":2017,"series":"Endgame #1","subgenre":"Dark Erotic Romance","short_summary":"A young woman auctions her virginity to save her family, only to be claimed by the ruthless man who destroyed her father—and finds the game between them is far more dangerous than she expected.","cover_url":"https://covers.openlibrary.org/b/isbn/9781940518510-L.jpg","source_url":"https://www.goodreads.com/book/show/33600237-the-pawn","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark"],"pacing":["measured"],"style":["contemporary"],"dynamic":["power-exchange","enemies-to-lovers"],"trope":["virgin-heroine","power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["dubious consent","virginity auction","power imbalance","revenge themes"],"fit_notes":"A NYT bestselling dark romance with a brilliant heroine navigating power and desire—hugely popular with women readers.","tags_raw":"dark romance, virgin auction, revenge, chess metaphor, power dynamics, suspense"},{"id":28,"title":"Deliver","author":"Pam Godwin","year":2014,"series":"Deliver #1","subgenre":"Dark Erotic Romance","short_summary":"A young woman forced to kidnap and train sex slaves falls for her latest captive, a boy who refuses to break—threatening everything she's been compelled to do.","cover_url":"https://covers.openlibrary.org/b/isbn/9781496088017-L.jpg","source_url":"https://www.goodreads.com/book/show/20646246-deliver","heat":5,"explicit":5,"emotion":5,"consent":3,"taboo":4,"plot":4,"tone":["dark","tender"],"pacing":["measured"],"style":["contemporary"],"dynamic":["courtship"],"trope":[],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["human trafficking","sexual violence","dubious consent","kidnapping","abuse"],"fit_notes":"Features a rare female anti-hero in dark romance, giving women readers a complex protagonist navigating impossible moral choices.","tags_raw":"dark romance, captivity, female anti-hero, slave training, moral complexity, survival"},{"id":29,"title":"Consequences","author":"Aleatha Romig","year":2011,"series":"Consequences #1","subgenre":"Dark Erotic Romance","short_summary":"A young woman is trapped in a gilded cage by a powerful, controlling billionaire who dictates every aspect of her life—and the consequences for disobedience are severe.","cover_url":"https://covers.openlibrary.org/b/isbn/9780988489134-L.jpg","source_url":"https://www.goodreads.com/book/show/12368985-consequences","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","sensual","tender"],"pacing":["slow-burn"],"style":["psychological-novel"],"dynamic":["power-exchange"],"trope":["billionaire","power-exchange"],"kink":["power-exchange","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["domestic abuse","non-consensual sex","psychological manipulation","controlling behavior","violence"],"fit_notes":"A million-copy dark romance bestseller with a massive female readership drawn to its psychological intensity and thriller plotting.","tags_raw":"dark romance, psychological thriller, billionaire, captivity, manipulation, series starter"},{"id":30,"title":"Corrupt","author":"Penelope Douglas","year":2015,"series":"Devil's Night #1","subgenre":"Dark Erotic Romance","short_summary":"Three years after the night that ruined her life, Erika Fane must face Michael Crist—the boy she loved who betrayed her—and his dangerous friends on Devil's Night.","cover_url":"https://covers.openlibrary.org/b/isbn/9780593642009-L.jpg","source_url":"https://www.goodreads.com/book/show/26073007-corrupt","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["measured"],"style":["contemporary"],"dynamic":["enemies-to-lovers"],"trope":["bully-romance"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["bullying","dubious consent","intimidation","violence","revenge themes"],"fit_notes":"A BookTok phenomenon and bully-romance staple that dominates women's dark romance reading lists.","tags_raw":"dark romance, bully romance, secret society, Devil's Night, new adult, enemies to lovers"},{"id":31,"title":"Neon Gods","author":"Katee Robert","year":2021,"series":"Dark Olympus #1","subgenre":"Dark Erotic Romance","short_summary":"When society princess Persephone flees an arranged marriage to Zeus, she makes a devil's bargain with the mythic Hades of Olympus's forbidden lower city—and discovers desire darker than she imagined.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728231730-L.jpg","source_url":"https://www.goodreads.com/book/show/54659771-neon-gods","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","wry"],"pacing":["scene-heavy"],"style":["commercial","contemporary"],"dynamic":["power-exchange","forbidden"],"trope":["mythology-retelling","fake-relationship","forbidden-desire","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit sex","power dynamics","controlling family members"],"fit_notes":"A BookTok sensation blending mythology with explicit erotica—one of the most popular women-targeted dark romance series of the 2020s.","tags_raw":"mythology retelling, Hades and Persephone, dark romance, explicit erotica, BookTok, contemporary fantasy"},{"id":32,"title":"The Marketplace","author":"Laura Antoniou","year":1993,"series":"The Marketplace #1","subgenre":"BDSM Erotica","short_summary":"Four aspiring slaves compete for the chance to be sold through a legendary underground BDSM organization known as The Marketplace.","cover_url":"https://covers.openlibrary.org/b/isbn/9781885865571-L.jpg","source_url":"https://www.goodreads.com/book/show/125466.The_Marketplace","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["sensual","intense","wry"],"pacing":["measured"],"style":["literary"],"dynamic":["dominance-submission","power-exchange"],"trope":["power-exchange"],"kink":["bdsm","power-exchange","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["consensual slavery","intense BDSM","multiple sexual scenarios","power exchange"],"fit_notes":"Considered the most realistic and thoughtful BDSM fiction ever written, with queer-inclusive content and complex female characters.","tags_raw":"BDSM lifestyle, slave training, underground society, consensual power exchange, literary erotica, queer inclusive"},{"id":33,"title":"The Professional","author":"Kresley Cole","year":2014,"series":"The Game Maker #1","subgenre":"BDSM Erotica","short_summary":"A mafiya enforcer sent to retrieve his boss's long-lost daughter becomes consumed by desire for the curvy, defiant woman he's supposed to protect.","cover_url":"https://covers.openlibrary.org/b/isbn/9781476762319-L.jpg","source_url":"https://www.goodreads.com/book/show/17803498-the-professional","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["dark","sensual","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission","fated-mates"],"trope":["awakening","obsession"],"kink":["bdsm","dominance-submission","sensuality-focus","voyeurism"],"orientation":["m/f-primary"],"warnings":["explicit BDSM","voyeurism","possessive behavior","organized crime"],"fit_notes":"Kresley Cole's crossover from paranormal romance brought her massive female fanbase into explicit erotica territory with great success.","tags_raw":"mafia romance, dominant hero, explicit erotica, Russian setting, suspense, alpha male"},{"id":34,"title":"The Dom Who Loved Me","author":"Lexi Blake","year":2011,"series":"Masters and Mercenaries #1","subgenre":"BDSM Erotica","short_summary":"A former Green Beret turned BDSM club owner goes undercover to catch a terrorist, using his Dom skills to get close to a suspect's submissive assistant—only to fall for her.","cover_url":"https://covers.openlibrary.org/b/isbn/9781937608019-L.jpg","source_url":"https://www.goodreads.com/book/show/12712973-the-dom-who-loved-me","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission"],"trope":[],"kink":["bdsm","dominance-submission"],"orientation":["m/f-primary"],"warnings":["BDSM scenes","violence","espionage themes"],"fit_notes":"Blends military romantic suspense with BDSM club erotica—a crowd-pleasing combination hugely popular with women readers.","tags_raw":"BDSM club, romantic suspense, military hero, dom/sub, series starter, action romance"},{"id":35,"title":"Sweet Surrender","author":"Maya Banks","year":2008,"series":"Sweet #1","subgenre":"BDSM Erotica","short_summary":"A woman's secret curiosity about submission leads her to an exclusive BDSM club called The House, where she discovers desire far beyond her expectations.","cover_url":"https://covers.openlibrary.org/b/isbn/9780425266953-L.jpg","source_url":"https://www.goodreads.com/book/show/1333030.Sweet_Surrender","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission","power-exchange","multiple-partners"],"trope":["awakening","power-exchange"],"kink":["bdsm","dominance-submission","multi-partner","power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit BDSM","ménage scenes","bondage"],"fit_notes":"An approachable, sex-positive BDSM erotica series centered on a woman's empowered sexual exploration—ideal for a women's reading platform.","tags_raw":"BDSM club, ménage, submission, female empowerment, explicit erotica, series starter"},{"id":36,"title":"Kushiel's Dart","author":"Jacqueline Carey","year":2001,"series":"Kushiel's Legacy #1","subgenre":"Kink Erotica","short_summary":"In an alternate Renaissance world where pleasure is sacred, a courtesan marked by a god to experience pain as pleasure becomes a spy whose unique gift may save her nation.","cover_url":"https://covers.openlibrary.org/b/isbn/9780312872380-L.jpg","source_url":"https://www.goodreads.com/book/show/153008.Kushiel_s_Dart","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["wry"],"pacing":["scene-heavy"],"style":["literary","contemporary"],"dynamic":["dominance-submission","power-exchange","courtship"],"trope":["power-exchange"],"kink":["bdsm","power-exchange"],"orientation":["m/f-primary"],"warnings":["BDSM scenes","sexual violence","torture","war"],"fit_notes":"A Locus Award-winning fantasy epic with BDSM woven into its world-building—beloved by women readers for its powerful heroine and sex-positive universe.","tags_raw":"epic fantasy, BDSM, courtesan, political intrigue, literary fantasy, queer inclusive, world-building"},{"id":37,"title":"For Real","author":"Alexis Hall","year":2015,"series":"Spires #3","subgenre":"M/M Erotic Romance","short_summary":"A jaded older submissive and a fearless nineteen-year-old dominant forge an intense BDSM relationship that challenges everything they think they know about desire and vulnerability.","cover_url":"https://covers.openlibrary.org/b/isbn/9781626492806-L.jpg","source_url":"https://www.goodreads.com/book/show/21750440-for-real","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission","power-exchange"],"trope":["age-gap","power-exchange"],"kink":["bdsm","dominance-submission","power-exchange"],"orientation":["m/m"],"warnings":["BDSM","significant age gap (19/late 30s)","power dynamics","emotional vulnerability"],"fit_notes":"RITA-winning M/M erotic romance with deeply negotiated BDSM and emotional depth, ideal for readers who want explicit kink paired with genuine vulnerability.","tags_raw":"M/M, BDSM, age gap, RITA winner, Alexis Hall, queer erotica, dominant/submissive"},{"id":38,"title":"Glitterland","author":"Alexis Hall","year":2013,"series":"Spires #1","subgenre":"M/M Erotic Romance","short_summary":"A cynical, bipolar crime novelist falls for a sunny Essex boy after a one-night stand, battling his own self-destructive impulses to let himself be loved.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728265285-L.jpg","source_url":"https://www.goodreads.com/book/show/17670178-glitterland","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["courtship"],"trope":[],"kink":[],"orientation":["m/m"],"warnings":["bipolar depression","suicidal ideation","self-harm references","panic attacks","parental neglect"],"fit_notes":"Emotionally devastating M/M romance with explicit sex scenes and unflinching mental health representation—perfect for readers wanting depth alongside heat.","tags_raw":"M/M, mental health, grumpy sunshine, Alexis Hall, class difference, contemporary, queer romance"},{"id":39,"title":"A Seditious Affair","author":"KJ Charles","year":2015,"series":"Society of Gentlemen #2","subgenre":"M/M Erotic Romance","short_summary":"A Tory government official and a radical pamphleteer have been meeting for anonymous kinky sex for a year—until politics and identity threaten to destroy them both.","cover_url":"https://covers.openlibrary.org/b/isbn/9781101886069-L.jpg","source_url":"https://www.goodreads.com/book/show/25082172-a-seditious-affair","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["classical"],"dynamic":["dominance-submission","enemies-to-lovers"],"trope":["workplace"],"kink":["bdsm"],"orientation":["m/m"],"warnings":["period-typical homophobia","political persecution","threat of execution","explicit BDSM"],"fit_notes":"Brilliantly crafted Regency M/M with scorching anonymous encounters and high political stakes—appeals to readers who love history, wit, and deeply erotic tension.","tags_raw":"M/M, Regency, historical, BDSM, KJ Charles, enemies to lovers, political, anonymous sex"},{"id":40,"title":"The Magpie Lord","author":"KJ Charles","year":2013,"series":"A Charm of Magpies #1","subgenre":"M/M Erotic Romance","short_summary":"A disgraced lord returns to England to find his family cursed, and the only man who can save him is the same magical practitioner who has every reason to despise him.","cover_url":"https://covers.openlibrary.org/b/isbn/9781999784614-L.jpg","source_url":"https://www.goodreads.com/book/show/18360494-the-magpie-lord","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry"],"pacing":["scene-heavy"],"style":["classical"],"dynamic":["power-exchange","enemies-to-lovers","mutual-longing"],"trope":["power-exchange"],"kink":["power-exchange"],"orientation":["m/m"],"warnings":["violence","supernatural threats","family trauma","period-typical classism"],"fit_notes":"A fan-favorite M/M paranormal historical with crackling tension and steamy payoff—perfect for readers who want plot, magic, and romance in equal measure.","tags_raw":"M/M, Victorian, paranormal, magic, KJ Charles, enemies to lovers, supernatural mystery"},{"id":41,"title":"At Her Feet","author":"Rebekah Weatherspoon","year":2013,"series":null,"subgenre":"F/F Erotic Romance","short_summary":"A digital marketing producer discovers an intriguing Domme on a kink dating site, and their online connection leads to an intensely passionate real-life BDSM relationship.","cover_url":"https://covers.openlibrary.org/b/isbn/9781602829909-L.jpg","source_url":"https://www.goodreads.com/book/show/17290869-at-her-feet","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["sensual","wry"],"pacing":["scene-heavy"],"style":["literary"],"dynamic":["dominance-submission","power-exchange"],"trope":["power-exchange"],"kink":["bdsm","dominance-submission","power-exchange","sensuality-focus"],"orientation":["sapphic"],"warnings":["explicit BDSM","power exchange dynamics"],"fit_notes":"Award-winning lesbian BDSM erotica centering women of color with enthusiastic consent and genuine warmth—ideal for a women-focused platform.","tags_raw":"F/F, lesbian, BDSM, WOC protagonists, kink, consent-forward, Rebekah Weatherspoon, award winner"},{"id":42,"title":"Soul to Keep","author":"Rebekah Weatherspoon","year":2016,"series":"Vampire Sorority Sisters #3","subgenre":"F/F Erotic Romance","short_summary":"A pre-med student and her sorority sister develop a sweet, intense romance amid a supernatural threat targeting their paranormal Greek system.","cover_url":"https://covers.openlibrary.org/b/isbn/9781626396166-L.jpg","source_url":"https://www.goodreads.com/book/show/25898454-soul-to-keep","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["tender","intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["literary"],"dynamic":["fated-mates"],"trope":[],"kink":[],"orientation":["sapphic"],"warnings":["supernatural violence","demon attacks"],"fit_notes":"Lambda Award-winning F/F paranormal erotica with tender queer romance and diverse leads—a standout for women readers who enjoy supernatural settings.","tags_raw":"F/F, lesbian, paranormal, vampires, Lambda winner, college, Rebekah Weatherspoon, WOC protagonists"},{"id":43,"title":"Acts of Service","author":"Lillian Fishman","year":2022,"series":null,"subgenre":"Bisexual Erotica","short_summary":"A young bisexual woman in a fulfilling lesbian relationship becomes obsessively entangled with a heterosexual couple, forcing her to interrogate her deepest assumptions about desire and power.","cover_url":"https://covers.openlibrary.org/b/isbn/9780593243763-L.jpg","source_url":"https://www.goodreads.com/book/show/58678518-acts-of-service","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["intense","wry","obsessive"],"pacing":["scene-heavy"],"style":["literary"],"dynamic":["power-exchange"],"trope":["awakening","obsession","power-exchange"],"kink":["dominance-submission","power-exchange"],"orientation":["bi-curious-hints"],"warnings":["explicit sex","infidelity/non-monogamy","power dynamics","identity crisis"],"fit_notes":"A literary erotic debut that centers a bisexual woman's sexual exploration with unflinching honesty—resonant for women questioning desire and identity.","tags_raw":"bisexual, literary erotica, non-monogamy, sexual identity, debut novel, queer, philosophical"},{"id":44,"title":"Heated Rivalry","author":"Rachel Reid","year":2019,"series":"Game Changers #2","subgenre":"M/M Erotic Romance","short_summary":"Two rival NHL superstars carry on a secret sexual relationship for nearly a decade, their hookups evolving from hate-fueled encounters into something neither can walk away from.","cover_url":"https://covers.openlibrary.org/b/isbn/9781335534637-L.jpg","source_url":"https://www.goodreads.com/book/show/41735449-heated-rivalry","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["forbidden"],"trope":["forbidden-desire","rivals"],"kink":[],"orientation":["m/m"],"warnings":["closeted characters","homophobia in sports","secrecy/deception"],"fit_notes":"Massively popular M/M sports romance with scorching rivals-to-lovers tension—one of the most widely recommended queer erotic romances of the 2020s era.","tags_raw":"M/M, hockey, sports romance, rivals to lovers, secret relationship, NYT bestseller, TV adaptation"},{"id":45,"title":"Him","author":"Sarina Bowen, Elle Kennedy","year":2015,"series":"Him #1","subgenre":"M/M Erotic Romance","short_summary":"Two former hockey camp best friends reunite at a college championship, and the unresolved sexual tension from one fateful teenage night finally ignites into an explicit, emotional affair.","cover_url":"https://covers.openlibrary.org/b/isbn/9781954500495-L.jpg","source_url":"https://www.goodreads.com/book/show/25686927-him","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["second-chance","friends-to-lovers"],"trope":["awakening","second-chance"],"kink":[],"orientation":["m/m","bi-curious-hints"],"warnings":["coming out anxiety","internalized homophobia"],"fit_notes":"Accessible, fun, and very steamy M/M friends-to-lovers romance that's a gateway title for readers new to queer erotica.","tags_raw":"M/M, hockey, friends to lovers, college, dual POV, USA Today bestseller, Sarina Bowen, Elle Kennedy"},{"id":46,"title":"Captive Prince","author":"C.S. Pacat","year":2013,"series":"Captive Prince #1","subgenre":"M/M Erotic Romance","short_summary":"A captured prince is stripped of his identity and sent as a pleasure slave to the court of his kingdom's greatest enemy, where he must navigate deadly politics and an infuriating, brilliant captor.","cover_url":"https://covers.openlibrary.org/b/isbn/9780425274262-L.jpg","source_url":"https://www.goodreads.com/book/show/9305362-captive-prince","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["dark","sensual","wry"],"pacing":["slow-burn","scene-heavy"],"style":["commercial"],"dynamic":["power-exchange","enemies-to-lovers","courtship"],"trope":["power-exchange"],"kink":["power-exchange","sensuality-focus"],"orientation":["m/m"],"warnings":["slavery","non-consensual situations","sexual coercion","violence","references to child abuse (not by protagonists)"],"fit_notes":"A polarizing but massively popular M/M fantasy with dark themes that evolve into a sweeping romance—appeals to readers who enjoy high-stakes political erotica.","tags_raw":"M/M, fantasy, enemies to lovers, royalty, slow burn, political intrigue, dark romance, C.S. Pacat"},{"id":47,"title":"Tipping the Velvet","author":"Sarah Waters","year":1998,"series":null,"subgenre":"F/F Erotic Romance","short_summary":"A young Victorian oyster girl falls for a male impersonator on the music hall stage and follows her to London, embarking on a picaresque journey through the city's sexual underworld.","cover_url":"https://covers.openlibrary.org/b/isbn/9781573227889-L.jpg","source_url":"https://www.goodreads.com/book/show/25300.Tipping_the_Velvet","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry","obsessive"],"pacing":["scene-heavy"],"style":["literary","classical"],"dynamic":["courtship"],"trope":["coming-of-age","awakening","obsession"],"kink":["heat-cycles"],"orientation":["sapphic"],"warnings":["period-typical homophobia","sex work","heartbreak","cross-dressing","class exploitation"],"fit_notes":"A landmark lesbian historical novel with unapologetic eroticism and literary prestige—essential for any women-focused platform with LGBTQ+ content.","tags_raw":"F/F, lesbian, Victorian, historical, literary fiction, Sarah Waters, BBC adaptation, coming of age"},{"id":48,"title":"A Gentleman Never Keeps Score","author":"Cat Sebastian","year":2018,"series":"Seducing the Sedgwicks #2","subgenre":"M/M Erotic Romance","short_summary":"A reclusive gentleman hiding from scandal and a retired Black boxer protecting his community collide over a stolen painting and discover unexpected tenderness.","cover_url":"https://covers.openlibrary.org/b/isbn/9780062821584-L.jpg","source_url":"https://www.goodreads.com/book/show/36119077-a-gentleman-never-keeps-score","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["classical"],"dynamic":["courtship"],"trope":["found-family"],"kink":[],"orientation":["m/m"],"warnings":["past sexual exploitation","trauma recovery","period-typical racism","homophobia"],"fit_notes":"A consent-centered Regency M/M romance with a Black protagonist and explicit tenderness—ideal for readers who value emotional safety alongside heat.","tags_raw":"M/M, Regency, historical, interracial, Cat Sebastian, healing, trauma recovery, consent-forward"},{"id":49,"title":"Fanny Hill; or, Memoirs of a Woman of Pleasure","author":"John Cleland","year":1748,"series":null,"subgenre":"Historical Erotica","short_summary":"An orphaned country girl arrives in London and is drawn into prostitution, recounting her sexual adventures in vivid detail before finding love and respectability.","cover_url":"https://covers.openlibrary.org/b/isbn/9780140432497-L.jpg","source_url":"https://www.goodreads.com/book/show/113036.Fanny_Hill","heat":3,"explicit":5,"emotion":3,"consent":2,"taboo":3,"plot":2,"tone":["wry"],"pacing":["measured"],"style":["literary","contemporary"],"dynamic":["courtship"],"trope":["awakening"],"kink":["voyeurism","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["sex work","dubious consent by modern standards","period-typical sexual mores","voyeurism"],"fit_notes":"The foundational English-language erotic novel with a female protagonist and narrator—essential historical context for any erotica-focused platform.","tags_raw":"classic erotica, 18th century, banned book, Penguin Classics, epistolary, literary history, historical"},{"id":50,"title":"Lady Chatterley's Lover","author":"D.H. Lawrence","year":1928,"series":null,"subgenre":"Historical Erotica","short_summary":"An aristocratic woman trapped in a passionless marriage to a paralyzed husband discovers transformative sexual and emotional liberation with the estate's working-class gamekeeper.","cover_url":"https://covers.openlibrary.org/b/isbn/9780141441498-L.jpg","source_url":"https://www.goodreads.com/book/show/32049.Lady_Chatterley_s_Lover","heat":3,"explicit":5,"emotion":4,"consent":4,"taboo":3,"plot":2,"tone":["wry"],"pacing":["scene-heavy"],"style":["literary","classical"],"dynamic":["marriage","forbidden"],"trope":["forbidden-desire","awakening"],"kink":[],"orientation":["m/f-primary"],"warnings":["extramarital affair","period-typical class attitudes","explicit sexual language"],"fit_notes":"A landmark of erotic literary fiction centering female sexual awakening—historically significant and still resonant for women readers.","tags_raw":"classic erotica, banned book, literary fiction, class difference, Penguin Classics, obscenity trial, 1920s"},{"id":51,"title":"Story of O","author":"Pauline Réage","year":1954,"series":null,"subgenre":"Historical Erotica","short_summary":"A Parisian fashion photographer is taken by her lover to a chateau where she undergoes systematic sexual submission, consenting to increasingly extreme acts of surrender.","cover_url":"https://covers.openlibrary.org/b/isbn/9781562010355-L.jpg","source_url":"https://www.goodreads.com/book/show/471.Story_of_O","heat":3,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["intense"],"pacing":["measured"],"style":["literary","contemporary"],"dynamic":["dominance-submission","power-exchange"],"trope":["power-exchange"],"kink":["bdsm","dominance-submission","power-exchange"],"orientation":["m/f-primary"],"warnings":["extreme BDSM","total power exchange","branding","non-negotiated consent by modern standards","psychological intensity"],"fit_notes":"One of the most influential erotic novels ever written by a woman—essential for historical erotica collections despite its challenging content.","tags_raw":"classic erotica, BDSM, French literature, feminist debate, banned book, submission, philosophical"},{"id":52,"title":"Emmanuelle","author":"Emmanuelle Arsan","year":1967,"series":null,"subgenre":"Historical Erotica","short_summary":"A young French diplomat's wife in Bangkok embarks on a journey of sexual discovery guided by an older mentor, exploring the boundaries of pleasure, philosophy, and freedom.","cover_url":"https://covers.openlibrary.org/b/isbn/9780802122353-L.jpg","source_url":"https://www.goodreads.com/book/show/82532.Emmanuelle","heat":3,"explicit":5,"emotion":3,"consent":2,"taboo":3,"plot":2,"tone":["sensual","wry"],"pacing":["scene-heavy"],"style":["literary","classical"],"dynamic":["marriage","multiple-partners"],"trope":["age-gap","awakening"],"kink":["multi-partner","sensuality-focus","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["orientalism","dubious consent in some scenes","age gaps","explicit group sex","period-typical colonial attitudes"],"fit_notes":"A landmark of 20th-century erotica with a female protagonist's sexual education at its center—historically significant despite dated cultural attitudes.","tags_raw":"classic erotica, French literature, sexual awakening, Bangkok, 1960s, philosophical, film adaptation"},{"id":53,"title":"In the Middle of Somewhere","author":"Roan Parrish","year":2015,"series":"Middle of Somewhere #1","subgenre":"M/M Erotic Romance","short_summary":"A prickly, tattooed linguistics professor escaping a toxic family finds explosive chemistry and unexpected tenderness with a gentle woodworker in small-town Michigan.","cover_url":"https://covers.openlibrary.org/b/isbn/9781634762120-L.jpg","source_url":"https://www.goodreads.com/book/show/25499160-in-the-middle-of-somewhere","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry","playful"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["courtship"],"trope":["found-family","small-town"],"kink":["heat-cycles"],"orientation":["m/m"],"warnings":["family abuse and dysfunction","homophobia","anxiety","past trauma"],"fit_notes":"An emotionally rich M/M romance with explicit scenes grounded in vulnerability and trust—appeals to readers who want heat with deep feeling.","tags_raw":"M/M, contemporary, small town, Roan Parrish, opposites attract, healing, found family, emotional"},{"id":54,"title":"Dark Lover","author":"J.R. Ward","year":2005,"series":"Black Dagger Brotherhood #1","subgenre":"Paranormal/Vampire Erotica","short_summary":"Wrath, the last purebred vampire and leader of the Black Dagger Brotherhood, is forced to protect a half-breed female who awakens desires he thought long dead.","cover_url":"https://covers.openlibrary.org/b/isbn/9780451216953-L.jpg","source_url":"https://www.goodreads.com/book/show/42899.Dark_Lover","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["forbidden","enemies-to-lovers","fated-mates"],"trope":["forbidden-desire"],"kink":[],"orientation":["m/f-primary"],"warnings":["graphic violence","explicit sex","blood drinking"],"fit_notes":"Iconic vampire erotica series beloved by women readers for its intensely passionate alpha heroes and rich world-building.","tags_raw":"vampire, paranormal romance, alpha male, warrior, fated mates, series starter"},{"id":55,"title":"A Hunger Like No Other","author":"Kresley Cole","year":2006,"series":"Immortals After Dark #2","subgenre":"Paranormal/Vampire Erotica","short_summary":"After centuries of torture, werewolf king Lachlain MacRieve escapes captivity and discovers his fated mate is a half-vampire—the species he despises most.","cover_url":"https://covers.openlibrary.org/b/isbn/9781416509875-L.jpg","source_url":"https://www.goodreads.com/book/show/14384.A_Hunger_Like_No_Other","heat":4,"explicit":5,"emotion":3,"consent":2,"taboo":2,"plot":4,"tone":["wry","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","enemies-to-lovers","fated-mates"],"trope":["mythology-retelling","power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["dubious consent","possessive behavior","graphic violence","explicit sex"],"fit_notes":"A cornerstone of paranormal erotica with a massive female readership and one of the most beloved fated-mates pairings in the genre.","tags_raw":"paranormal, werewolf, vampire, fated mates, alpha male, series"},{"id":56,"title":"Darkfever","author":"Karen Marie Moning","year":2006,"series":"Fever #1","subgenre":"Paranormal/Fantasy Erotica","short_summary":"MacKayla Lane travels to Dublin to investigate her sister's murder and discovers a hidden world of Fae, dark magic, and a dangerously seductive man named Jericho Barrons.","cover_url":"https://covers.openlibrary.org/b/isbn/9780385339155-L.jpg","source_url":"https://www.goodreads.com/book/show/112750.Darkfever","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["dark","intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["contemporary"],"dynamic":["courtship"],"trope":[],"kink":[],"orientation":["m/f-primary"],"warnings":["violence","murder","dark themes","sexual tension"],"fit_notes":"The Fever series is legendary among women readers for its electric sexual tension with Barrons, building to some of the genre's most iconic erotic scenes.","tags_raw":"urban fantasy, Fae, slow burn, dark hero, mystery, series starter"},{"id":57,"title":"Ice Planet Barbarians","author":"Ruby Dixon","year":2015,"series":"Ice Planet Barbarians #1","subgenre":"Sci-Fi Erotica","short_summary":"Abducted by aliens and stranded on an ice planet, Georgie is claimed by a massive blue alien warrior whose body resonates for her as his mate.","cover_url":"https://covers.openlibrary.org/b/isbn/9780593546024-L.jpg","source_url":"https://www.goodreads.com/book/show/25128811-ice-planet-barbarians","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["wry","playful"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["fated-mates","multiple-partners"],"trope":[],"kink":["multi-partner"],"orientation":["m/f-primary"],"warnings":["abduction (by initial aliens)","explicit sex","mild peril"],"fit_notes":"A BookTok phenomenon and gateway sci-fi erotica title beloved by women for its fun premise, consent-forward alien hero, and enthusiastic explicit content.","tags_raw":"alien romance, sci-fi, BookTok, fated mates, survival, blue aliens"},{"id":58,"title":"Choosing Theo","author":"Victoria Aveline","year":2020,"series":"Clecanian #1","subgenre":"Sci-Fi Erotica","short_summary":"Kidnapped and dumped on an alien planet, Jade must choose a husband from the locals and picks the scarred, surly mercenary everyone else avoids.","cover_url":"https://covers.openlibrary.org/b/isbn/9781734678802-L.jpg","source_url":"https://www.goodreads.com/book/show/51479476-choosing-theo","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["marriage"],"trope":["marriage-of-convenience"],"kink":[],"orientation":["m/f-primary"],"warnings":["abduction backstory","explicit sex"],"fit_notes":"A fan-favorite sci-fi erotica with strong consent themes and a lovable grumpy alien hero that resonates perfectly with women-focused platforms.","tags_raw":"alien romance, sci-fi, grumpy hero, forced proximity, BookTok"},{"id":59,"title":"Radiance","author":"Grace Draven","year":2015,"series":"Wraith Kings #1","subgenre":"Fantasy Erotica","short_summary":"A human noblewoman and a Kai prince—each finding the other's species physically repulsive—enter a political marriage and slowly fall deeply in love.","cover_url":"https://covers.openlibrary.org/b/isbn/9781506119717-L.jpg","source_url":"https://www.goodreads.com/book/show/24473763-radiance","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["tender","intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["contemporary"],"dynamic":["marriage","fated-mates","mutual-longing"],"trope":["marriage-of-convenience"],"kink":[],"orientation":["m/f-primary"],"warnings":["fantasy violence","mild body horror descriptions"],"fit_notes":"A unique and emotionally rich fantasy romance beloved by women for its subversion of beauty standards and deeply respectful, consent-forward love story.","tags_raw":"fantasy, arranged marriage, interspecies, slow burn, wholesome, political intrigue"},{"id":60,"title":"Den of Vipers","author":"K.A. Knight","year":2020,"series":null,"subgenre":"Reverse Harem / Dark Erotica","short_summary":"Sold to four dangerous, possessive crime lords to pay her father's debts, Roxy refuses to be a victim and fights back—igniting an obsessive game of power and desire.","cover_url":"https://covers.openlibrary.org/b/isbn/9781399971638-L.jpg","source_url":"https://www.goodreads.com/book/show/54437364-den-of-vipers","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":2,"tone":["dark","intense","wry"],"pacing":["relentless","scene-heavy"],"style":["commercial"],"dynamic":["power-exchange","reverse-harem"],"trope":["why-choose","power-exchange"],"kink":["multi-partner","power-exchange","dubcon-fantasy"],"orientation":["why-choose-rh"],"warnings":["graphic violence","dubious consent","captivity","explicit sex with multiple partners","dark themes"],"fit_notes":"One of the most popular reverse harem dark erotica titles on BookTok, with a fierce heroine who appeals strongly to women readers.","tags_raw":"reverse harem, dark romance, mafia, BookTok, why choose, captive"},{"id":61,"title":"Pack Darling: Part One","author":"Lola Rock","year":2021,"series":"Pack Darling #1","subgenre":"Reverse Harem / Omegaverse Erotica","short_summary":"A rejected omega is reluctantly taken in by a pack of powerful alphas who initially resent her presence but become consumed by the biological bond pulling them together.","cover_url":"https://covers.openlibrary.org/b/isbn/9781955974202-L.jpg","source_url":"https://www.goodreads.com/book/show/57993563-pack-darling","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":4,"plot":2,"tone":["intense","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["reverse-harem","fated-mates","multiple-partners"],"trope":["omegaverse","why-choose","bully-romance","found-family"],"kink":["multi-partner","heat-cycles"],"orientation":["why-choose-rh"],"warnings":["bullying","rejection","explicit group sex","heat/rut cycles","possessive behavior"],"fit_notes":"A standout omegaverse reverse harem that hits the sweet spot of emotional angst and explicit heat scenes that women readers in this niche adore.","tags_raw":"omegaverse, reverse harem, why choose, bully to lovers, heat cycles, found family"},{"id":62,"title":"Haunting Adeline","author":"H.D. Carlton","year":2021,"series":"Cat and Mouse Duet #1","subgenre":"Dark Erotica / Taboo","short_summary":"Adeline inherits her grandmother's gothic manor and discovers she has a stalker—a dangerous, morally gray vigilante named Zade who becomes obsessed with possessing her.","cover_url":"https://covers.openlibrary.org/b/isbn/9781957635002-L.jpg","source_url":"https://www.goodreads.com/book/show/58498358-haunting-adeline","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":3,"tone":["dark","wry","transgressive"],"pacing":["relentless","scene-heavy"],"style":["commercial","classical"],"dynamic":["courtship"],"trope":["obsession"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["stalking","non-consent/dubious consent","graphic sex","violence","human trafficking themes","manipulation"],"fit_notes":"The definitive BookTok dark erotica phenomenon with nearly a million Goodreads ratings, driven almost entirely by women readers.","tags_raw":"dark romance, stalker, gothic, BookTok, obsessive love, vigilante hero"},{"id":63,"title":"Credence","author":"Penelope Douglas","year":2020,"series":null,"subgenre":"Taboo Erotica","short_summary":"After her parents' death, sheltered Tiernan is sent to live with her stepfather's family in a remote mountain cabin, where forbidden attractions ignite with all three men.","cover_url":"https://covers.openlibrary.org/b/isbn/9780593641972-L.jpg","source_url":"https://www.goodreads.com/book/show/49981498-credence","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":5,"plot":2,"tone":["intense","wry","transgressive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["forbidden","reverse-harem"],"trope":["age-gap","why-choose","forbidden-desire","awakening"],"kink":["breeding"],"orientation":["why-choose-rh"],"warnings":["taboo relationships (step-uncle/step-cousins)","explicit sex with multiple partners","grief","parental death","age gap"],"fit_notes":"One of Penelope Douglas's most discussed titles among women readers for its unapologetic taboo premise and emotional depth.","tags_raw":"taboo, why choose, forbidden, mountain, isolation, Penelope Douglas"},{"id":64,"title":"Punk 57","author":"Penelope Douglas","year":2016,"series":null,"subgenre":"New Adult Erotica","short_summary":"Misha and Ryen have been anonymous pen pals for years—until Misha discovers who Ryen really is and infiltrates her school under a new identity to punish her for her lies.","cover_url":"https://covers.openlibrary.org/b/isbn/9780593641996-L.jpg","source_url":"https://www.goodreads.com/book/show/41021967-punk-57","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["enemies-to-lovers"],"trope":["bully-romance"],"kink":[],"orientation":["m/f-primary"],"warnings":["bullying","deception","explicit sex","mild violence"],"fit_notes":"One of Penelope Douglas's most popular titles with young women readers for its addictive enemies-to-lovers tension and raw sexual chemistry.","tags_raw":"new adult, bully romance, pen pals, enemies to lovers, secret identity"},{"id":65,"title":"Twisted Love","author":"Ana Huang","year":2021,"series":"Twisted #1","subgenre":"New Adult Erotica","short_summary":"When Ava's brother asks his cold, calculating best friend Alex to watch over her, neither expects the ice around Alex's heart to crack—or the explosive attraction that follows.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728274867-L.jpg","source_url":"https://www.goodreads.com/book/show/57422374-twisted-love","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["dark","intense","wry"],"pacing":["relentless","scene-heavy"],"style":["commercial","contemporary"],"dynamic":["courtship"],"trope":[],"kink":[],"orientation":["m/f-primary"],"warnings":["childhood trauma","violence","explicit sex","revenge themes"],"fit_notes":"With over 1.6 million Goodreads ratings, this is one of the most widely read new adult erotica titles among young women.","tags_raw":"new adult, BookTok, brother's best friend, ice king, series starter, contemporary"},{"id":66,"title":"From Blood and Ash","author":"Jennifer L. Armentrout","year":2020,"series":"Blood and Ash #1","subgenre":"Fantasy Erotica","short_summary":"Poppy, a Maiden chosen by the gods and forbidden from being touched, is guarded by Hawke—a devastatingly attractive warrior who tempts her to defy every rule.","cover_url":"https://covers.openlibrary.org/b/isbn/9781952457005-L.jpg","source_url":"https://www.goodreads.com/book/show/52831200-from-blood-and-ash","heat":4,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["commercial"],"dynamic":["forbidden"],"trope":["forbidden-desire"],"kink":[],"orientation":["m/f-primary"],"warnings":["violence","blood","explicit sex","betrayal","religious control themes"],"fit_notes":"A Goodreads Choice Award-winning fantasy romance that became a massive hit with women readers for its forbidden love and Hawke's iconic seduction scenes.","tags_raw":"fantasy, forbidden love, chosen one, bodyguard, BookTok, Goodreads Choice Award"},{"id":67,"title":"The Zodiac Academy: The Awakening","author":"Caroline Peckham & Susanne Valenti","year":2019,"series":"Zodiac Academy #1","subgenre":"Fantasy / Bully Erotica","short_summary":"Twin sisters Tory and Darcy discover they are Fae princesses and are thrust into Zodiac Academy, where four powerful Heirs will do anything to crush them before they can claim their throne.","cover_url":"https://covers.openlibrary.org/b/isbn/9781914425028-L.jpg","source_url":"https://www.goodreads.com/book/show/47098758-the-awakening","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["power-exchange","enemies-to-lovers","reverse-harem"],"trope":["bully-romance","power-exchange"],"kink":["multi-partner","power-exchange"],"orientation":["why-choose-rh"],"warnings":["bullying","hazing","explicit sex (later books)","violence","power dynamics"],"fit_notes":"A massive BookTok fantasy series with a predominantly female readership, known for its enemies-to-lovers arcs and increasing erotic content.","tags_raw":"fantasy, academy, bully romance, BookTok, Fae, enemies to lovers, series"},{"id":68,"title":"The Ritual","author":"Shantel Tessier","year":2021,"series":"L.O.R.D.S. #1","subgenre":"Dark Erotica / Taboo","short_summary":"In a world where elite men are initiated into a secret society called the Lords, Barrington chooses Mia as his sacrifice—but his obsession with her goes far beyond the ritual.","cover_url":null,"source_url":"https://www.goodreads.com/book/show/59371669-the-ritual","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":3,"tone":["dark","wry","transgressive"],"pacing":["relentless","scene-heavy"],"style":["commercial"],"dynamic":["power-exchange","marriage"],"trope":["obsession","power-exchange","marriage-of-convenience"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["dubious/non-consent","degradation","extreme power dynamics","explicit sex","violence","possessive behavior"],"fit_notes":"A polarizing BookTok dark erotica hit that found a massive audience among women who read at the extreme end of the dark romance spectrum.","tags_raw":"dark romance, secret society, obsession, BookTok, extreme, college"},{"id":69,"title":"Bound by Honor","author":"Cora Reilly","year":2014,"series":"Born in Blood Mafia Chronicles #1","subgenre":"Dark Erotica / Mafia","short_summary":"Aria is promised in an arranged marriage to Luca Vitiello, the feared heir of the New York mafia, in a world where women have no say in their own fate.","cover_url":"https://covers.openlibrary.org/b/isbn/9781729195581-L.jpg","source_url":"https://www.goodreads.com/book/show/23164808-bound-by-honor","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":3,"tone":["dark","wry","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","marriage","enemies-to-lovers"],"trope":["virgin-heroine","awakening","power-exchange","marriage-of-convenience"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["violence","arranged/forced marriage","patriarchal power dynamics","explicit sex","mafia violence"],"fit_notes":"A foundational mafia erotica series with a devoted female readership drawn to the arranged-marriage dynamic and Aria's journey of empowerment.","tags_raw":"mafia romance, arranged marriage, dark romance, series starter, virgin heroine"},{"id":70,"title":"Give Me More","author":"Bianca Cate","year":2022,"series":"Salacious Players' Club #3","subgenre":"Ménage / Polyamory Erotica","short_summary":"Married couple Hunter and Isabel invite their best friend Drake into their bed, unlocking long-buried desires and a love triangle that threatens to redefine all their relationships.","cover_url":"https://covers.openlibrary.org/b/isbn/9781956830200-L.jpg","source_url":"https://www.goodreads.com/book/show/60532854-give-me-more","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["intense"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["marriage","multiple-partners","friends-to-lovers"],"trope":["awakening"],"kink":["multi-partner","voyeurism"],"orientation":["bi-curious-hints"],"warnings":["explicit MMF sex","bisexual content","voyeurism","sex club setting"],"fit_notes":"A groundbreaking consent-forward MMF ménage erotica that became hugely popular with women for its emotional authenticity and bisexual representation.","tags_raw":"MMF, ménage, bisexual, polyamory, sex club, Salacious Players Club"},{"id":71,"title":"Sugar Daddies","author":"Jade West","year":2016,"series":null,"subgenre":"Ménage Erotica","short_summary":"Ciara becomes entangled with Carl and Rick—two older men in a committed relationship who are looking for a woman to complete their dynamic.","cover_url":"https://covers.openlibrary.org/b/isbn/9781535154024-L.jpg","source_url":"https://www.goodreads.com/book/show/31159182-sugar-daddies","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["intense","wry"],"pacing":["quick","scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","forbidden","multiple-partners"],"trope":["age-gap","forbidden-desire","power-exchange"],"kink":["multi-partner","power-exchange","fetish"],"orientation":["bi-curious-hints"],"warnings":["explicit MMF sex","power dynamics","age gap","financial arrangement"],"fit_notes":"A highly popular MMF ménage erotica beloved by women for its raw honesty, bisexual representation, and emotionally complex three-way relationship.","tags_raw":"MMF, ménage, sugar daddy, bisexual, age gap, contemporary"},{"id":72,"title":"Desperate Measures","author":"Katee Robert","year":2019,"series":"Wicked Villains #1","subgenre":"Dark Erotica / Fantasy Retelling","short_summary":"In a dark Disney-inspired underworld, Jasmine 'Jafar' kidnaps a woman to use as leverage—but their captor-captive dynamic spirals into an explicit, consuming obsession.","cover_url":"https://covers.openlibrary.org/b/isbn/9781532398063-L.jpg","source_url":"https://www.goodreads.com/book/show/44645024-desperate-measures","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":4,"tone":["dark","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange"],"trope":["mythology-retelling","power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["captivity","dubious consent","power imbalance","explicit sex","violence"],"fit_notes":"A clever dark erotica retelling from Katee Robert that appeals to women who want villain romances with explicit, boundary-pushing content.","tags_raw":"dark romance, fairy tale retelling, villain romance, captor captive, Katee Robert"},{"id":73,"title":"Degradation","author":"Stylo Fantôme","year":2014,"series":"The Kane Trilogy #1","subgenre":"Dark Erotic Romance","short_summary":"After a devastating one-night encounter at eighteen, Tatum O'Shea crosses paths with the seductive and manipulative Jameson Kane seven years later, igniting a dangerous psychological and sexual power struggle.","cover_url":"https://covers.openlibrary.org/b/isbn/9781500605278-L.jpg","source_url":"https://www.goodreads.com/book/show/22760746-degradation","heat":5,"explicit":5,"emotion":5,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["scene-heavy"],"style":["psychological-novel"],"dynamic":["enemies-to-lovers","second-chance"],"trope":["billionaire","age-gap","second-chance"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["psychological manipulation","dubious consent","emotional abuse","explicit sex"],"fit_notes":"A hugely popular indie dark erotica with intense psychological tension and explicit content, beloved by dark romance readers.","tags_raw":"dark romance, billionaire, psychological, indie, self-published, erotic"},{"id":74,"title":"Fear Me","author":"B.B. Reid","year":2015,"series":"Broken Love #1","subgenre":"Dark Erotic Romance","short_summary":"For ten years, Keiran Masters has been Lake Monroe's tormentor. When he returns from juvenile detention, he escalates his obsessive control into an explicitly sexual and terrifying dynamic.","cover_url":null,"source_url":"https://www.goodreads.com/book/show/25464890-fear-me","heat":5,"explicit":5,"emotion":5,"consent":3,"taboo":4,"plot":4,"tone":["dark","wry","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","forbidden","enemies-to-lovers"],"trope":["bully-romance","forbidden-desire","obsession","power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["bullying","dubious consent","physical intimidation","sexual coercion","torture references","abuse"],"fit_notes":"One of the defining bully dark romances with extremely high heat and a passionate fanbase among women who enjoy dark, forbidden erotica.","tags_raw":"dark romance, bully, possessive, new adult, explicit, indie"},{"id":75,"title":"Hardwired","author":"Meredith Wild","year":2013,"series":"Hacker #1","subgenre":"Erotic Romance","short_summary":"Harvard graduate Erica Hathaway is determined to launch her tech startup without help, but billionaire hacker Blake Landon wants both her business and her body.","cover_url":"https://covers.openlibrary.org/b/isbn/9780989768412-L.jpg","source_url":"https://www.goodreads.com/book/show/25208536-hardwired","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry","playful"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["power-exchange"],"trope":["billionaire","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit sex","controlling behavior","past trauma references"],"fit_notes":"A landmark indie erotica success story featuring a capable heroine and steamy power dynamics, ideal for women who enjoyed Fifty Shades but want a stronger female lead.","tags_raw":"billionaire, tech, self-published, erotic romance, strong heroine, indie success"},{"id":76,"title":"Forbidden","author":"Tabitha Suzuma","year":2010,"series":null,"subgenre":"Taboo Literary Fiction","short_summary":"Seventeen-year-old Lochan and sixteen-year-old Maya have been raising their younger siblings in the absence of their alcoholic mother, and their deep bond crosses into romantic and sexual love.","cover_url":"https://covers.openlibrary.org/b/isbn/9781862308169-L.jpg","source_url":"https://www.goodreads.com/book/show/7600924-forbidden","heat":3,"explicit":2,"emotion":4,"consent":3,"taboo":5,"plot":3,"tone":["tender","intense","wry"],"pacing":["measured"],"style":["literary"],"dynamic":["forbidden","fated-mates"],"trope":["forbidden-desire","coming-of-age"],"kink":[],"orientation":["m/f-primary"],"warnings":["incest","neglectful parenting","underage characters","suicide","emotional distress"],"fit_notes":"One of the most emotionally devastating taboo novels ever written, with tastefully handled but undeniably erotic content—appeals to readers who value emotional depth alongside transgression.","tags_raw":"taboo, literary fiction, tragic, emotional, controversial, British"},{"id":77,"title":"Bait","author":"Jade West","year":2017,"series":null,"subgenre":"Contemporary Erotica","short_summary":"Two people who share dark, unspoken sexual fantasies find each other online and embark on an intense exploration of their desires in real life.","cover_url":"https://covers.openlibrary.org/b/isbn/9781976136658-L.jpg","source_url":"https://www.goodreads.com/book/show/36048300-bait","heat":4,"explicit":5,"emotion":4,"consent":4,"taboo":2,"plot":2,"tone":["dark","sensual","wry"],"pacing":["quick","scene-heavy"],"style":["contemporary"],"dynamic":["courtship"],"trope":[],"kink":["sensuality-focus","voyeurism"],"orientation":["m/f-primary"],"warnings":["explicit sexual content","voyeurism","rough sex","consensual kink"],"fit_notes":"Jade West is a queen of unapologetic women's erotica; Bait is her most celebrated standalone, centering female sexual agency and kink exploration.","tags_raw":"erotica, kink-positive, indie, explicit, female desire, self-published"},{"id":78,"title":"Dirty Billionaire","author":"Meghan March","year":2015,"series":"Dirty Billionaire Trilogy #1","subgenre":"Erotic Romance","short_summary":"Country music singer Holly Wix and ruthless billionaire Creighton Karas share one explosive night in Nashville that leads to a shocking proposal and a marriage neither expected.","cover_url":"https://covers.openlibrary.org/b/isbn/9781943796915-L.jpg","source_url":"https://www.goodreads.com/series/164671-dirty-billionaire","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry","obsessive"],"pacing":["quick","scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","marriage"],"trope":["billionaire","power-exchange","marriage-of-convenience"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit sex","possessive behavior","power imbalance"],"fit_notes":"Meghan March is an indie erotica powerhouse; Dirty Billionaire is a fast, filthy, satisfying read perfect for a women-focused platform.","tags_raw":"billionaire, indie, erotic romance, alpha male, quick read, series"},{"id":79,"title":"Filthy Rich","author":"Raine Miller","year":2016,"series":"Blackstone Dynasty #1","subgenre":"Erotic Romance","short_summary":"After inheriting his family's billion-dollar empire, Caleb Blackstone is questioning everything until he meets Brooke Casterley, who shows him there's more to life than wealth.","cover_url":"https://covers.openlibrary.org/b/isbn/9781503939639-L.jpg","source_url":"https://www.goodreads.com/book/show/28220750-filthy-rich","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["sensual","intense","wry"],"pacing":["slow-burn","scene-heavy"],"style":["contemporary"],"dynamic":["courtship"],"trope":["billionaire"],"kink":["sensuality-focus"],"orientation":["m/f-primary"],"warnings":["explicit sex","grief","family trauma","secrets"],"fit_notes":"Raine Miller's polished billionaire erotica appeals to readers who want steamy content with genuine emotional substance and well-drawn characters.","tags_raw":"billionaire, erotic romance, grief, family dynasty, emotional"},{"id":80,"title":"Sinner","author":"Sierra Simone","year":2018,"series":"Priest #2","subgenre":"Erotic Romance","short_summary":"Sean Bell, brother of Father Bell from Priest, falls into a complicated and scorching love triangle that explores bisexuality, faith, and desire.","cover_url":"https://covers.openlibrary.org/b/isbn/9781732172258-L.jpg","source_url":"https://www.goodreads.com/book/show/35429120-sinner","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["literary"],"dynamic":["power-exchange","forbidden","multiple-partners"],"trope":["forbidden-desire","power-exchange"],"kink":["heat-cycles","power-exchange"],"orientation":["m/m","bi-curious-hints"],"warnings":["explicit sex","religious themes","identity crisis","M/M and M/F content"],"fit_notes":"Sierra Simone's companion to the beloved Priest adds bisexual representation and polyamorous themes—essential for an inclusive women-focused erotica platform.","tags_raw":"bisexual, love triangle, faith, literary erotica, LGBTQ, forbidden"},{"id":81,"title":"The Saint","author":"Tiffany Reisz","year":2014,"series":"The Original Sinners #5","subgenre":"Erotic Romance / BDSM","short_summary":"The origin story of Nora Sutherlin and Father Søren reveals how a rebellious teenage girl and a Jesuit priest began their legendary, forbidden BDSM relationship.","cover_url":"https://covers.openlibrary.org/b/isbn/9780778316145-L.jpg","source_url":"https://www.goodreads.com/book/show/17349883-the-saint","heat":4,"explicit":5,"emotion":5,"consent":4,"taboo":3,"plot":4,"tone":["dark","wry"],"pacing":["slow-burn"],"style":["literary"],"dynamic":["dominance-submission","forbidden","mutual-longing"],"trope":["age-gap","forbidden-desire","coming-of-age"],"kink":["bdsm"],"orientation":["m/f-primary"],"warnings":["age gap with minor","BDSM","religious themes","sadomasochism","emotional intensity"],"fit_notes":"The emotional and erotic pinnacle of Tiffany Reisz's acclaimed Original Sinners series—essential literary erotica for sophisticated readers.","tags_raw":"BDSM, literary erotica, forbidden, priest, origin story, slow burn, series"},{"id":82,"title":"Little Birds","author":"Anaïs Nin","year":1979,"series":null,"subgenre":"Literary Erotica","short_summary":"Thirteen short stories by Anaïs Nin explore the hidden sexual desires and erotic lives of women with poetic, unflinching prose.","cover_url":"https://covers.openlibrary.org/b/isbn/9780671680114-L.jpg","source_url":"https://www.goodreads.com/book/show/46073.Little_Birds","heat":3,"explicit":5,"emotion":3,"consent":4,"taboo":2,"plot":2,"tone":["sensual","tender","transgressive"],"pacing":["measured"],"style":["literary","classical"],"dynamic":["forbidden"],"trope":["forbidden-desire"],"kink":["sensuality-focus","voyeurism"],"orientation":["m/f-primary"],"warnings":["taboo sexual content","age-ambiguous characters","voyeurism","period-typical content"],"fit_notes":"A foundational classic of women's erotica by the genre's most celebrated literary voice—essential for any curated erotica collection.","tags_raw":"classic erotica, literary, short stories, feminist, vintage, women's sexuality"},{"id":83,"title":"Brutal Prince","author":"Sophie Lark","year":2021,"series":"Brutal Birthright #1","subgenre":"Dark Mafia Erotic Romance","short_summary":"Aida Gallo, daughter of a Chicago mafia don, is forced into marriage with Callum Griffin, heir to a rival Irish crime family, after she burns down his family's property.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728294186-L.jpg","source_url":"https://www.goodreads.com/book/show/195580026-brutal-prince","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["power-exchange","marriage","enemies-to-lovers"],"trope":["obsession","power-exchange","marriage-of-convenience"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["violence","organized crime","explicit sex","power struggles"],"fit_notes":"A BookTok-viral mafia romance with a fierce heroine and scorching enemies-to-lovers heat—huge appeal for women readers.","tags_raw":"mafia, BookTok, dark romance, enemies to lovers, arranged marriage, indie"},{"id":84,"title":"There Are No Saints","author":"Sophie Lark","year":2022,"series":"Sinners Duet #1","subgenre":"Dark Erotic Thriller","short_summary":"Wealthy sculptor Cole Blackwell conceals his identity as a serial killer, but when he becomes obsessed with talented painter Mara Eldritch, their dark desires collide in an all-consuming passion.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728294247-L.jpg","source_url":"https://www.goodreads.com/book/show/60471690-there-are-no-saints","heat":5,"explicit":5,"emotion":3,"consent":3,"taboo":4,"plot":3,"tone":["dark","intense","obsessive"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["courtship"],"trope":["obsession"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["murder","graphic violence","explicit sex","stalking","dubious consent","dark themes"],"fit_notes":"One of the darkest and most popular BookTok erotica titles, pushing boundaries while maintaining a passionate female readership.","tags_raw":"dark romance, thriller, serial killer, obsession, BookTok, artist"},{"id":85,"title":"Misconduct","author":"Penelope Douglas","year":2015,"series":null,"subgenre":"Erotic Romance","short_summary":"A young woman enters the orbit of a powerful older man, igniting a forbidden affair full of passion, power plays, and explosive sexual tension.","cover_url":"https://covers.openlibrary.org/b/isbn/9780451477286-L.jpg","source_url":"https://www.goodreads.com/book/show/26012545-misconduct","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["wry"],"pacing":["dialogue-heavy","scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","forbidden"],"trope":["age-gap","forbidden-desire","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit sex","power imbalance","moral ambiguity","deception"],"fit_notes":"From the author of Punk 57 and Credence, Misconduct is Penelope Douglas's steamiest standalone—a must for fans of forbidden erotic romance.","tags_raw":"forbidden, age gap, erotic romance, power dynamics, standalone"},{"id":86,"title":"Big Rock","author":"Lauren Blakely","year":2016,"series":"Big Rock #1","subgenre":"Erotic Romantic Comedy","short_summary":"Spencer Holiday agrees to pose as his best friend Charlotte's fiancé, but their fake relationship quickly ignites very real, very explicit chemistry.","cover_url":"https://covers.openlibrary.org/b/isbn/9780692572030-L.jpg","source_url":"https://www.goodreads.com/book/show/26252659-big-rock","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":3,"tone":["sensual","wry","playful"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["friends-to-lovers"],"trope":["fake-relationship"],"kink":[],"orientation":["m/f-primary"],"warnings":["explicit sex","strong language"],"fit_notes":"A lighthearted, laugh-out-loud erotic rom-com that offers a refreshing tonal contrast on a platform that may skew toward darker titles.","tags_raw":"romantic comedy, fake relationship, male POV, explicit, fun, contemporary"},{"id":87,"title":"Xeni: A Marriage of Inconvenience","author":"Rebekah Weatherspoon","year":2019,"series":"Loose Ends #2","subgenre":"Erotic Romance","short_summary":"To claim her late aunt's estate, Xeni Everly-Wilkins must marry the ruggedly handsome Scottish musician Mason McInnes, a stranger her aunt selected from beyond the grave.","cover_url":"https://covers.openlibrary.org/b/isbn/9780578592077-L.jpg","source_url":"https://www.goodreads.com/book/show/49959268-xeni","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["marriage"],"trope":["marriage-of-convenience"],"kink":[],"orientation":["m/f-primary"],"warnings":["grief","family loss","explicit sex"],"fit_notes":"A joyful, diverse erotic romance by a Black author with a plus-size heroine—essential for inclusive representation on a women-focused platform.","tags_raw":"BIPOC author, diverse, plus-size heroine, interracial, body positive, indie, erotic"},{"id":88,"title":"Dirty Letters","author":"Vi Keeland, Penelope Ward","year":2019,"series":null,"subgenre":"Erotic Romance","short_summary":"Childhood pen pals Luca and Griffin reconnect as adults, and their innocent letters quickly escalate into scorching, explicit correspondence before they finally meet.","cover_url":null,"source_url":"https://www.goodreads.com/book/show/44148648-dirty-letters","heat":4,"explicit":4,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["tender","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["second-chance"],"trope":["second-chance"],"kink":[],"orientation":["m/f-primary"],"warnings":["explicit sex","anxiety disorder","agoraphobia representation"],"fit_notes":"A beloved collaboration between two bestselling authors that builds erotic tension through letters—creative, romantic, and very steamy.","tags_raw":"pen pals, epistolary, celebrity romance, dirty talk, contemporary, co-authored"},{"id":89,"title":"Still Beating","author":"Jennifer Hartmann","year":2020,"series":null,"subgenre":"Dark Erotic Romance","short_summary":"After being kidnapped and held captive together for weeks, Cora and Dean—who despised each other—form an unbreakable trauma bond that transforms into desperate, passionate love.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728290591-L.jpg","source_url":"https://www.goodreads.com/book/show/54826564-still-beating","heat":5,"explicit":5,"emotion":5,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["scene-heavy"],"style":["commercial"],"dynamic":["enemies-to-lovers"],"trope":[],"kink":[],"orientation":["m/f-primary"],"warnings":["kidnapping","captivity","sexual assault references","PTSD","explicit sex","violence"],"fit_notes":"A BookTok phenomenon that blends dark subject matter with deeply emotional and explicit romance—appeals to readers who want erotica with genuine emotional stakes.","tags_raw":"dark romance, trauma bond, captivity, emotional, BookTok, indie"},{"id":90,"title":"Hooked","author":"Emily McIntire","year":2021,"series":"Never After #1","subgenre":"Dark Erotic Romance / Fairy Tale Retelling","short_summary":"A dark and sexy reimagining of Peter Pan, where Captain Hook is a seductive, dangerous bar owner who becomes obsessed with Wendy Michaels, the daughter of his nemesis.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728278353-L.jpg","source_url":"https://www.goodreads.com/book/show/58828562-hooked","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["scene-heavy"],"style":["commercial","classical"],"dynamic":["forbidden"],"trope":["age-gap","mythology-retelling","forbidden-desire","obsession"],"kink":["dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["violence","manipulation","explicit sex","dubious consent","drug references","murder"],"fit_notes":"The breakout hit of the dark fairy tale retelling trend, combining beloved source material with explicit, transgressive erotica for women readers.","tags_raw":"fairy tale retelling, villain romance, dark, BookTok, Peter Pan, indie"},{"id":91,"title":"A Court of Mist and Fury","author":"Sarah J. Maas","year":2016,"series":"A Court of Thorns and Roses #2","subgenre":"Romantasy / Erotic Fantasy","short_summary":"After surviving the events Under the Mountain, Feyre struggles with PTSD until the mysterious High Lord Rhysand reveals a world of freedom, power, and passionate desire.","cover_url":"https://covers.openlibrary.org/b/isbn/9781619634466-L.jpg","source_url":"https://www.goodreads.com/book/show/17927395-a-court-of-mist-and-fury","heat":4,"explicit":4,"emotion":4,"consent":4,"taboo":2,"plot":4,"tone":["wry"],"pacing":["slow-burn","scene-heavy"],"style":["commercial","contemporary"],"dynamic":["power-exchange","enemies-to-lovers","courtship"],"trope":["found-family","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["PTSD","emotional abuse recovery","violence","explicit sex","war"],"fit_notes":"The single most influential romantasy of the 2010s-2020s with iconic spicy scenes—a gateway book that brings fantasy readers to erotic content.","tags_raw":"romantasy, BookTok, fae, slow burn, fantasy, PTSD recovery, iconic"},{"id":92,"title":"Dirty Bad Wrong","author":"Jade West","year":2015,"series":"Dirty Bad #1","subgenre":"Contemporary Erotica / BDSM","short_summary":"A woman discovers the BDSM underground and embarks on an explicit sexual awakening that challenges everything she thought she knew about her own desires.","cover_url":null,"source_url":"https://www.goodreads.com/book/show/25346064-dirty-bad-wrong","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":3,"tone":["sensual","intense"],"pacing":["scene-heavy"],"style":["contemporary","psychological-novel"],"dynamic":["dominance-submission","power-exchange"],"trope":["awakening","power-exchange"],"kink":["bdsm","power-exchange","sensuality-focus"],"orientation":["m/f-primary"],"warnings":["graphic BDSM","consensual violence","rough sex","explicit sexual content"],"fit_notes":"Jade West's debut that launched an indie erotica empire—unapologetically explicit and centered on female sexual empowerment.","tags_raw":"BDSM, indie erotica, kink, sexual awakening, self-published, explicit"},{"id":93,"title":"Buttons & Lace","author":"Penelope Sky","year":2016,"series":"Buttons #1","subgenre":"Dark Erotic Romance","short_summary":"Kidnapped and sold, Pearl is rescued by Crow Barsetti—only to become his prisoner instead, earning her freedom one button at a time in his Tuscan villa.","cover_url":"https://covers.openlibrary.org/b/isbn/9781539340775-L.jpg","source_url":"https://www.goodreads.com/book/show/32585677-buttons-lace","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark"],"pacing":["measured"],"style":["contemporary"],"dynamic":["power-exchange","enemies-to-lovers"],"trope":["billionaire","power-exchange"],"kink":["dominance-submission","power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["kidnapping","captivity","dubious consent","violence","power imbalance"],"fit_notes":"High-heat dark erotica with a captive premise; appeals to readers of dark billionaire romance with explicit BDSM-adjacent content.","tags_raw":"dark romance,erotica,captive,mafia,billionaire,series starter"},{"id":94,"title":"Fixed on You","author":"Laurelin Paige","year":2013,"series":"Fixed #1","subgenre":"Erotic Romance","short_summary":"Alayna Withers battles obsessive love disorder while trying to resist Hudson Pierce, the gorgeous billionaire who just bought the nightclub where she works.","cover_url":"https://covers.openlibrary.org/b/isbn/9781942835561-L.jpg","source_url":"https://www.goodreads.com/book/show/17838225-fixed-on-you","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["dark","wry","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["forbidden"],"trope":["billionaire","damaged-hero","fake-relationship","forbidden-desire"],"kink":[],"orientation":["m/f-primary"],"warnings":["obsessive behavior","stalking themes","explicit sex","mental health issues"],"fit_notes":"Emotionally complex erotic romance that balances explicit heat with a compelling psychological arc; strong crossover for Fifty Shades and Bared to You readers.","tags_raw":"erotic romance,billionaire,obsession,mental health,fake relationship,series starter"},{"id":95,"title":"American Queen","author":"Sierra Simone","year":2016,"series":"New Camelot #1","subgenre":"Erotic Political Romance","short_summary":"Greer Galloway falls for both the President of the United States and his Vice President in a modern Arthurian retelling steeped in politics, BDSM, and polyamorous longing.","cover_url":"https://covers.openlibrary.org/b/isbn/9781732172203-L.jpg","source_url":"https://www.goodreads.com/book/show/30314992-american-queen","heat":4,"explicit":4,"emotion":5,"consent":4,"taboo":2,"plot":4,"tone":["intense","wry"],"pacing":["scene-heavy"],"style":["literary","contemporary"],"dynamic":["dominance-submission","power-exchange","forbidden"],"trope":["mythology-retelling","forbidden-desire","power-exchange"],"kink":["bdsm","multi-partner","power-exchange"],"orientation":["m/f-primary"],"warnings":["explicit BDSM","polyamorous relationship","power dynamics","emotional infidelity themes"],"fit_notes":"Literary erotica with emotional depth and a unique polyamorous political premise; ideal for readers who loved Priest by the same author and want more Sierra Simone.","tags_raw":"erotica,polyamory,BDSM,political romance,Arthurian retelling,literary erotica"},{"id":96,"title":"Electric Idol","author":"Katee Robert","year":2022,"series":"Dark Olympus #2","subgenre":"Erotic Mythology Retelling","short_summary":"When Aphrodite orders her son Eros to kill Psyche Dimitriou, he proposes a fake marriage instead—igniting a dangerous game of desire in the dark world of Olympus.","cover_url":"https://covers.openlibrary.org/b/isbn/9781728231761-L.jpg","source_url":"https://www.goodreads.com/book/show/57661359-electric-idol","heat":4,"explicit":4,"emotion":3,"consent":4,"taboo":2,"plot":4,"tone":["dark","intense","wry"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["power-exchange","marriage","enemies-to-lovers"],"trope":["mythology-retelling","fake-relationship","power-exchange"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["death threats","violence","explicit sex","toxic family dynamics","power imbalance"],"fit_notes":"Companion to Neon Gods already on the list; high-heat mythology retelling with broad BookTok appeal and consistently explicit content throughout.","tags_raw":"erotica,mythology retelling,dark romance,fake marriage,enemies to lovers,Olympus"},{"id":97,"title":"Everything for Her","author":"Alexa Riley","year":2016,"series":"For Her #1","subgenre":"Obsessive Erotic Romance","short_summary":"Foster-care survivor Mallory lands her dream internship, unaware that billionaire Oz has been obsessively watching over her for years and engineered their meeting.","cover_url":"https://covers.openlibrary.org/b/isbn/9780373004522-L.jpg","source_url":"https://www.goodreads.com/book/show/31423840-everything-for-her","heat":4,"explicit":4,"emotion":4,"consent":3,"taboo":2,"plot":4,"tone":["intense","wry","obsessive"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission"],"trope":["billionaire","virgin-heroine","obsession"],"kink":["dominance-submission","heat-cycles"],"orientation":["m/f-primary"],"warnings":["stalking","surveillance","obsessive behavior","extreme possessiveness","explicit sex"],"fit_notes":"Quintessential Alexa Riley—short, steamy, possessive alpha hero. Perfect for readers who enjoy unapologetic instalove erotica with a stalker-romance edge.","tags_raw":"erotica,obsessive hero,billionaire,stalker romance,instalove,OTT alpha"},{"id":98,"title":"Three Simple Rules","author":"Nikki Sloane","year":2015,"series":"The Blindfold Club #1","subgenre":"BDSM Erotica","short_summary":"To save her career, a young woman sells herself for one night at an exclusive blindfold club, where a mysterious man has paid thousands to own her—and changes everything.","cover_url":"https://covers.openlibrary.org/b/isbn/9780998315102-L.jpg","source_url":"https://www.goodreads.com/book/show/23016075-three-simple-rules","heat":5,"explicit":5,"emotion":3,"consent":4,"taboo":3,"plot":2,"tone":["intense","wry","playful"],"pacing":["scene-heavy"],"style":["contemporary"],"dynamic":["dominance-submission","power-exchange"],"trope":["awakening","power-exchange","workplace"],"kink":["bdsm","dominance-submission","power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["coercion","explicit BDSM","anonymous sex","power imbalance","dubious consent elements"],"fit_notes":"Club-based erotica with strong BDSM elements; fills the niche between Club Shadowlands and The Marketplace already on the list with a more contemporary, accessible voice.","tags_raw":"erotica,BDSM,sex club,blindfold,auction,anonymous encounter,series starter"},{"id":99,"title":"Ruthless King","author":"Meghan March","year":2017,"series":"Mount Trilogy #1","subgenre":"Dark Erotic Romance","short_summary":"Keira Kilgore's life is upended when Lachlan Mount—New Orleans' most dangerous underground king—claims her as payment for her family's debts.","cover_url":"https://covers.openlibrary.org/b/isbn/9781943796014-L.jpg","source_url":"https://www.goodreads.com/book/show/36099048-ruthless-king","heat":5,"explicit":5,"emotion":4,"consent":3,"taboo":4,"plot":4,"tone":["dark","intense","wry"],"pacing":["measured"],"style":["contemporary"],"dynamic":["power-exchange","fated-mates"],"trope":["billionaire","obsession","power-exchange"],"kink":["power-exchange","dubcon-fantasy"],"orientation":["m/f-primary"],"warnings":["captivity","dubious consent","violence","criminal activity","power imbalance","possessive behavior"],"fit_notes":"Dark erotic romance from a NYT bestseller; bridges the gap between dark mafia romance (Corrupt, Brutal Prince) and billionaire erotica already on the list.","tags_raw":"dark romance,erotica,mafia,criminal underworld,captive,antihero,series starter"},{"id":100,"title":"Seven Years to Sin","author":"Sylvia Day","year":2012,"series":null,"subgenre":"Historical Erotica","short_summary":"Seven years after witnessing a scandalous encounter on her wedding eve, newly widowed Lady Jessica Sheffield boards a ship captained by the rakish Alistair Caulfield—and finally surrenders to the desire she's suppress…","cover_url":"https://covers.openlibrary.org/b/isbn/9780758290410-L.jpg","source_url":"https://www.goodreads.com/book/show/21799011-seven-years-to-sin","heat":3,"explicit":5,"emotion":4,"consent":4,"taboo":3,"plot":2,"tone":["intense","wry","transgressive"],"pacing":["slow-burn","scene-heavy"],"style":["literary","classical"],"dynamic":["power-exchange","marriage","forbidden"],"trope":["forbidden-desire","power-exchange","second-chance"],"kink":["power-exchange"],"orientation":["m/f-primary"],"warnings":["references to childhood abuse","explicit sex","past trauma","class-based power dynamics"],"fit_notes":"Historical erotica by the Bared to You author adds period-setting diversity to the list; literary quality with unflinching explicit content and emotional depth.","tags_raw":"historical erotica,Regency,forbidden love,widow,abuse survivors,literary erotica"}]</script>
+
+<script>
+/* =========================================================
+   LUMEN TERMINAL — Dashboard engine
+   ========================================================= */
+
+function mapCatalogBook(b) {
+  return {
+    id:           b.id,
+    title:        b.title        || '',
+    author:       b.author       || '',
+    year:         b.year         || null,
+    series:       b.series       || null,
+    subgenre:     b.subgenre     || b.category || '',
+    short_summary: b.description || b.short_summary || b.fit_notes || '',
+    fit_notes:    b.fit_notes    || '',
+    cover_url:    b.thumbnail    || b.cover_url || null,
+    heat:         b.heat_level          || b.heat     || 3,
+    explicit:     b.explicit_level      || b.explicit  || 3,
+    emotion:      b.emotional_intensity || b.emotion   || 3,
+    consent:      b.consent_clarity     || b.consent   || 3,
+    taboo:        b.taboo_tolerance     || b.taboo     || 3,
+    plot:         b.plot_weight         || b.plot      || 3,
+    tone:         b.tone                || [],
+    dynamic:      b.relationship_dynamic || b.dynamic  || [],
+    trope:        b.trope_tags          || b.trope     || [],
+    kink:         b.kink_tags           || b.kink      || [],
+    orientation:  b.orientation_tags    || b.orientation || [],
+    warnings:     b.content_warnings    || b.warnings  || []
+  };
+}
+
+function resolveCatalogBooks() {
+  const builtin = JSON.parse(document.getElementById('bookData').textContent);
+  const seen = new Set(builtin.map(b => String(b.id)));
+  const merged = builtin.slice();
+
+  // Merge in any catalog override (applied via Settings → Curated catalog)
+  try {
+    const raw = localStorage.getItem('lumen:catalog-override');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.books)) {
+        parsed.books.forEach(b => {
+          const mapped = mapCatalogBook(b);
+          if (!seen.has(String(mapped.id))) { merged.push(mapped); seen.add(String(mapped.id)); }
+        });
+      }
+    }
+  } catch (e) {}
+
+  // Merge in books from the main app's discovered/library state (lumen:v1)
+  try {
+    const raw = localStorage.getItem('lumen:v1');
+    if (raw) {
+      const state = JSON.parse(raw);
+      const discovered = Array.isArray(state && state.discovered) ? state.discovered : [];
+      discovered.forEach(b => {
+        if (!seen.has(String(b.id))) {
+          merged.push(mapCatalogBook(b));
+          seen.add(String(b.id));
+        }
+      });
+    }
+  } catch (e) {}
+
+  const withCovers = merged.filter(b => b.cover_url);
+  return withCovers.length ? withCovers : [];
+}
+
+const BOOKS = resolveCatalogBooks();
+
+// Taste profile state
+const profile = {
+  heat: 3, explicit: 3, emotion: 4, consent: 4, taboo: 3, plot: 4,
+  tone: new Set(), dynamic: new Set(),
+  subgenreFilter: null,
+  search: ''
+};
+let sortKey = 'fit';
+let sortDir = 'desc';
+let selectedId = null;
+
+// ---------- Fit scoring ----------
+function numMatch(u, b) {
+  const d = Math.abs(u - b);
+  if (d === 0) return 1;
+  if (d === 1) return 0.6;
+  if (d === 2) return 0.25;
+  return 0;
+}
+
+function setOverlap(userSet, bookArr) {
+  if (!userSet.size) return { credit: 0.5, matched: [] };
+  if (!bookArr?.length) return { credit: 0, matched: [] };
+  const matched = bookArr.filter(t => userSet.has(t));
+  return { credit: matched.length / userSet.size, matched };
+}
+
+function scoreBook(b) {
+  const W = { heat: 1.0, explicit: 1.0, emotion: 1.0, consent: 1.5, taboo: 1.2, plot: 0.8, tone: 1.0, dynamic: 1.1 };
+  let raw = 0, max = 0;
+  const contributions = {};
+  // Numeric
+  for (const k of ['heat','explicit','emotion','plot']) {
+    const s = numMatch(profile[k], b[k]);
+    raw += s * W[k]; max += W[k];
+    contributions[k] = s;
+  }
+  // Consent: floor (book >= user → full)
+  const consentScore = b.consent >= profile.consent ? 1 : numMatch(profile.consent, b.consent);
+  raw += consentScore * W.consent; max += W.consent;
+  contributions.consent = consentScore;
+  // Taboo: ceiling (book <= user → full)
+  const tabooScore = b.taboo <= profile.taboo ? 1 : numMatch(profile.taboo, b.taboo);
+  raw += tabooScore * W.taboo; max += W.taboo;
+  contributions.taboo = tabooScore;
+  // Tag overlaps
+  const toneO = setOverlap(profile.tone, b.tone);
+  raw += toneO.credit * W.tone; max += W.tone;
+  const dynO = setOverlap(profile.dynamic, b.dynamic);
+  raw += dynO.credit * W.dynamic; max += W.dynamic;
+  const fit = Math.round((raw / max) * 100);
+  // Confidence: how many of her preference axes the book has signals on
+  const tagSignals = (b.tone?.length || 0) + (b.dynamic?.length || 0) + (b.trope?.length || 0) + (b.kink?.length || 0);
+  const confidence = Math.min(100, 30 + Math.round(tagSignals * 7));
+  return { fit, confidence, contributions, toneMatched: toneO.matched, dynMatched: dynO.matched };
+}
+
+// ---------- Filtering ----------
+function filteredBooks() {
+  const q = profile.search.toLowerCase().trim();
+  let list = BOOKS.filter(b => {
+    if (profile.subgenreFilter && b.subgenre !== profile.subgenreFilter) return false;
+    if (q) {
+      const hay = [b.title, b.author, b.subgenre, (b.trope||[]).join(' '), (b.tone||[]).join(' '), b.short_summary||''].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  // Score every book
+  list = list.map(b => ({ ...b, ...scoreBook(b) }));
+  // Sort
+  list.sort((a, b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (typeof av === 'string') { av = av.toLowerCase(); bv = bv.toLowerCase(); }
+    if (av < bv) return sortDir === 'asc' ? -1 : 1;
+    if (av > bv) return sortDir === 'asc' ? 1 : -1;
+    return 0;
+  });
+  return list;
+}
+
+// ---------- Helpers ----------
+const fmtPct = v => `${v}%`;
+const rateClass = n => `rate-h${n}`;
+
+// ---------- KPI strip ----------
+function renderKPIs() {
+  const list = filteredBooks();
+  const avgFit = list.length ? Math.round(list.reduce((s, b) => s + b.fit, 0) / list.length) : 0;
+  const top = list[0]?.fit || 0;
+  const strong = list.filter(b => b.fit >= 70).length;
+  const clean = list.filter(b => !b.warnings || b.warnings.length === 0).length;
+  const avgHeat = list.length ? (list.reduce((s, b) => s + b.heat, 0) / list.length).toFixed(1) : '0';
+  const cellsHtml = [
+    { label: 'CATALOGUE', val: `<em>${BOOKS.length}</em>`, sub: 'curated titles', cls: 'gold', spark: [80, 85, 90, 95, 100, 100] },
+    { label: 'IN VIEW', val: `<em>${list.length}</em>`, sub: `${Math.round(list.length/BOOKS.length*100)}% of library`, cls: '', spark: [60, 75, 65, 80, 90, list.length] },
+    { label: 'AVG FIT', val: `${avgFit}<span class="unit">%</span>`, sub: `<span class="kpi-delta up">▲ ${Math.max(0, avgFit-55)}pp vs library</span>`, cls: '', spark: [45, 50, 55, 58, 65, avgFit] },
+    { label: 'TOP FIT', val: `${top}<span class="unit">%</span>`, sub: list[0]?.title.slice(0, 18) || '—', cls: 'gold', spark: [70, 75, 80, 82, 85, top] },
+    { label: 'STRONG ≥70', val: `<em>${strong}</em>`, sub: `${Math.round(strong/Math.max(1,list.length)*100)}% of view`, cls: 'good', spark: [5, 8, 12, 18, 22, strong] },
+    { label: 'AVG HEAT', val: `<em>${avgHeat}</em>`, sub: 'on 1-5 scale', cls: 'blush', spark: [3.5, 3.8, 4.0, 4.1, 4.2, parseFloat(avgHeat)] }
+  ];
+  document.getElementById('kpiStrip').innerHTML = cellsHtml.map(k => `
+    <div class="kpi-cell ${k.cls}">
+      <div class="kpi-cell-label">${k.label}</div>
+      <div class="kpi-cell-val">${k.val}</div>
+      <div class="kpi-cell-sub">${k.sub}</div>
+      ${sparklineSVG(k.spark)}
+    </div>
+  `).join('');
+}
+
+function sparklineSVG(data) {
+  const w = 44, h = 18;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = Math.max(1, max - min);
+  const step = w / (data.length - 1);
+  const pts = data.map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`).join(' ');
+  return `<svg class="kpi-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <polyline points="${pts}" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+// ---------- Heatmap ----------
+function renderHeatmap() {
+  const list = filteredBooks();
+  // Grid: heat rows (5→1 top-to-bottom), explicit cols (1→5)
+  const grid = [[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]];
+  list.forEach(b => { grid[5 - b.heat][b.explicit - 1]++; });
+  const max = Math.max(1, ...grid.flat());
+  const el = document.getElementById('heatmap');
+  const rows = [];
+  // Header
+  rows.push(`<div class="heatmap-row hdr"><div>H ↓ / E →</div>${[1,2,3,4,5].map(n => `<div>${n}</div>`).join('')}</div>`);
+  for (let i = 0; i < 5; i++) {
+    const heatLvl = 5 - i;
+    const cells = [];
+    cells.push(`<div class="heatmap-row-label">H${heatLvl}</div>`);
+    for (let j = 0; j < 5; j++) {
+      const v = grid[i][j];
+      if (v === 0) {
+        cells.push(`<div class="heatmap-cell empty" title="Heat ${heatLvl} · Explicit ${j+1}: no titles"></div>`);
+      } else {
+        const intensity = v / max;
+        // Warmer tone for hotter cells
+        const alpha = 0.18 + intensity * 0.7;
+        const color = `rgba(184,74,98,${alpha.toFixed(2)})`;
+        const textColor = intensity > 0.55 ? '#fff' : 'var(--text)';
+        cells.push(`<div class="heatmap-cell" style="background:${color};color:${textColor};" title="Heat ${heatLvl} · Explicit ${j+1}: ${v} titles">${v}</div>`);
+      }
+    }
+    rows.push(`<div class="heatmap-row">${cells.join('')}</div>`);
+  }
+  el.innerHTML = rows.join('');
+}
+
+// ---------- Trope bar ----------
+function renderTropeBar() {
+  const list = filteredBooks();
+  const counts = {};
+  list.forEach(b => (b.trope || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const max = Math.max(1, ...entries.map(e => e[1]));
+  const el = document.getElementById('tropeBar');
+  el.innerHTML = entries.map(([name, n], i) => {
+    const cls = i % 3 === 0 ? '' : i % 3 === 1 ? 'sage' : 'violet';
+    return `<div class="bar-row">
+      <div class="bar-label" title="${name}">${name.replace(/-/g, ' ')}</div>
+      <div class="bar-track"><div class="bar-fill ${cls}" style="width:${(n/max)*100}%"></div></div>
+      <div class="bar-val">${n}</div>
+    </div>`;
+  }).join('') || '<div style="font-family:\'Cormorant Garamond\',serif;font-style:italic;color:var(--text-mute);font-size:12px;text-align:center;padding:10px;">No data in current filter</div>';
+}
+
+// ---------- Era bar ----------
+function renderEraBar() {
+  const list = filteredBooks();
+  const buckets = [
+    { label: 'Pre-1950', test: y => y < 1950 },
+    { label: '1950-1999', test: y => y >= 1950 && y < 2000 },
+    { label: '2000-2009', test: y => y >= 2000 && y < 2010 },
+    { label: '2010-2014', test: y => y >= 2010 && y < 2015 },
+    { label: '2015-2019', test: y => y >= 2015 && y < 2020 },
+    { label: '2020+',    test: y => y >= 2020 }
+  ];
+  const data = buckets.map(b => ({ label: b.label, n: list.filter(x => x.year && b.test(x.year)).length }));
+  const max = Math.max(1, ...data.map(d => d.n));
+  const el = document.getElementById('eraBar');
+  el.innerHTML = data.map(d => `<div class="bar-row">
+    <div class="bar-label">${d.label}</div>
+    <div class="bar-track"><div class="bar-fill blush" style="width:${(d.n/max)*100}%"></div></div>
+    <div class="bar-val">${d.n}</div>
+  </div>`).join('');
+}
+
+// ---------- Radar (user compass) ----------
+function renderRadar(svgId, values, comparisonValues) {
+  const svg = document.getElementById(svgId);
+  const axes = ['heat','explicit','emotion','consent','taboo','plot'];
+  const R = 85;
+  const pts = axes.map((a, i) => {
+    const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+    const r = (values[a] / 5) * R;
+    return { x: Math.cos(angle) * r, y: Math.sin(angle) * r, angle, val: values[a] };
+  });
+  const axisLines = axes.map((a, i) => {
+    const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+    const x = Math.cos(angle) * R;
+    const y = Math.sin(angle) * R;
+    const lx = Math.cos(angle) * (R + 14);
+    const ly = Math.sin(angle) * (R + 14);
+    return `<line class="compass-axis" x1="0" y1="0" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>
+            <text class="compass-label-text" x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${a.toUpperCase().slice(0,4)}</text>`;
+  }).join('');
+  const rings = [0.25, 0.5, 0.75, 1].map(r => `<circle class="compass-ring" cx="0" cy="0" r="${r * R}"/>`).join('');
+  const shape = `M ${pts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')} Z`;
+  let cmpShape = '';
+  if (comparisonValues) {
+    const cmpPts = axes.map((a, i) => {
+      const angle = (Math.PI * 2 * i) / axes.length - Math.PI / 2;
+      const r = (comparisonValues[a] / 5) * R;
+      return { x: Math.cos(angle) * r, y: Math.sin(angle) * r };
+    });
+    const cmp = `M ${cmpPts.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L ')} Z`;
+    cmpShape = `<path d="${cmp}" fill="var(--gold-soft)" stroke="var(--gold)" stroke-width="1.2" stroke-dasharray="3 2" stroke-linejoin="round"/>`;
+  }
+  const points = pts.map(p => `<circle class="compass-point" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5"/>`).join('');
+  svg.innerHTML = rings + axisLines + cmpShape + `<path d="${shape}" class="compass-shape"/>` + points;
+}
+
+// ---------- Chips ----------
+const TONE_OPTIONS = ['dark','intense','obsessive','sensual','tender','lyrical','wry','reflective','transgressive','playful'];
+const DYN_OPTIONS = ['dominance-submission','power-exchange','forbidden','enemies-to-lovers','marriage','reverse-harem','fated-mates','second-chance','courtship','mutual-longing'];
+
+function renderChips() {
+  const renderOne = (containerId, options, key) => {
+    const el = document.getElementById(containerId);
+    el.innerHTML = options.map(o => {
+      const active = profile[key].has(o);
+      return `<span class="chip ${active?'active':''}" data-tag="${o}" data-key="${key}">${o.replace(/-/g,' ')}</span>`;
+    }).join('');
+    el.querySelectorAll('.chip').forEach(c => {
+      c.addEventListener('click', () => {
+        const tag = c.dataset.tag, k = c.dataset.key;
+        if (profile[k].has(tag)) profile[k].delete(tag);
+        else profile[k].add(tag);
+        renderChips();
+        renderAll();
+      });
+    });
+  };
+  renderOne('toneChips', TONE_OPTIONS, 'tone');
+  renderOne('dynamicChips', DYN_OPTIONS, 'dynamic');
+}
+
+// ---------- Data grid ----------
+function renderGrid() {
+  const list = filteredBooks();
+  const body = document.getElementById('gridBody');
+  body.innerHTML = list.map(b => {
+    const fitCls = b.fit >= 75 ? 'strong' : b.fit >= 55 ? 'mid' : 'low';
+    const subg = b.subgenre || '—';
+    const sig = [...(b.tone||[]).slice(0,1), ...(b.dynamic||[]).slice(0,1), ...(b.trope||[]).slice(0,1)].map(s => s.replace(/-/g,' ')).slice(0,2).join(' · ');
+    return `<tr data-id="${b.id}" class="${selectedId === b.id ? 'selected' : ''}">
+      <td class="fit-col ${fitCls}" title="Fit: ${b.fit}% · Confidence: ${b.confidence}%">
+        ${b.fit}
+        <div class="mini-bar" style="margin-top:2px;"><div class="mini-bar-fill" style="width:${b.fit}%"></div></div>
+      </td>
+      <td class="title-col" title="${b.title}">${b.title}</td>
+      <td class="author-col" title="${b.author}">${b.author}</td>
+      <td class="num-col">${b.year || '—'}</td>
+      <td class="sub-col" title="${subg}">${subg}</td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.heat)}">${b.heat}</span></td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.explicit)}">${b.explicit}</span></td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.emotion)}">${b.emotion}</span></td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.consent)}">${b.consent}</span></td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.taboo)}">${b.taboo}</span></td>
+      <td class="num-col"><span class="rate-pill ${rateClass(b.plot)}">${b.plot}</span></td>
+      <td class="sub-col" style="color:var(--accent-deep);font-style:italic;font-family:'Cormorant Garamond',serif;font-size:12px;">${sig || '—'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="12" style="padding:30px;text-align:center;color:var(--text-mute);font-family:\'Cormorant Garamond\',serif;font-style:italic;">No titles match current filters</td></tr>';
+
+  body.querySelectorAll('tr[data-id]').forEach(row => {
+    row.addEventListener('click', () => {
+      selectedId = row.dataset.id;
+      renderGrid();
+      renderDetail();
+      renderSimilar();
+    });
+  });
+
+  document.getElementById('gridCount').textContent = list.length;
+  // Update sort indicators
+  document.querySelectorAll('#dataGrid thead th').forEach(th => {
+    th.classList.remove('sorted', 'asc');
+    if (th.dataset.sort === sortKey) {
+      th.classList.add('sorted');
+      if (sortDir === 'asc') th.classList.add('asc');
+    }
+  });
+}
+
+// ---------- Detail panel ----------
+function renderDetail() {
+  const book = BOOKS.find(b => b.id === selectedId);
+  if (!book) return;
+  const scored = { ...book, ...scoreBook(book) };
+  document.getElementById('detailTitle').textContent = book.title;
+  document.getElementById('detailAuthor').textContent = `${book.author} · ${book.year || 'n.d.'}`;
+  const coverEl = document.getElementById('detailCover');
+  const existingImg = coverEl.querySelector('img');
+  if (existingImg) existingImg.remove();
+  if (book.cover_url) {
+    const img = document.createElement('img');
+    img.src = book.cover_url;
+    img.onerror = () => img.remove();
+    coverEl.insertBefore(img, coverEl.firstChild);
+  }
+  document.getElementById('detFit').textContent = scored.fit + '%';
+  document.getElementById('detFit').className = 'detail-fit-val ' + (scored.fit >= 70 ? 'sage' : scored.fit >= 50 ? '' : 'warn');
+  document.getElementById('detConf').textContent = scored.confidence + '%';
+  document.getElementById('detailSummary').textContent = book.short_summary || book.fit_notes || '';
+
+  const kv = document.getElementById('detailKV');
+  kv.innerHTML = `
+    <dt>Subgenre</dt><dd>${book.subgenre || '—'}</dd>
+    <dt>Series</dt><dd>${book.series || '<span style="font-style:italic;color:var(--text-mute);">standalone</span>'}</dd>
+    <dt>Published</dt><dd>${book.year || '—'}</dd>
+    <dt>Pairing</dt><dd>${(book.orientation||[]).map(o=>o.replace(/-/g,' ')).join(', ') || '—'}</dd>
+  `;
+
+  // Render comparison radar
+  renderRadar('detailRadar', profile, book);
+
+  const sigTags = [
+    ...(book.tone||[]).map(t => ({ text: t, cls: '' })),
+    ...(book.dynamic||[]).map(t => ({ text: t, cls: 'gold' })),
+    ...(book.trope||[]).map(t => ({ text: t, cls: '' })),
+    ...(book.kink||[]).map(t => ({ text: t, cls: '' }))
+  ];
+  document.getElementById('detailTags').innerHTML = sigTags.map(t => `<span class="detail-tag ${t.cls}">${t.text.replace(/-/g,' ')}</span>`).join('') || '<span style="font-family:\'Cormorant Garamond\',serif;font-style:italic;color:var(--text-mute);">no tagged signals</span>';
+
+  const warnings = book.warnings || [];
+  document.getElementById('detailWarnings').innerHTML = warnings.length ? warnings.map(w => `<span class="detail-tag warn">${w}</span>`).join('') : '<span style="font-family:\'Cormorant Garamond\',serif;font-style:italic;color:var(--sage);font-size:11px;">no warnings flagged</span>';
+}
+
+// ---------- Similar ----------
+function renderSimilar() {
+  const base = BOOKS.find(b => b.id === selectedId);
+  if (!base) { document.getElementById('similarList').innerHTML = '<div style="font-family:\'Cormorant Garamond\',serif;font-style:italic;color:var(--text-mute);text-align:center;padding:14px 0;font-size:12px;">select a title above</div>'; return; }
+  // Score all by overlap with `base`
+  const scored = BOOKS.filter(b => b.id !== base.id).map(b => {
+    let overlap = 0;
+    overlap += new Set(base.tone).size && b.tone ? b.tone.filter(x => base.tone.includes(x)).length * 3 : 0;
+    overlap += new Set(base.dynamic).size && b.dynamic ? b.dynamic.filter(x => base.dynamic.includes(x)).length * 4 : 0;
+    overlap += new Set(base.trope).size && b.trope ? b.trope.filter(x => base.trope.includes(x)).length * 5 : 0;
+    overlap += new Set(base.kink).size && b.kink ? b.kink.filter(x => base.kink.includes(x)).length * 2 : 0;
+    if (b.subgenre === base.subgenre) overlap += 4;
+    overlap -= Math.abs(b.heat - base.heat) + Math.abs(b.plot - base.plot);
+    return { b, overlap };
+  }).sort((x, y) => y.overlap - x.overlap).slice(0, 5);
+
+  document.getElementById('similarList').innerHTML = scored.map(({ b, overlap }) => {
+    const pct = Math.max(30, Math.min(95, 40 + overlap * 4));
+    return `<div class="similar-item" data-id="${b.id}">
+      ${b.cover_url ? `<img class="similar-item-cover" src="${b.cover_url}" onerror="this.style.display='none'"/>` : '<div class="similar-item-cover"></div>'}
+      <div style="min-width:0;">
+        <div class="similar-item-title">${b.title}</div>
+        <div class="similar-item-author">${b.author}</div>
+      </div>
+      <div class="similar-item-score">${pct}%</div>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('.similar-item').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedId = el.dataset.id;
+      renderGrid(); renderDetail(); renderSimilar();
+    });
+  });
+}
+
+// ---------- Distribution footer ----------
+function renderDistribution() {
+  const counts = {};
+  const heatTotals = {};
+  BOOKS.forEach(b => {
+    counts[b.subgenre] = (counts[b.subgenre] || 0) + 1;
+    heatTotals[b.subgenre] = (heatTotals[b.subgenre] || 0) + b.heat;
+  });
+  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const el = document.getElementById('distributionBody');
+  el.innerHTML = entries.map(([name, count]) => {
+    const avgHeat = (heatTotals[name] / count).toFixed(1);
+    const active = profile.subgenreFilter === name;
+    return `<div class="genre-tile ${active ? 'filter-active' : ''}" data-genre="${name}">
+      <div class="genre-tile-name">${name}</div>
+      <div class="genre-tile-stats">
+        <div class="genre-tile-count">${count}</div>
+        <div class="genre-tile-avg">HEAT ${avgHeat}</div>
+      </div>
+    </div>`;
+  }).join('');
+  el.querySelectorAll('.genre-tile').forEach(t => {
+    t.addEventListener('click', () => {
+      const g = t.dataset.genre;
+      profile.subgenreFilter = (profile.subgenreFilter === g) ? null : g;
+      document.getElementById('distSub').textContent = profile.subgenreFilter ? `filtered: ${profile.subgenreFilter}` : 'click to filter';
+      renderAll();
+    });
+  });
+}
+
+// ---------- Ticker ----------
+function renderTicker() {
+  const scored = BOOKS.map(b => ({ ...b, ...scoreBook(b) })).sort((a, b) => b.fit - a.fit);
+  const items = scored.slice(0, 12).map(b => {
+    const topTrope = (b.trope_tags || b.trope || [])[0] || "";
+    return `<span class="ticker-item">
+      <span class="ticker-title">${b.title}</span>
+      <span class="ticker-val">${b.fit}%</span>
+      ${topTrope ? `<span class="ticker-trope">${topTrope}</span>` : ""}
+    </span>`;
+  });
+  // Duplicate for seamless loop
+  document.getElementById('ticker').innerHTML = items.join('') + items.join('');
+}
+
+// ---------- Insight ----------
+function renderInsight() {
+  const list = filteredBooks();
+  const avgFit = list.length ? Math.round(list.reduce((s, b) => s + b.fit, 0) / list.length) : 0;
+  const strong = list.filter(b => b.fit >= 70).length;
+  const topGenre = (() => {
+    const sums = {};
+    list.filter(b => b.fit >= 60).forEach(b => { sums[b.subgenre] = (sums[b.subgenre] || 0) + 1; });
+    return Object.entries(sums).sort((a,b) => b[1] - a[1])[0]?.[0] || 'Erotic Romance';
+  })();
+  const mainTone = [...profile.tone][0] || 'balanced';
+  let headline, body;
+  if (strong >= 20) {
+    headline = `Her compass is <em>richly served</em>.`;
+    body = `${strong} titles score above 70% — the library has strong depth in her preferred territory. Top subgenre for her: ${topGenre}.`;
+  } else if (strong >= 8) {
+    headline = `A <em>specialist's</em> taste.`;
+    body = `${strong} titles meet her threshold. She's looking for specific signals — lean into ${topGenre} and the ${mainTone} tone range.`;
+  } else if (strong > 0) {
+    headline = `A <em>particular</em> reader.`;
+    body = `Only ${strong} titles score above 70%. Suggest widening tone filters or softening the consent floor by one step to expand the pool.`;
+  } else {
+    headline = `An <em>unmet</em> signature.`;
+    body = `No titles currently clear 70% fit. Try relaxing taboo tolerance or clearing tone filters — the catalogue is rich but narrow on her exact compass.`;
+  }
+  document.getElementById('insightTitle').innerHTML = headline;
+  document.getElementById('insightBody').textContent = body;
+}
+
+// ---------- Render all ----------
+function renderAll() {
+  renderRadar('userRadar', profile);
+  renderKPIs();
+  renderHeatmap();
+  renderTropeBar();
+  renderEraBar();
+  renderGrid();
+  if (selectedId) renderDetail();
+  renderSimilar();
+  renderInsight();
+  renderDistribution();
+}
+
+// ---------- Event wiring ----------
+['heat','explicit','emotion','consent','taboo','plot'].forEach(k => {
+  const s = document.getElementById('s_' + k);
+  const v = document.getElementById('v_' + k);
+  s.addEventListener('input', () => {
+    profile[k] = parseInt(s.value);
+    v.textContent = s.value;
+    renderAll();
+  });
+});
+
+document.getElementById('searchInput').addEventListener('input', (e) => {
+  profile.search = e.target.value;
+  renderGrid();
+  renderKPIs();
+  renderInsight();
+});
+
+document.querySelectorAll('#dataGrid thead th[data-sort]').forEach(th => {
+  th.addEventListener('click', () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    else { sortKey = k; sortDir = (k === 'title' || k === 'author' || k === 'subgenre') ? 'asc' : 'desc'; }
+    renderGrid();
+  });
+});
+
+document.querySelectorAll('.theme-dot').forEach(d => {
+  d.addEventListener('click', () => {
+    document.body.className = 'theme-' + d.dataset.theme;
+    document.querySelectorAll('.theme-dot').forEach(x => x.classList.toggle('active', x === d));
+    showToast(`Theme: ${d.dataset.theme.charAt(0).toUpperCase() + d.dataset.theme.slice(1)}`);
+  });
+});
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// System time
+function updateSysTime() {
+  const d = new Date();
+  const h = String(d.getHours()).padStart(2, '0');
+  const m = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  document.getElementById('sysTime').textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateSysTime, 1000);
+updateSysTime();
+
+// Initial render
+renderChips();
+selectedId = BOOKS[0]?.id;
+renderAll();
+renderTicker();
+</script>
+
+</body>
+</html>

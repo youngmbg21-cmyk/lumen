@@ -2,22 +2,43 @@
    Lumen — Discovery (Web search + Claude enrichment)
    Exposes window.LumenDiscovery with:
      setApiKey(key), getApiKey(),
+     setAdminKey(key), getAdminKey(),
      searchBooks(query) -> Promise<rawGoogleItems[]>
      analyzeWithClaude(book) -> Promise<enrichedBook>
      onStatus(fn) -> unsubscribe; status in
        { idle | reading | online | error }
-   API key is stored in its own localStorage namespace (lumen:claude-key)
-   so users can clear it independently of app state.
+
+   Discovery Phase architecture — three-tier provider fallback:
+     Priority 1: Edge proxy at /api/analyze
+     Priority 2: Admin key (set by operator, stored in lumen:admin-key)
+     Priority 3: User key (lumen:claude-key) for power users
+   Session throttle: 30 AI calls per calendar day (00:00–23:59).
    ============================================================ */
 (function () {
   "use strict";
 
-  const KEY_STORAGE = "lumen:claude-key";
-  const GBOOKS_KEY_STORAGE = "lumen:gbooks-key";
+  const KEY_STORAGE          = "lumen:claude-key";
+  const MASTER_KEY_STORAGE   = "lumen:master-key";
+  const DEMO_MODE_STORAGE    = "lumen:demo-mode";
+  const SESSION_CAP_STORAGE  = "lumen:session-cap";
+  const GBOOKS_KEY_STORAGE   = "lumen:gbooks-key";
+  const THROTTLE_KEY         = "lumen:throttle";   // localStorage
+  const PROXY_URL            = "/api/analyze";
+  const DEFAULT_THROTTLE_CAP = 30;
+
+  // Migrate legacy lumen:admin-key → lumen:master-key on first load.
+  (function _migrateLegacyAdminKey() {
+    try {
+      const legacy = localStorage.getItem("lumen:admin-key");
+      if (legacy && !localStorage.getItem(MASTER_KEY_STORAGE)) {
+        localStorage.setItem(MASTER_KEY_STORAGE, legacy);
+      }
+    } catch (e) { /* storage unavailable */ }
+  })();
 
   const state = {
-    status: "idle",   // idle | reading | online | error
-    lastMessage: "Waiting for API key…"
+    status:      "idle",  // idle | reading | online | error
+    lastMessage: "Ready"
   };
   const statusSubs = new Set();
 
@@ -27,10 +48,16 @@
     statusSubs.forEach(fn => { try { fn(state); } catch (e) { /* ignore */ } });
   }
   function defaultMessage(status) {
+    if (status === "idle") {
+      const { via } = resolveProvider();
+      if (via === "admin") return "Bianca is online";
+      if (via === "user")  return "Bianca is online · your key";
+      if (via === "proxy") return "Bianca is online";
+      return "Waiting for API key";
+    }
     return {
-      idle:    "Waiting for API key",
-      reading: "Claude is reading…",
-      online:  "Analysis complete",
+      reading: "Bianca is reading…",
+      online:  "Bianca is online",
       error:   "Analysis failed"
     }[status] || "";
   }
@@ -41,110 +68,385 @@
     return () => statusSubs.delete(fn);
   }
 
+  // ── User key ──────────────────────────────────────────────────
   function setApiKey(key) {
     if (key && key.trim()) {
       localStorage.setItem(KEY_STORAGE, key.trim());
       setStatus("idle", "API key saved · ready");
     } else {
       localStorage.removeItem(KEY_STORAGE);
-      setStatus("idle", "Waiting for API key");
+      setStatus("idle", "Ready");
     }
   }
-  function getApiKey() {
-    return localStorage.getItem(KEY_STORAGE) || "";
-  }
+  function getApiKey()  { return localStorage.getItem(KEY_STORAGE)  || ""; }
   function clearApiKey() {
     localStorage.removeItem(KEY_STORAGE);
     setStatus("idle", "API key cleared");
   }
 
+  // ── Master key + Demo Mode + Session Cap (operator, Discovery Phase) ──
+  function setMasterKey(key) {
+    if (key && key.trim()) {
+      localStorage.setItem(MASTER_KEY_STORAGE, key.trim());
+      setStatus("idle");
+    } else {
+      localStorage.removeItem(MASTER_KEY_STORAGE);
+      setStatus("idle");
+    }
+  }
+  function getMasterKey()  { return localStorage.getItem(MASTER_KEY_STORAGE) || ""; }
+  function clearMasterKey() { localStorage.removeItem(MASTER_KEY_STORAGE); setStatus("idle"); }
+
+  function setDemoMode(on) {
+    if (on) localStorage.setItem(DEMO_MODE_STORAGE, "1");
+    else    localStorage.removeItem(DEMO_MODE_STORAGE);
+    setStatus("idle");
+  }
+  function getDemoMode() { return !!localStorage.getItem(DEMO_MODE_STORAGE); }
+
+  function setSessionCap(n) {
+    const v = parseInt(n, 10);
+    if (Number.isFinite(v) && v > 0) localStorage.setItem(SESSION_CAP_STORAGE, String(v));
+    else localStorage.removeItem(SESSION_CAP_STORAGE);
+  }
+  function getSessionCap() {
+    const v = parseInt(localStorage.getItem(SESSION_CAP_STORAGE), 10);
+    return (Number.isFinite(v) && v > 0) ? v : DEFAULT_THROTTLE_CAP;
+  }
+
+  // Back-compat aliases so any existing call sites in app.js still work.
+  const setAdminKey   = setMasterKey;
+  const getAdminKey   = getMasterKey;
+  const clearAdminKey = clearMasterKey;
+
+  // ── Google Books key ──────────────────────────────────────────
   function setGoogleKey(key) {
     if (key && key.trim()) localStorage.setItem(GBOOKS_KEY_STORAGE, key.trim());
     else localStorage.removeItem(GBOOKS_KEY_STORAGE);
   }
-  function getGoogleKey() {
-    return localStorage.getItem(GBOOKS_KEY_STORAGE) || "";
-  }
-  function clearGoogleKey() {
-    localStorage.removeItem(GBOOKS_KEY_STORAGE);
+  function getGoogleKey()  { return localStorage.getItem(GBOOKS_KEY_STORAGE) || ""; }
+  function clearGoogleKey() { localStorage.removeItem(GBOOKS_KEY_STORAGE); }
+
+  // ── Provider resolution: master (demo) → master (any) → user → none ──
+  // When Demo Mode is ON the master key is used unconditionally so
+  // visitors never see a "Waiting for API key" prompt. When Demo Mode
+  // is OFF the master key still works but only for the operator.
+  function resolveProvider() {
+    const master = getMasterKey();
+    if (master && getDemoMode()) return { via: "admin", key: master };
+    if (master)                  return { via: "admin", key: master };
+    const user = getApiKey();
+    if (user)                    return { via: "user",  key: user };
+    return { via: "proxy", key: null };
   }
 
-  // 1) Google Books search. Unauthenticated requests share a low daily quota;
-  // pass a Google Books API key from Settings to raise the cap dramatically.
-  // Throws an Error with a human-readable message the UI can render.
-  // No category filtering — users can search for any title, author, or
-  // topic and add any result to their Library.
-  async function searchBooks(query, maxResults = 6) {
-    if (!query || !query.trim()) return [];
-    const gkey = getGoogleKey();
-    const fetchCount = Math.max(maxResults, 10);
+  // ── Session throttle (disabled) ───────────────────────────────
+  // Limit is currently off. throttleRemaining() returns Infinity and
+  // _checkThrottle() is a no-op so all call sites pass through unchanged.
+  function throttleRemaining() { return Infinity; }
+  function _recordThrottledCall() { /* no-op */ }
+  function _checkThrottle() { /* no-op */ }
+
+  // Category-level signals for non-romance/non-fiction books.
+  const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport|criticism|anthology|journalism|language arts/i;
+
+  // Description-level signals used when Google Books returns no category metadata.
+  // DROP wins over KEEP — e.g. "encyclopedia of romance" is still a reference work.
+  const DESC_DROP = /encyclopedia|handbook|workbook|guidebook|self.?help|self.?improvement|how.to|therapy|therapist|detective|murder|mystery|thriller|crime|investigation|horror|parenting|cookbook|recipe|nutrition|fitness|academic|dissertation|research study|collects essays|collection of essays|anthology of/i;
+  const DESC_KEEP = /romance novel|romantic comedy|rom.?com|love story|falling in love|meet cute|enemies.to.lovers|second chance|fake dating|steamy|swoon|happily ever after|love interest|fated|heart.*flutter|forbidden love|billionaire.*love|small.town.*love|marriage.*romance|fake.*relationship|arranged.*marriage/i;
+
+  function isRomanceEligible(item) {
+    const year = parseInt(item.year, 10);
+    if (!isNaN(year) && year < 1950) return false;
+
+    const cats = (item.categories || []).join(" ");
+    if (cats) return !ROMANCE_DROP.test(cats);
+
+    // No category metadata — use description signals.
+    // DESC_DROP eliminates reference works, thrillers, self-help, etc.
+    // DESC_KEEP confirms actual romance fiction language.
+    // Books with neither signal are too ambiguous to include.
+    const desc = item.description || "";
+    if (DESC_DROP.test(desc)) return false;
+    if (DESC_KEEP.test(desc)) return true;
+    return false;
+  }
+
+  function _upgradeThumb(url) {
+    if (!url) return null;
+    return String(url).replace(/^http:/, "https:").replace(/zoom=\d+/, "zoom=5");
+  }
+
+  function _mapGBItem(item) {
+    const v = item.volumeInfo || {};
+    const rawThumb = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
+    return {
+      id:          "gb_" + item.id,
+      title:       v.title || "Untitled",
+      author:      (v.authors && v.authors[0]) || "Unknown author",
+      authors:     v.authors || [],
+      year:        (v.publishedDate || "").slice(0, 4),
+      description: v.description || "No description available.",
+      thumbnail:   _upgradeThumb(rawThumb),
+      categories:  v.categories || [],
+      sourceUrl:   v.infoLink || v.canonicalVolumeLink || null,
+      source:      "Google Books"
+    };
+  }
+
+  // Parse "Title — Author", "Title by Author", or bare title.
+  function _parseQueryIntent(query) {
     const q = query.trim();
+    const dashMatch = q.match(/^(.+?)\s+[—–-]\s+(.+)$/);
+    if (dashMatch) return { title: dashMatch[1].trim(), author: dashMatch[2].trim() };
+    const byMatch = q.match(/^(.+?)\s+by\s+(.+)$/i);
+    if (byMatch) return { title: byMatch[1].trim(), author: byMatch[2].trim() };
+    return { title: q, author: null };
+  }
+
+  async function _gbFetch(q, maxResults, gkey, _attempt) {
+    _attempt = _attempt || 1;
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(q)
-      + "&maxResults=" + fetchCount
+      + "&maxResults=" + maxResults
       + "&printType=books"
       + "&orderBy=relevance"
       + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
-
     let res;
     try {
       res = await fetch(url);
     } catch (networkErr) {
       console.error("[Lumen Discovery] Network error calling Google Books:", networkErr);
-      throw new Error("Can't reach Google Books — check your connection or see the console for the exact error.");
+      throw new Error("Can't reach Google Books — check your connection and try again.");
     }
-
     if (!res.ok) {
-      let detail = "";
-      try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
-      console.error("[Lumen Discovery] Google Books returned", res.status, detail);
-
+      console.error("[Lumen Discovery] Google Books returned", res.status);
       if (res.status === 429 || res.status === 403) {
         const err = new Error(gkey
-          ? "Google Books rejected this key's quota (HTTP " + res.status + "). Check the key's daily limit in the Google Cloud console."
-          : "Google Books daily quota exhausted on this network (HTTP " + res.status + "). Add a Google Books API key in Settings to raise the cap."
+          ? "Google Books rejected this key's quota. Check the key's daily limit in the Google Cloud console."
+          : "Google Books daily quota exhausted on this network. Add a Google Books API key in Settings to raise the cap."
         );
         err.code = "quota";
         throw err;
       }
-      throw new Error(`Google Books returned HTTP ${res.status}.` + (detail ? ` ${detail}` : ""));
+      // Retry once on transient server errors (5xx).
+      if (res.status >= 500 && _attempt < 3) {
+        await new Promise(r => setTimeout(r, _attempt * 1500));
+        return _gbFetch(q, maxResults, gkey, _attempt + 1);
+      }
+      throw new Error("Google Books is temporarily unavailable — please try again in a moment.");
     }
-
     let data;
-    try {
-      data = await res.json();
-    } catch (parseErr) {
-      console.error("[Lumen Discovery] Malformed Google Books response:", parseErr);
+    try { data = await res.json(); } catch (e) {
       throw new Error("Google Books returned an unreadable response.");
     }
-
-    const items = (data.items || []).map(item => {
-      const v = item.volumeInfo || {};
-      return {
-        id: "gb_" + item.id,
-        title: v.title || "Untitled",
-        author: (v.authors && v.authors[0]) || "Unknown author",
-        authors: v.authors || [],
-        year: (v.publishedDate || "").slice(0, 4),
-        description: v.description || "No description available.",
-        thumbnail: (v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)) || null,
-        categories: v.categories || [],
-        sourceUrl: v.infoLink || v.canonicalVolumeLink || null,
-        source: "Google Books"
-      };
-    });
-    return items.slice(0, maxResults);
+    return (data.items || []).map(_mapGBItem);
   }
 
-  // 2) Claude analysis
-  // Returns { heat: 1-5, tropes: string[], insight: string }
-  async function analyzeWithClaude(book) {
-    const apiKey = getApiKey();
-    if (!apiKey) {
-      setStatus("error", "No API key set");
-      throw new Error("missing-api-key");
+  // Derive the romance subgenre label from a book's category metadata.
+  function _subgenreFor(anchor) {
+    const cats = (anchor.categories || []).join(" ");
+    if (/contemporary/i.test(cats))                         return "contemporary romance";
+    if (/historical/i.test(cats))                           return "historical romance";
+    if (/paranormal|supernatural|fantasy/i.test(cats))      return "paranormal romance";
+    if (/suspense|thriller|mystery/i.test(cats))            return "romantic suspense";
+    if (/erotic/i.test(cats))                               return "erotic romance";
+    return "romance";
+  }
+
+  // Build a thematic search query from description keywords + subgenre.
+  // Never uses title words so searching "Pucked Up" finds hockey-romance
+  // reads rather than other books with "pucked" in the title.
+  function _similarityQuery(anchor) {
+    const subgenre = _subgenreFor(anchor);
+
+    const stopwords = new Set([
+      "the","and","for","with","from","that","this","have","its","was","but","not",
+      "you","all","are","just","into","more","when","than","your","will","also","been",
+      "about","once","after","they","them","their","what","which","there","then","some",
+      "she","her","him","his","who","had","has","being","would","could","should","only",
+      "even","back","like","know","love","make","take","come","look","want","need","find",
+      "keep","tell","well","much","many","such","over","most","both","each","very","still",
+      "own","good","give","think","where","before","every","never","these","those","here",
+      "since","while","until","does","did","said","same","long","down","high","very"
+    ]);
+    const titleWords = new Set(
+      anchor.title.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(Boolean)
+    );
+    const desc = (anchor.description || "").replace(/No description available\.?/i, "");
+    const descSeeds = desc
+      .split(/\s+/)
+      .map(w => w.replace(/[^a-zA-Z]/g, "").toLowerCase())
+      .filter(w => w.length >= 5 && !stopwords.has(w) && !titleWords.has(w))
+      .slice(0, 2)
+      .join(" ");
+
+    return descSeeds ? `${descSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
+  }
+
+  // Resolve a thumbnail URL to true only if the image is a real cover
+  // (naturalWidth >= 128). Google Books serves tiny placeholder images
+  // for editions with no cover art — this catches them definitively.
+  function _coverOk(url) {
+    if (!url) return Promise.resolve(false);
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload  = () => resolve(img.naturalWidth >= 128);
+      img.onerror = () => resolve(false);
+      img.src = url;
+    });
+  }
+
+  // Metadata pre-filter: reject books that definitely have no real cover.
+  // This catches the majority before we spend time on image validation.
+  function _hasGoodMeta(b) {
+    return !!b.thumbnail && b.description !== "No description available.";
+  }
+
+  // Fetch a batch, apply metadata + genre filters, then validate every
+  // remaining cover image. Returns only books with confirmed real covers,
+  // up to `needed`. Already-seen titles (by lowercase) are excluded.
+  async function _collect(query, needed, seen, gkey) {
+    const batch = await _gbFetch(query, 40, gkey);
+    const candidates = batch
+      .filter(b => !seen.has(b.title.toLowerCase()))
+      .filter(_hasGoodMeta)
+      .filter(isRomanceEligible);
+
+    const coverResults = await Promise.all(
+      candidates.map(b => _coverOk(b.thumbnail).then(ok => ok ? b : null))
+    );
+
+    const out = [];
+    for (const b of coverResults.filter(Boolean)) {
+      if (out.length >= needed) break;
+      if (!seen.has(b.title.toLowerCase())) {
+        out.push(b);
+        seen.add(b.title.toLowerCase());
+      }
+    }
+    return out;
+  }
+
+  // searchBooks always returns up to maxResults books that have been
+  // confirmed to have real cover images. Cover validation is done here,
+  // inside the search, so callers never need to filter or re-validate.
+  async function searchBooks(query, maxResults = 6) {
+    if (!query || !query.trim()) return [];
+    const gkey = getGoogleKey();
+    const { title, author } = _parseQueryIntent(query.trim());
+    const seen = new Set();
+
+    // Phase 1 — find the best edition of the exact book.
+    // Score by title match quality first, then prefer editions with covers.
+    let exactBook = null;
+    try {
+      const strictParts = [`intitle:"${title.replace(/"/g, "")}"`];
+      if (author) strictParts.push(`inauthor:"${author.replace(/"/g, "")}"`);
+      const exactItems = await _gbFetch(strictParts.join(" "), 10, gkey);
+      const titleLc = title.toLowerCase();
+      const scored = exactItems
+        .map(b => {
+          const t = b.title.toLowerCase();
+          const titleScore = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+          const metaScore  = _hasGoodMeta(b) ? 1 : 0;
+          return { b, score: titleScore * 10 + metaScore };
+        })
+        .sort((a, z) => z.score - a.score);
+
+      for (const { b } of scored) {
+        if (await _coverOk(b.thumbnail)) { exactBook = b; break; }
+      }
+      // Fall back to best title match even if no cover (user searched for it).
+      if (!exactBook && scored.length) exactBook = scored[0].b;
+      if (exactBook) { exactBook.isExactMatch = true; seen.add(exactBook.title.toLowerCase()); }
+    } catch (e) {
+      console.warn("[Lumen Discovery] Exact lookup failed:", e.message);
     }
 
+    // Phase 2 — fill remaining slots with confirmed-cover books in-genre.
+    const needed = maxResults - (exactBook ? 1 : 0);
+    let similar = [];
+
+    // Pass A: description-seeded query (most thematically relevant).
+    const simQuery = exactBook ? _similarityQuery(exactBook) : `${title} romance fiction`;
+    similar = await _collect(simQuery, needed, seen, gkey);
+
+    // Pass B: broader subgenre query if still short.
+    if (similar.length < needed) {
+      const subgenre = _subgenreFor(exactBook || { categories: [] });
+      const more = await _collect(`${subgenre} fiction`, needed - similar.length, seen, gkey);
+      similar = [...similar, ...more];
+    }
+
+    // Pass C: generic romance fallback — last resort.
+    if (similar.length < needed) {
+      const more = await _collect("romance fiction novel", needed - similar.length, seen, gkey);
+      similar = [...similar, ...more];
+    }
+
+    return exactBook ? [exactBook, ...similar] : similar;
+  }
+
+  // ── Low-level Claude POST helper ─────────────────────────────
+  // Shared by analyzeWithClaude, enrichCatalogEntry, chatWithBianca.
+  // Tries the edge proxy first when a proxyPayload is supplied;
+  // falls back to direct Anthropic API using the resolved key.
+  async function _claudePost({ directPayload, proxyPayload = null }) {
+    // Proxy attempt — fire-and-forget on 404/network so local dev
+    // works without a running server.
+    if (proxyPayload) {
+      try {
+        const pr = await fetch(PROXY_URL, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(proxyPayload)
+        });
+        if (pr.ok) return await pr.json();
+        if (pr.status !== 404 && pr.status !== 405) {
+          const txt = await pr.text().catch(() => "");
+          throw new Error(`proxy-${pr.status}: ${txt.slice(0, 200)}`);
+        }
+        // 404/405 = no proxy deployed; fall through to direct call.
+      } catch (netErr) {
+        if (netErr.message && netErr.message.startsWith("proxy-")) throw netErr;
+        // Network error (no server at all) → fall through silently.
+      }
+    }
+
+    // Direct Anthropic API — requires a key.
+    const { via, key } = resolveProvider();
+    if (!key) {
+      setStatus("error", "No API key — add one in Admin");
+      const err = new Error("missing-api-key");
+      err.code  = "missing-api-key";
+      throw err;
+    }
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(directPayload)
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const label = via === "admin" ? "Admin key" : "API key";
+      setStatus("error", `${label} · Claude returned ${res.status}`);
+      throw new Error(`claude-${res.status}: ${text.slice(0, 200)}`);
+    }
+    return res.json();
+  }
+
+  // ── 2) Quick analysis: heat + tropes + insight ────────────────
+  // Returns { heat: 1-5, tropes: string[], insight: string }
+  async function analyzeWithClaude(book) {
+    _checkThrottle();
     setStatus("reading", `Claude is reading · ${book.title}`);
 
     const prompt = [
@@ -162,39 +464,27 @@
       `Description: ${(book.description || "").slice(0, 1500)}`
     ].join("\n");
 
-    let res;
+    const directPayload = {
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      messages: [{ role: "user", content: prompt }]
+    };
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 400,
-          messages: [{ role: "user", content: prompt }]
-        })
+      payload = await _claudePost({
+        directPayload,
+        proxyPayload: { action: "analyze", book: { title: book.title, author: book.author, description: (book.description || "").slice(0, 1500) } }
       });
     } catch (err) {
-      setStatus("error", "Network call failed");
+      setStatus("error", "Analysis failed");
       throw err;
     }
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
+    _recordThrottledCall();
 
-    const payload = await res.json();
     const textOut = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
     const parsed = parseAnalysis(textOut);
     if (!parsed) {
@@ -232,40 +522,59 @@
   async function lookupBookMetadata(input) {
     if (!input || !input.title) return null;
     const gkey = getGoogleKey();
-    const parts = [`intitle:"${input.title.replace(/"/g, "")}"`];
-    if (input.author) parts.push(`inauthor:"${String(input.author).replace(/"/g, "")}"`);
-    const q = parts.join(" ");
-    const url = "https://www.googleapis.com/books/v1/volumes"
-      + "?q=" + encodeURIComponent(q)
-      + "&maxResults=5"
-      + "&printType=books"
-      + "&orderBy=relevance"
-      + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
-    let res;
-    try { res = await fetch(url); }
-    catch (e) { return null; }
-    if (!res.ok) return null;
-    let data;
-    try { data = await res.json(); } catch (e) { return null; }
-    const items = (data.items || []).map(it => it.volumeInfo || {});
-    if (!items.length) return null;
-    // Prefer the first result that has both a thumbnail and a
-    // reasonably close title. Falls back to the top result.
-    const titleLc = input.title.toLowerCase();
-    const scored = items.map(v => {
-      const hasThumb = !!(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
-      const t = String(v.title || "").toLowerCase();
-      const titleHit = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
-      return { v, score: titleHit + (hasThumb ? 1 : 0) };
-    }).sort((a, b) => b.score - a.score);
-    const v = scored[0].v;
-    const thumb = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
-    return {
-      thumbnail: thumb ? String(thumb).replace(/^http:/, "https:") : null,
-      year: (v.publishedDate || "").slice(0, 4) ? parseInt(v.publishedDate.slice(0, 4), 10) : null,
-      description: v.description || null,
-      categories: v.categories || []
-    };
+
+    async function gbFetch(q) {
+      const url = "https://www.googleapis.com/books/v1/volumes"
+        + "?q=" + encodeURIComponent(q)
+        + "&maxResults=8"
+        + "&printType=books"
+        + "&orderBy=relevance"
+        + (gkey ? "&key=" + encodeURIComponent(gkey) : "");
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return [];
+        const data = await res.json();
+        return (data.items || []).map(it => it.volumeInfo || {});
+      } catch (e) { return []; }
+    }
+
+    const upgradeThumb = _upgradeThumb;
+
+    function pickBest(items) {
+      if (!items.length) return null;
+      const titleLc = input.title.toLowerCase();
+      const scored = items.map(v => {
+        const hasThumb = !!(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
+        const t = String(v.title || "").toLowerCase();
+        const titleHit = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+        return { v, hasThumb, titleHit, score: titleHit * 2 + (hasThumb ? 3 : 0) };
+      }).sort((a, b) => b.score - a.score);
+      // Prefer any result that has a thumbnail and at least a partial title match.
+      // Falls back to the top scorer (which may have no thumbnail).
+      const best = scored.find(s => s.hasThumb && s.titleHit >= 1) || scored[0];
+      const v = best.v;
+      const raw = v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail);
+      return {
+        thumbnail: upgradeThumb(raw),
+        year: (v.publishedDate || "").slice(0, 4) ? parseInt(v.publishedDate.slice(0, 4), 10) : null,
+        description: v.description || null,
+        categories: v.categories || []
+      };
+    }
+
+    // 1) Strict query: intitle:"X" inauthor:"Y"
+    const strictParts = [`intitle:"${input.title.replace(/"/g, "")}"`];
+    if (input.author) strictParts.push(`inauthor:"${String(input.author).replace(/"/g, "")}"`);
+    let items = await gbFetch(strictParts.join(" "));
+
+    // 2) If strict query found nothing with a thumbnail, retry with a loose query.
+    const hasThumb = items.some(v => v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail));
+    if (!hasThumb) {
+      const loose = await gbFetch(`${input.title}${input.author ? " " + input.author : ""}`);
+      if (loose.length) items = loose;
+    }
+
+    return pickBest(items);
   }
 
   // ----------------------------------------------------------------
@@ -278,8 +587,6 @@
   // what is safe to overwrite vs. what the human has edited.
   // ----------------------------------------------------------------
   async function enrichCatalogEntry(input) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
     if (!input || !input.title) throw new Error("missing-title");
 
     // 1) Look up cover + year + description on Google Books.
@@ -343,33 +650,22 @@
       effectiveDescription ? `Description: ${String(effectiveDescription).slice(0, 1500)}` : "Description: (not provided; use your background knowledge)"
     ].join("\n");
 
-    let res;
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
+      payload = await _claudePost({
+        directPayload: {
+          model: "claude-sonnet-4-6",
           max_tokens: 900,
           messages: [{ role: "user", content: prompt }]
-        })
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${text}`);
-    }
 
-    const payload = await res.json();
+    _recordThrottledCall();
+
     const textOut = (payload.content || [])
       .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
 
@@ -456,28 +752,27 @@
   }
 
   // ----------------------------------------------------------------
-  // chatWithSara — the LLM path for the persistent companion.
+  // chatWithBianca — the LLM path for the persistent companion.
   //   args = {
   //     systemContext:   string (the "=== CONTEXT ===" block, built
-  //                       in app.js from the structured Sara ctx)
+  //                       in app.js from the structured Bianca ctx)
   //     messages:        [{ role: "user" | "assistant", content: string }]
   //   }
   // Returns the assistant's text on success. On any failure (no
   // key, network, parse, rate limit) throws an Error that the
-  // caller converts into Sara's graceful fail-safe line.
+  // caller converts into Bianca's graceful fail-safe line.
   //
-  // Persona prompt comes from window.LumenSaraPersona.PERSONA_PROMPT
-  // (see sara-persona.js) and is prepended to the systemContext so
+  // Persona prompt comes from window.LumenBiancaPersona.PERSONA_PROMPT
+  // (see bianca-persona.js) and is prepended to the systemContext so
   // both land in Claude's `system` field.
   // ----------------------------------------------------------------
-  async function chatWithSara({ systemContext = "", messages = [] } = {}) {
-    const apiKey = getApiKey();
-    if (!apiKey) throw new Error("missing-api-key");
-    const persona = (window.LumenSaraPersona && window.LumenSaraPersona.PERSONA_PROMPT) || "";
-    const system = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
-    // Sanitize messages: must alternate user/assistant and start on
-    // user; Claude rejects other shapes. We filter out empty/non-
-    // text messages and coalesce consecutive same-role turns.
+  async function chatWithBianca({ systemContext = "", messages = [] } = {}) {
+    _checkThrottle();
+
+    const persona = (window.LumenBiancaPersona && window.LumenBiancaPersona.PERSONA_PROMPT) || "";
+    const system  = persona + (systemContext ? "\n\n=== CONTEXT ===\n" + systemContext : "");
+
+    // Sanitize: must alternate user/assistant starting with user.
     const clean = [];
     for (const m of messages) {
       if (!m || !m.content) continue;
@@ -487,62 +782,62 @@
       if (last && last.role === role) last.content += "\n\n" + String(m.content);
       else clean.push({ role, content: String(m.content) });
     }
-    // Drop leading assistant turn if present.
     while (clean.length && clean[0].role !== "user") clean.shift();
     if (!clean.length) throw new Error("empty-conversation");
 
-    setStatus("reading", "Sara is thinking…");
-    let res;
+    setStatus("reading", "Bianca is thinking…");
+
+    let payload;
     try {
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 600,
+      payload = await _claudePost({
+        directPayload: {
+          model: "claude-sonnet-4-6",
+          max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
           system,
           messages: clean
-        })
+        },
+        proxyPayload: { action: "chat", model: "claude-sonnet-4-6", max_tokens: 150, system, messages: clean }
       });
     } catch (err) {
       setStatus("error", "Network call failed");
       throw err;
     }
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      setStatus("error", `Claude returned ${res.status}`);
-      throw new Error(`claude-${res.status}: ${txt.slice(0, 200)}`);
-    }
-    const payload = await res.json();
+
+    _recordThrottledCall();
+
     const out = (payload.content || [])
-      .filter(b => b.type === "text")
-      .map(b => b.text)
-      .join("\n")
-      .trim();
+      .filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     if (!out) { setStatus("error", "Empty reply"); throw new Error("claude-empty-reply"); }
-    setStatus("online", "Sara is here");
+    setStatus("online", "Bianca is online");
     return out;
   }
 
+  // Seed the initial status badge based on whichever provider is active.
+  // Runs after all functions are defined so resolveProvider() is available.
+  setStatus("idle");
+
   window.LumenDiscovery = {
-    setApiKey,
-    getApiKey,
-    clearApiKey,
-    setGoogleKey,
-    getGoogleKey,
-    clearGoogleKey,
+    // User key
+    setApiKey, getApiKey, clearApiKey,
+    hasKey: () => resolveProvider().via !== "none",
+    // Master key + Demo Mode + Session Cap (operator, Discovery Phase)
+    setMasterKey, getMasterKey, clearMasterKey,
+    setDemoMode, getDemoMode,
+    setSessionCap, getSessionCap,
+    // Back-compat aliases
+    setAdminKey, getAdminKey, clearAdminKey,
+    // Google Books key
+    setGoogleKey, getGoogleKey, clearGoogleKey,
+    // Throttle introspection
+    throttleRemaining,
+    // Core API
     searchBooks,
     analyzeWithClaude,
     enrichCatalogEntry,
     lookupBookMetadata,
-    chatWithSara,
+    chatWithBianca,
     onStatus,
-    get status() { return state.status; },
+    get status()  { return state.status; },
     get message() { return state.lastMessage; }
   };
 })();

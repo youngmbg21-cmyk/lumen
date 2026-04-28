@@ -49,16 +49,25 @@
     return 0;
   }
 
-  function tagOverlap(userSet, bookArr) {
-    if (userSet.size === 0) return { credit: 0.5, matched: [] };
-    if (!bookArr || bookArr.length === 0) return { credit: 0, matched: [] };
+  function tagOverlap(userSet, bookArr, isPartial) {
+    if (userSet.size === 0) return { credit: 0.75, matched: [] };
+    if (!bookArr || bookArr.length === 0) {
+      return { credit: isPartial ? 0.75 : 0, matched: [] };
+    }
     const matched = bookArr.filter(t => userSet.has(t));
-    return { credit: matched.length / userSet.size, matched };
+    if (matched.length === 0) return { credit: 0, matched: [] };
+    // Base 0.5 credit for any match; additional 0.5 scales with how many
+    // of the user's preferences the book satisfies. This prevents a large
+    // wishlist from unfairly collapsing scores when books only carry a
+    // subset of the user's tags (which is normal for real catalog metadata).
+    const credit = 0.5 + 0.5 * (matched.length / userSet.size);
+    return { credit, matched };
   }
 
   function evaluateBookFit(book, nProfile) {
     const n = nProfile.numeric;
     const s = nProfile.sets;
+    const partial = !!book._isPartial;
     const numericResults = {
       heat:    numericMatch(n.heat, book.heat_level),
       explicit: numericMatch(n.explicit, book.explicitness),
@@ -68,13 +77,13 @@
       plot:    numericMatch(n.plot, book.plot_weight)
     };
     const tagResults = {
-      tone:        tagOverlap(s.tone, book.tone),
-      pacing:      tagOverlap(s.pacing, book.pacing),
-      style:       tagOverlap(s.style, book.literary_style),
-      dynamic:     tagOverlap(s.dynamic, book.relationship_dynamic),
-      trope:       tagOverlap(s.trope, book.trope_tags),
-      kink:        tagOverlap(s.kink, book.kink_tags),
-      orientation: tagOverlap(s.orientation, book.orientation_tags)
+      tone:        tagOverlap(s.tone, book.tone, partial),
+      pacing:      tagOverlap(s.pacing, book.pacing, partial),
+      style:       tagOverlap(s.style, book.literary_style, partial),
+      dynamic:     tagOverlap(s.dynamic, book.relationship_dynamic, partial),
+      trope:       tagOverlap(s.trope, book.trope_tags, partial),
+      kink:        tagOverlap(s.kink, book.kink_tags, partial),
+      orientation: tagOverlap(s.orientation, book.orientation_tags, partial)
     };
     return { numericResults, tagResults };
   }
@@ -203,6 +212,80 @@
     }).filter(Boolean);
   }
 
+  // ── Partial-data adapters ──────────────────────────────────────
+  // fromDiscovery: maps a raw Google Books item + Claude enrichment
+  // { heat, tropes, insight } into a full catalog-shaped book so
+  // scoreBook() produces a consistent score without re-implementing
+  // any logic. Missing numerics default to 3 (mid-scale) so they
+  // contribute a partial match rather than zero. _isPartial: true
+  // lets the UI show an "estimated" badge on the score chip.
+  function fromDiscovery(book, enrichment) {
+    const e = enrichment && !enrichment.error ? enrichment : {};
+    return {
+      id:                   book.id || "",
+      title:                book.title || "",
+      author:               book.author || "",
+      description:          book.description || "",
+      heat_level:           typeof e.heat === "number" ? e.heat : 3,
+      explicitness:         3,
+      emotional_intensity:  3,
+      consent_clarity:      3,
+      taboo_level:          3,
+      plot_weight:          3,
+      tone:                 [],
+      pacing:               [],
+      literary_style:       [],
+      relationship_dynamic: [],
+      trope_tags:           Array.isArray(e.tropes) ? e.tropes : [],
+      kink_tags:            [],
+      gender_pairing:       [],
+      orientation_tags:     [],
+      content_warnings:     [],
+      _isPartial:           true
+    };
+  }
+
+  // withDefaults: fills any missing numeric or tag fields in a
+  // partial catalog book so scoreBook() never receives NaN.
+  // Used by analysis.js heuristicFitScore and any caller that has
+  // a catalog book but cannot guarantee every field is populated.
+  function withDefaults(book) {
+    if (!book) return fromDiscovery({}, null);
+    return {
+      ...book,
+      heat_level:           book.heat_level          ?? 3,
+      explicitness:         book.explicitness        ?? 3,
+      emotional_intensity:  book.emotional_intensity ?? 3,
+      consent_clarity:      book.consent_clarity     ?? 3,
+      taboo_level:          book.taboo_level         ?? 3,
+      plot_weight:          book.plot_weight         ?? 3,
+      tone:                 book.tone                || [],
+      pacing:               book.pacing              || [],
+      literary_style:       book.literary_style      || [],
+      relationship_dynamic: book.relationship_dynamic|| [],
+      trope_tags:           book.trope_tags          || [],
+      kink_tags:            book.kink_tags           || [],
+      gender_pairing:       book.gender_pairing      || [],
+      orientation_tags:     book.orientation_tags    || [],
+      content_warnings:     book.content_warnings    || []
+    };
+  }
+
+  // ── Canonical score labels — single source of truth ───────────
+  // All views call these instead of inlining threshold checks, so
+  // threshold drift across surfaces is impossible.
+  function fitLabel(score) {
+    if (score >= 75) return "Strong";
+    if (score >= 55) return "Moderate";
+    if (score >= 35) return "Loose";
+    return "Thin";
+  }
+  function confLabel(score) {
+    if (score >= 70) return "Signal-rich";
+    if (score >= 45) return "Moderate";
+    return "Thin data";
+  }
+
   window.LumenEngine = {
     normalizeProfile,
     applyHardExclusions,
@@ -210,6 +293,10 @@
     generateWhyItMatched,
     rankRecommendations,
     compareBooks,
+    fromDiscovery,
+    withDefaults,
+    fitLabel,
+    confLabel,
     NUMERIC_LABELS,
     TAG_LABELS
   };
