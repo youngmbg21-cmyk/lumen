@@ -1751,6 +1751,18 @@
         return;
       }
 
+      // Pre-validate covers using the same naturalWidth heuristic as
+      // isLikelyNoCover so cards with placeholder images never render.
+      items = await Promise.all(
+        items.map(b => new Promise(resolve => {
+          if (!b.thumbnail) { resolve(null); return; }
+          const img = new Image();
+          img.onload  = () => resolve(img.naturalWidth >= 128 ? b : null);
+          img.onerror = () => resolve(null);
+          img.src = b.thumbnail;
+        }))
+      ).then(results => results.filter(Boolean));
+
       searchBtn.disabled = false;
 
       if (!items.length) {
