@@ -229,7 +229,12 @@ ${candidatesFormatted}`
           messages: [{ role: "user", content: prompt }]
         })
       });
-      if (pr.ok) return await pr.json();
+      if (pr.ok) {
+          const data = await pr.json();
+          const text = data && Array.isArray(data.content) && data.content[0] && data.content[0].text;
+          if (text) return text;
+          throw err("parse-failure", "Proxy response missing text content");
+        }
       // 404/405 = no proxy deployed (local dev); fall through to direct call.
       if (pr.status !== 404 && pr.status !== 405) {
         throw err("unknown", `Proxy responded HTTP ${pr.status}`);
