@@ -53,6 +53,7 @@
       const { via } = resolveProvider();
       if (via === "admin") return "Bianca is online";
       if (via === "user")  return "Bianca is online · your key";
+      if (via === "proxy") return "Bianca is online";
       return "Waiting for API key";
     }
     return {
@@ -137,7 +138,7 @@
     if (master)                  return { via: "admin", key: master };
     const user = getApiKey();
     if (user)                    return { via: "user",  key: user };
-    return { via: "none", key: null };
+    return { via: "proxy", key: null };
   }
 
   // ── Session throttle ──────────────────────────────────────────
