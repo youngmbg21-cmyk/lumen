@@ -1384,7 +1384,44 @@ body.theme-plum::before { mix-blend-mode: overlay; opacity: 0.3; }
    LUMEN TERMINAL — Dashboard engine
    ========================================================= */
 
-const BOOKS = JSON.parse(document.getElementById('bookData').textContent);
+function mapCatalogBook(b) {
+  return {
+    id:           b.id,
+    title:        b.title        || '',
+    author:       b.author       || '',
+    year:         b.year         || null,
+    series:       b.series       || null,
+    subgenre:     b.subgenre     || b.category || '',
+    short_summary: b.description || b.short_summary || b.fit_notes || '',
+    fit_notes:    b.fit_notes    || '',
+    cover_url:    b.thumbnail    || b.cover_url || null,
+    heat:         b.heat_level          || b.heat     || 3,
+    explicit:     b.explicit_level      || b.explicit  || 3,
+    emotion:      b.emotional_intensity || b.emotion   || 3,
+    consent:      b.consent_clarity     || b.consent   || 3,
+    taboo:        b.taboo_tolerance     || b.taboo     || 3,
+    plot:         b.plot_weight         || b.plot      || 3,
+    tone:         b.tone                || [],
+    dynamic:      b.relationship_dynamic || b.dynamic  || [],
+    trope:        b.trope_tags          || b.trope     || [],
+    kink:         b.kink_tags           || b.kink      || [],
+    orientation:  b.orientation_tags    || b.orientation || [],
+    warnings:     b.content_warnings    || b.warnings  || []
+  };
+}
+
+function resolveCatalogBooks() {
+  const builtin = JSON.parse(document.getElementById('bookData').textContent);
+  try {
+    const raw = localStorage.getItem('lumen:catalog-override');
+    if (!raw) return builtin;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.books) || !parsed.books.length) return builtin;
+    return parsed.books.map(mapCatalogBook);
+  } catch (e) { return builtin; }
+}
+
+const BOOKS = resolveCatalogBooks();
 
 // Taste profile state
 const profile = {
@@ -1669,7 +1706,7 @@ function renderGrid() {
 
   body.querySelectorAll('tr[data-id]').forEach(row => {
     row.addEventListener('click', () => {
-      selectedId = parseInt(row.dataset.id);
+      selectedId = row.dataset.id;
       renderGrid();
       renderDetail();
       renderSimilar();
@@ -1760,7 +1797,7 @@ function renderSimilar() {
   }).join('');
   document.querySelectorAll('.similar-item').forEach(el => {
     el.addEventListener('click', () => {
-      selectedId = parseInt(el.dataset.id);
+      selectedId = el.dataset.id;
       renderGrid(); renderDetail(); renderSimilar();
     });
   });
