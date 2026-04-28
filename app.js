@@ -1632,7 +1632,7 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Discovery" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Type a book title to find that exact book plus five similar reads." })
+        util.el("p", { class: "lede", text: "Type a book title to find that exact book plus five reads in the same genre." })
       ])
     ]));
 
@@ -1652,7 +1652,7 @@
     ]));
 
     const hint = util.el("div", { class: "disco-hero-hint" });
-    hint.appendChild(util.el("span", { text: "Your book + 5 similar reads from Google Books." }));
+    hint.appendChild(util.el("span", { text: "Your book + 5 reads in the same genre from Google Books." }));
     hero.appendChild(hint);
     wrap.appendChild(hero);
 
@@ -1678,7 +1678,7 @@
       const catalogSuggestions = (window.LumenData && window.LumenData.CATALOG || []).slice(0, 3);
       const emptyChildren = [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "What are you in the mood for?" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a book title to find it and five similar reads." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a book title to find it and five reads in the same genre." })
       ];
       if (catalogSuggestions.length) {
         const chips = util.el("div", { class: "row", style: { flexWrap: "wrap", gap: "var(--s-2)", marginTop: "var(--s-3)" } });

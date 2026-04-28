@@ -232,27 +232,43 @@
     return (data.items || []).map(_mapGBItem);
   }
 
-  // Pick a similarity search query from an anchor book's categories.
+  // Build a similarity query from the anchor book's description and subgenre.
+  // Uses description words (not title words) so searching "Pucked Up" finds
+  // hockey-romance reads rather than other books with "pucked" in the title.
   function _similarityQuery(anchor) {
-    // Derive subgenre from categories when available.
     const cats = (anchor.categories || []).join(" ");
     let subgenre = "romance";
-    if (/contemporary/i.test(cats))                        subgenre = "contemporary romance";
-    else if (/historical/i.test(cats))                     subgenre = "historical romance";
+    if (/contemporary/i.test(cats))                         subgenre = "contemporary romance";
+    else if (/historical/i.test(cats))                      subgenre = "historical romance";
     else if (/paranormal|supernatural|fantasy/i.test(cats)) subgenre = "paranormal romance";
-    else if (/suspense|thriller|mystery/i.test(cats))      subgenre = "romantic suspense";
-    else if (/erotic/i.test(cats))                         subgenre = "erotic romance";
+    else if (/suspense|thriller|mystery/i.test(cats))       subgenre = "romantic suspense";
+    else if (/erotic/i.test(cats))                          subgenre = "erotic romance";
 
-    // Seed with meaningful title words so each book gets unique results.
-    const stopwords = new Set(["the","and","for","with","from","that","this","have","its","was","but","not","you","all","are","just","into","more","when","than","your","will","also","been","about","once"]);
-    const titleSeeds = anchor.title
+    const stopwords = new Set([
+      "the","and","for","with","from","that","this","have","its","was","but","not",
+      "you","all","are","just","into","more","when","than","your","will","also","been",
+      "about","once","after","they","them","their","what","which","there","then","some",
+      "she","her","him","his","who","had","has","being","would","could","should","only",
+      "even","back","like","know","love","make","take","come","look","want","need","find",
+      "keep","tell","well","much","many","such","over","most","both","each","very","still",
+      "own","good","give","think","where","before","every","never","these","those","here",
+      "since","while","until","does","did","said","same","long","down","high","very"
+    ]);
+
+    // Exclude the searched book's own title words to avoid returning same-title results.
+    const titleWords = new Set(
+      anchor.title.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(Boolean)
+    );
+
+    const desc = (anchor.description || "").replace(/No description available\.?/i, "");
+    const descSeeds = desc
       .split(/\s+/)
       .map(w => w.replace(/[^a-zA-Z]/g, "").toLowerCase())
-      .filter(w => w.length >= 4 && !stopwords.has(w))
+      .filter(w => w.length >= 5 && !stopwords.has(w) && !titleWords.has(w))
       .slice(0, 2)
       .join(" ");
 
-    return titleSeeds ? `${titleSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
+    return descSeeds ? `${descSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
   }
 
   // Two-phase search: find the exact book first, then fill the remaining
