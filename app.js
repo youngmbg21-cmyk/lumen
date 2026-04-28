@@ -1612,32 +1612,11 @@
     return wrap;
   }
 
-  /* -------------------- discovery (web search + Claude) -------------------- */
+  /* -------------------- discovery -------------------- */
   const discoveryState = {
     lastQuery: "",
-    raw: [],           // Google Books results in insertion order
-    enrichments: {},   // id -> { heat, tropes, insight } | { error: true, message }
-    mode: "tailored",  // "tailored" (re-sorts by profile fit) | "broad"
-    originalOrder: []  // snapshot of ids in Google Books order for restoring Broad mode
+    raw: []   // Google Books results in insertion order
   };
-
-  // Lightweight fit score for Discovery's Tailored mode. Combines:
-  //   - heat proximity to user (absolute delta, 0 diff = 100)
-  //   - trope overlap with user profile's trope + kink sets
-  //   - hard-exclusion penalty if any Claude trope matches a user exclude
-  // Returns 0-100. Missing/error enrichments collapse to 50 (neutral).
-  // Routes every Discovery score through the canonical engine so the
-  // number shown on a search result card matches exactly what the
-  // user will see if they add the book to their Library.
-  // book = raw Google Books item; enrich = Claude enrichment or null.
-  function tailoredScore(book, enrich, profile) {
-    const s = Engine.scoreBook(
-      Engine.fromDiscovery(book, enrich),
-      Engine.normalizeProfile(profile),
-      store.get().weights || {}
-    );
-    return s.fitScore;
-  }
 
   function steamClass(heat) {
     if (heat >= 4) return "steam-high";
@@ -1653,7 +1632,7 @@
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Discovery" }),
         util.el("h1", { html: "Search the shelf. <em>Ask</em> the engine." }),
-        util.el("p", { class: "lede", text: "Type a book title and Claude finds that exact book plus five similar reads. Each result is analyzed for heat, tropes, and a one-line insight." })
+        util.el("p", { class: "lede", text: "Type a book title to find that exact book plus five similar reads." })
       ])
     ]));
 
@@ -1665,54 +1644,15 @@
       value: discoveryState.lastQuery,
       onkeydown: (e) => { if (e.key === "Enter") runSearch(); }
     });
-    const searchBtn = util.el("button", { class: "btn btn-primary btn-lg", onclick: () => runSearch() }, "Search & analyze");
-    const statusBadge = util.el("div", { id: "api-status", class: "api-status status-idle", text: Disco.message });
+    const searchBtn = util.el("button", { class: "btn btn-primary btn-lg", onclick: () => runSearch() }, "Search");
 
     hero.appendChild(util.el("div", { class: "disco-hero-row" }, [
       searchInput,
-      searchBtn,
-      statusBadge
+      searchBtn
     ]));
 
-    // Tailored / Broad mode toggle (segmented). Tailored re-orders
-    // results by profile fit after Claude finishes analyzing each;
-    // Broad keeps Google Books' order.
-    const modeSegmented = util.el("div", { class: "segmented", role: "group", "aria-label": "Search mode" });
-    [
-      { id: "tailored", label: "Tailored to me" },
-      { id: "broad",    label: "Broad browse" }
-    ].forEach(opt => {
-      const btn = util.el("button", {
-        type: "button",
-        "aria-pressed": discoveryState.mode === opt.id ? "true" : "false",
-        "data-v": opt.id,
-        onclick: () => {
-          if (discoveryState.mode === opt.id) return;
-          discoveryState.mode = opt.id;
-          modeSegmented.querySelectorAll("button").forEach(b =>
-            b.setAttribute("aria-pressed", b.dataset.v === opt.id ? "true" : "false")
-          );
-          reorderResultsForMode();
-        }
-      }, opt.label);
-      modeSegmented.appendChild(btn);
-    });
-
     const hint = util.el("div", { class: "disco-hero-hint" });
-    const modeHint = util.el("span", { class: "disco-hero-mode", text: "" });
-    const hintLead = util.el("span");
-    const hasAiKey = !!(Disco.hasKey && Disco.hasKey());
-    if (!hasAiKey) {
-      hintLead.textContent = "Heads up — ";
-      hint.appendChild(hintLead);
-      hint.appendChild(util.el("a", { href: "#/settings" }, "add your Claude key in Admin"));
-      hint.appendChild(util.el("span", { text: " to enable AI analysis." }));
-    } else {
-      hintLead.textContent = "Your book + 5 similar reads · Claude analyzes each for heat, tropes, and a one-line insight.";
-      hint.appendChild(hintLead);
-    }
-    hint.appendChild(modeSegmented);
-    hint.appendChild(modeHint);
+    hint.appendChild(util.el("span", { text: "Your book + 5 similar reads from Google Books." }));
     hero.appendChild(hint);
     wrap.appendChild(hero);
 
@@ -1723,59 +1663,14 @@
     if (discoveryState.raw.length) {
       resultsHead.appendChild(util.el("button", { class: "btn btn-ghost btn-sm", onclick: () => {
         discoveryState.raw = [];
-        discoveryState.enrichments = {};
         discoveryState.lastQuery = "";
-        discoveryState.originalOrder = [];
         renderView();
       }}, "Clear results"));
     }
     wrap.appendChild(resultsHead);
 
-    function updateModeHint() {
-      const label = discoveryState.mode === "tailored"
-        ? "Re-sorted by profile fit"
-        : "In Google Books order";
-      modeHint.textContent = ` · ${label}`;
-    }
-    updateModeHint();
-
-    function reorderResultsForMode() {
-      updateModeHint();
-      if (!discoveryState.raw.length) return;
-      const fresh = store.get();
-      if (discoveryState.mode === "broad") {
-        // Restore the original Google Books order, exact match always first.
-        const orderIndex = new Map(discoveryState.originalOrder.map((id, i) => [id, i]));
-        discoveryState.raw.sort((a, b) => {
-          if (a.isExactMatch) return -1;
-          if (b.isExactMatch) return 1;
-          return (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0);
-        });
-      } else {
-        // Tailored: sort by computed fit, exact match always first.
-        discoveryState.raw.sort((a, b) => {
-          if (a.isExactMatch) return -1;
-          if (b.isExactMatch) return 1;
-          const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
-          const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
-          return sb - sa;
-        });
-      }
-      paintGrid();
-    }
-
     const grid = util.el("div", { class: "discovery-grid", id: "disco-grid" });
     wrap.appendChild(grid);
-
-    // Status updates
-    const unsub = Disco.onStatus((s) => {
-      statusBadge.className = `api-status status-${s.status}`;
-      statusBadge.textContent = s.lastMessage;
-    });
-    // Re-render will drop the old node; we detach on a router change via a best-effort weak cleanup
-    setTimeout(() => {
-      if (!document.body.contains(statusBadge)) unsub();
-    }, 60_000);
 
     // Initial paint from cached results (if any)
     if (discoveryState.raw.length) paintGrid();
@@ -1783,7 +1678,7 @@
       const catalogSuggestions = (window.LumenData && window.LumenData.CATALOG || []).slice(0, 3);
       const emptyChildren = [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "What are you in the mood for?" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a title, author, or theme — Claude reads each result for heat, tropes, and a one-line insight." })
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Search a book title to find it and five similar reads." })
       ];
       if (catalogSuggestions.length) {
         const chips = util.el("div", { class: "row", style: { flexWrap: "wrap", gap: "var(--s-2)", marginTop: "var(--s-3)" } });
@@ -1814,31 +1709,12 @@
 
     async function runSearch() {
       const q = searchInput.value.trim();
-      if (!q) { ui.toast("Enter a title, author, or topic"); return; }
-      const hasKey = !!(Disco.hasKey && Disco.hasKey());
-      if (!hasKey) {
-        ui.toast("Add your Claude API key in Admin first", {
-          action: "Open Settings",
-          onAction: () => router.go("settings"),
-          duration: 4500
-        });
-        return;
-      }
-
-      // Check session budget before fetching anything — avoids burning
-      // a Google Books call when we know Claude can't follow up.
-      if (Disco.throttleRemaining && Disco.throttleRemaining() <= 0) {
-        grid.innerHTML = "";
-        resultsLabel.textContent = "Session limit reached";
-        grid.appendChild(buildThrottleCard());
-        return;
-      }
+      if (!q) { ui.toast("Enter a book title to search"); return; }
 
       discoveryState.lastQuery = q;
       discoveryState.raw = [];
-      discoveryState.enrichments = {};
       grid.innerHTML = "";
-      resultsLabel.textContent = `Searching Google Books for "${q}"…`;
+      resultsLabel.textContent = `Searching for "${q}"…`;
 
       let items;
       try {
@@ -1879,63 +1755,10 @@
       }
 
       discoveryState.raw = items;
-      discoveryState.originalOrder = items.map(b => b.id);
       paintGrid();
-
-      // Enrich each result with Claude — heat, tropes, one calm
-      // insight. No category filter is applied; users are free to
-      // add any Google Books result to their Library.
-      for (const book of items) {
-        // Stop enriching if the session budget ran out mid-batch.
-        if (Disco.throttleRemaining && Disco.throttleRemaining() <= 0) {
-          resultsLabel.textContent += " · session limit reached";
-          ui.toast("Daily AI limit reached — results shown without full analysis", { duration: 5000 });
-          break;
-        }
-        try {
-          const result = await Disco.analyzeWithClaude(book);
-          discoveryState.enrichments[book.id] = result;
-        } catch (err) {
-          if (err && err.code === "throttled") {
-            resultsLabel.textContent += " · session limit reached";
-            ui.toast("Daily AI limit reached — results shown without full analysis", { duration: 5000 });
-            break;
-          }
-          discoveryState.enrichments[book.id] = { error: true, message: err.message || "failed" };
-        }
-        if (discoveryState.mode === "tailored") {
-          const fresh = store.get();
-          discoveryState.raw.sort((a, b) => {
-            if (a.isExactMatch) return -1;
-            if (b.isExactMatch) return 1;
-            const sa = tailoredScore(a, discoveryState.enrichments[a.id], fresh.profile);
-            const sb = tailoredScore(b, discoveryState.enrichments[b.id], fresh.profile);
-            return sb - sa;
-          });
-          paintGrid();
-        } else {
-          const node = document.querySelector(`[data-disco-id="${book.id}"]`);
-          if (node) node.replaceWith(renderDiscoCard(book));
-        }
-      }
-    }
-
-    function buildThrottleCard() {
-      const remaining = Disco.throttleRemaining ? Disco.throttleRemaining() : 0;
-      const node = util.el("div", { class: "discovery-empty discovery-throttle" }, [
-        util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
-          text: "Daily limit reached" }),
-        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" },
-          text: `You've used all 30 AI analyses for today. The limit resets at midnight — come back tomorrow and it will lift automatically.` }),
-        util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" },
-          text: `Remaining today: ${remaining}` })
-      ]);
-      return node;
     }
 
     function renderDiscoCard(book) {
-      const enrich = discoveryState.enrichments[book.id];
-      const heat = enrich && !enrich.error ? enrich.heat : null;
       const card = util.el("div", {
         class: "disco-card has-dismiss is-clickable",
         "data-disco-id": book.id,
@@ -1969,7 +1792,6 @@
           const idx = discoveryState.raw.findIndex(b => b.id === book.id);
           if (idx === -1) return;
           const removed = discoveryState.raw.splice(idx, 1)[0];
-          delete discoveryState.enrichments[book.id];
           const node = document.querySelector(`[data-disco-id="${book.id}"]`);
           if (node) node.remove();
           const countEl = document.getElementById("disco-count");
@@ -2007,11 +1829,6 @@
       } else {
         showInitialsFallback();
       }
-      // Steam Engine bar at the bottom of the cover (reveals once analyzed)
-      cover.appendChild(util.el("div", {
-        class: "steam-indicator" + (heat ? " " + steamClass(heat) : ""),
-        style: heat ? null : { background: "var(--bg-sunken)", opacity: "0.6" }
-      }));
       card.appendChild(cover);
 
       // Body — compact row layout. Title, author, 2-line blurb, then
@@ -2023,43 +1840,12 @@
       const head = util.el("div", { class: "disco-card-head" });
       head.appendChild(util.el("h4", { class: "disco-card-title", text: book.title }));
 
-      // Fit badge — in Tailored mode, show a tiny chip indicating
-      // alignment. Inline with the title rather than full-width banner.
-      if (discoveryState.mode === "tailored" && enrich && !enrich.error) {
-        const fresh = store.get();
-        const fit = tailoredScore(book, enrich, fresh.profile);
-        if (fit < 45) {
-          head.appendChild(util.el("span", { class: "disco-fit-chip tone-low", text: "low fit" }));
-        } else if (fit >= 75) {
-          head.appendChild(util.el("span", { class: "disco-fit-chip tone-high", text: "strong fit" }));
-        }
-      }
       body.appendChild(head);
 
       body.appendChild(util.el("div", { class: "disco-card-author",
         text: book.author + (book.year ? ` · ${book.year}` : "") }));
       body.appendChild(util.el("p", { class: "disco-card-blurb", text: book.description }));
 
-      // Status strip — heat dot + 1-3 tropes inline. Insight moves to
-      // the detail sheet so the card never balloons past ~150px tall.
-      const status = util.el("div", { class: "disco-card-status" });
-      if (enrich && !enrich.error) {
-        if (enrich.heat != null) {
-          status.appendChild(util.el("span", {
-            class: "disco-heat-dot " + steamClass(enrich.heat),
-            title: `Heat ${enrich.heat}/5`,
-            "aria-label": `Heat ${enrich.heat} of 5`
-          }));
-        }
-        (enrich.tropes || []).slice(0, 3).forEach(t => {
-          status.appendChild(util.el("span", { class: "disco-card-trope" }, t));
-        });
-      } else if (enrich && enrich.error) {
-        status.appendChild(util.el("span", { class: "disco-card-status-note", text: "analysis unavailable" }));
-      } else {
-        status.appendChild(util.el("span", { class: "disco-card-status-note pulse", text: "Claude is reading…" }));
-      }
-      body.appendChild(status);
 
       // Icon-only action row — primary is "Add to your library", source
       // link tucked behind a second icon. Labels exposed via tooltips
@@ -2068,7 +1854,7 @@
       actions.appendChild(util.el("button", {
         class: "disco-card-iconbtn disco-card-iconbtn-primary",
         title: "Add to your library", "aria-label": "Add to your library",
-        onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book, enrich); }
+        onclick: (e) => { e.stopPropagation(); addDiscoveryToLibrary(book); }
       }, "+"));
       if (book.sourceUrl) {
         actions.appendChild(util.el("a", {
@@ -2088,77 +1874,25 @@
   }
 
   function openDiscoveryDetail(book) {
-    const enrich = discoveryState.enrichments[book.id];
     const inLibrary = (store.get().discovered || []).some(d => d.id === book.id);
+    const cover = buildCoverBlock(book, { size: "lg", showHeat: false });
 
-    // Cover block — reuse the shared buildCoverBlock. Discovery
-    // search results store heat inside the enrichment, so we mirror
-    // that onto a lightweight book shape the cover helper expects.
-    const coverBookShape = Object.assign({}, book, {
-      heat_level: enrich && !enrich.error && enrich.heat ? enrich.heat : null
-    });
-    const cover = buildCoverBlock(coverBookShape, { size: "lg", showHeat: !!coverBookShape.heat_level });
-
-    // Header aside — heat ring when Claude has finished analyzing.
-    let headerAside = null;
-    if (enrich && !enrich.error && enrich.heat != null) {
-      const aside = util.el("div", { class: "detail-rings" });
-      const fill = Math.max(0, Math.min(1, enrich.heat / 5));
-      const cell = util.el("div", { class: "detail-ring-cell" });
-      cell.appendChild(util.el("div", { class: "detail-ring" }, [kpiRing(fill, String(enrich.heat), kpiToneFromFraction(fill))]));
-      cell.appendChild(util.el("div", { class: "detail-ring-label", text: "Heat" }));
-      cell.appendChild(util.el("div", { class: "detail-ring-sub", text: `${enrich.heat} / 5` }));
-      aside.appendChild(cell);
-      headerAside = aside;
-    }
-
-    const sections = [];
-
-    // Tropes chip strip
-    if (enrich && !enrich.error && (enrich.tropes || []).length) {
-      const pills = util.el("div", { class: "detail-pills" });
-      enrich.tropes.forEach(t => {
-        pills.appendChild(util.el("span", { class: "detail-pill" }, [
-          util.el("span", { class: "detail-pill-v", text: t })
-        ]));
-      });
-      sections.push({ content: pills });
-    }
-
-    // Full description — no line clamping
-    sections.push({
-      label: "Description",
-      content: util.el("p", {
-        class: "detail-sheet-prose detail-sheet-prose-hero",
-        style: { whiteSpace: "pre-wrap" },
-        text: book.description || "No description available for this title."
-      })
-    });
-
-    // AI insight / advisory
-    if (enrich && !enrich.error) {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose", text: enrich.insight || "No insight returned." })
-      });
-    } else if (enrich && enrich.error) {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose",
-          text: "Analysis failed — Claude couldn't be reached for this title. The description and source link are still valid." })
-      });
-    } else {
-      sections.push({
-        label: "AI insight",
-        content: util.el("p", { class: "detail-sheet-prose", text: "Claude is still reading this title…" })
-      });
-    }
+    const sections = [
+      {
+        label: "Description",
+        content: util.el("p", {
+          class: "detail-sheet-prose detail-sheet-prose-hero",
+          style: { whiteSpace: "pre-wrap" },
+          text: book.description || "No description available for this title."
+        })
+      }
+    ];
 
     const actions = [
       book.sourceUrl ? { label: "View source", href: book.sourceUrl } : null,
       inLibrary
         ? { label: "Open in Library", variant: "btn-primary", onClick: () => router.go("library") }
-        : { label: "Add to your library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book, enrich) }
+        : { label: "Add to your library", variant: "btn-primary", onClick: () => addDiscoveryToLibrary(book) }
     ].filter(Boolean);
 
     ui.detailSheet({
@@ -2166,7 +1900,6 @@
       title: book.title,
       subtitle: book.author || "Unknown author",
       cover,
-      headerAside,
       sections,
       actions
     });
@@ -2291,7 +2024,7 @@
     }
   }
 
-  function addDiscoveryToLibrary(book, enrich) {
+  function addDiscoveryToLibrary(book) {
     const s = store.get();
     const existing = (s.discovered || []).find(d => d.id === book.id);
     if (existing) {
@@ -2323,9 +2056,6 @@
         thumbnail: book.thumbnail || null,
         source: "Google Books",
         sourceUrl: book.sourceUrl || null,
-        heat: enrich && !enrich.error ? enrich.heat : null,
-        tropes: enrich && !enrich.error ? (enrich.tropes || []) : [],
-        aiInsight: enrich && !enrich.error ? enrich.insight : null,
         addedAt: Date.now()
       });
       st.bookStates[book.id] = "want";
