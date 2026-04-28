@@ -173,16 +173,31 @@
     }
   }
 
-  // 1) Google Books search. Unauthenticated requests share a low daily quota;
-  // pass a Google Books API key from Settings to raise the cap dramatically.
+  // Keywords that indicate a result is fiction/romance/erotica and should be kept.
+  // Google Books categories are usually broad strings like "Fiction / Romance / General".
+  const ROMANCE_KEEP = /romance|erotica|erotic|fiction|love stor|adult fiction/i;
+  // Keywords that indicate a clearly non-fiction, non-genre result to discard.
+  const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
+
+  function isRomanceEligible(item) {
+    const cats = (item.categories || []).join(" ");
+    if (!cats) return true;           // no category data — let Claude decide
+    if (ROMANCE_DROP.test(cats)) return false;
+    return true;
+  }
+
+  // 1) Google Books search restricted to romance/fiction. Unauthenticated
+  // requests share a low daily quota; pass a Google Books API key from
+  // Settings to raise the cap dramatically.
   // Throws an Error with a human-readable message the UI can render.
-  // No category filtering — users can search for any title, author, or
-  // topic and add any result to their Library.
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
     const gkey = getGoogleKey();
-    const fetchCount = Math.max(maxResults, 10);
-    const q = query.trim();
+    // Fetch extra results because the post-filter may discard some.
+    const fetchCount = Math.max(maxResults * 2, 16);
+    // subject:romance biases Google Books toward the romance/erotica shelf
+    // without hard-blocking books filed under plain "Fiction".
+    const q = query.trim() + " subject:romance";
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(q)
       + "&maxResults=" + fetchCount
@@ -237,7 +252,11 @@
         source: "Google Books"
       };
     });
-    return items.slice(0, maxResults);
+
+    const filtered = items.filter(isRomanceEligible);
+    // Return filtered results; if filtering removed everything fall back to
+    // the unfiltered set so the user isn't left with a blank page.
+    return (filtered.length ? filtered : items).slice(0, maxResults);
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────
