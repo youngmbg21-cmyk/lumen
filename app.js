@@ -1713,8 +1713,13 @@
 
       discoveryState.lastQuery = q;
       discoveryState.raw = [];
-      grid.innerHTML = "";
       resultsLabel.textContent = `Searching for "${q}"…`;
+      searchBtn.disabled = true;
+      grid.innerHTML = "";
+      grid.appendChild(util.el("div", { class: "disco-loading" }, [
+        util.el("div", { class: "disco-spinner" }),
+        util.el("p", { class: "t-small t-muted", text: "Finding your book…" })
+      ]));
 
       let items;
       try {
@@ -1725,6 +1730,7 @@
         console.error("[Lumen Discovery] Search failed:", err);
         resultsLabel.textContent = `Search failed for "${q}"`;
         grid.innerHTML = "";
+        searchBtn.disabled = false;
         const emptyNode = util.el("div", { class: "discovery-empty" }, [
           util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
             text: isQuota ? "Google Books is rate-limiting this network" : "Couldn't reach Google Books" }),
@@ -1745,7 +1751,10 @@
         return;
       }
 
+      searchBtn.disabled = false;
+
       if (!items.length) {
+        grid.innerHTML = "";
         resultsLabel.textContent = `No results for "${q}"`;
         grid.appendChild(util.el("div", { class: "discovery-empty" }, [
           util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" }, text: "Nothing matched that query" }),

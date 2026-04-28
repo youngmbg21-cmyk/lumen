@@ -148,11 +148,11 @@
   function _checkThrottle() { /* no-op */ }
 
   // Category-level signals for non-romance/non-fiction books.
-  const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
+  const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport|criticism|anthology|journalism|language arts/i;
 
   // Description-level signals used when Google Books returns no category metadata.
   // DROP wins over KEEP — e.g. "encyclopedia of romance" is still a reference work.
-  const DESC_DROP = /encyclopedia|handbook|workbook|guidebook|self.?help|self.?improvement|how.to|therapy|therapist|detective|murder|mystery|thriller|crime|investigation|horror|parenting|cookbook|recipe|nutrition|fitness|academic|dissertation|research study/i;
+  const DESC_DROP = /encyclopedia|handbook|workbook|guidebook|self.?help|self.?improvement|how.to|therapy|therapist|detective|murder|mystery|thriller|crime|investigation|horror|parenting|cookbook|recipe|nutrition|fitness|academic|dissertation|research study|collects essays|collection of essays|anthology of/i;
   const DESC_KEEP = /romance novel|romantic comedy|rom.?com|love story|falling in love|meet cute|enemies.to.lovers|second chance|fake dating|steamy|swoon|happily ever after|love interest|fated|heart.*flutter|forbidden love|billionaire.*love|small.town.*love|marriage.*romance|fake.*relationship|arranged.*marriage/i;
 
   function isRomanceEligible(item) {
