@@ -879,7 +879,7 @@
     const seen = new Set(catalog.map(b => b.id));
     const merged = catalog.slice();
     discovered.forEach(b => { if (!seen.has(b.id)) { merged.push(b); seen.add(b.id); } });
-    return merged;
+    return merged.filter(b => b.thumbnail);
   }
   // Books the user has explicitly saved — currently the same as
   // listAllBooks() minus hidden. Compare will restrict to this set.

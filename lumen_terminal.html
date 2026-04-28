@@ -1444,7 +1444,8 @@ function resolveCatalogBooks() {
     }
   } catch (e) {}
 
-  return merged.length > builtin.length ? merged : (merged.length ? merged : builtin);
+  const withCovers = merged.filter(b => b.cover_url);
+  return withCovers.length ? withCovers : [];
 }
 
 const BOOKS = resolveCatalogBooks();
