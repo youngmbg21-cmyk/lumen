@@ -4694,7 +4694,7 @@
     { key: "orientation", label: "Orientation", group: "tag" }
   ];
 
-  const cmpState = { slots: [null, null, null], lastDeepAnalysis: null };
+  const cmpState = { slots: [null, null, null], lastDeepAnalysis: null, analysisRun: false };
 
   function openSlotPicker(slotIdx) {
     const saved = listSavedBooks();
@@ -4740,6 +4740,7 @@
           onclick: () => {
             cmpState.slots[slotIdx] = b.id;
             cmpState.lastDeepAnalysis = null;
+            cmpState.analysisRun = false;
             handle.close();
             renderView();
           }
@@ -5032,7 +5033,7 @@
         body.appendChild(util.el("div", { class: "cmp-slot-author", text: `${b.author} · ${util.fmtYear(b.year)}` }));
         body.appendChild(util.el("div", { class: "row", style: { marginTop: "var(--s-2)" } }, [
           util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => openSlotPicker(idx) }, "Replace"),
-          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; renderView(); } }, "Remove")
+          util.el("button", { class: "btn btn-sm btn-ghost", onclick: () => { cmpState.slots[idx] = null; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } }, "Remove")
         ]));
         filled.appendChild(body);
         slots.appendChild(filled);
@@ -5049,8 +5050,8 @@
     const filledCount = cmpState.slots.filter(Boolean).length;
     actionsRow.appendChild(util.el("div", { class: "t-small t-subtle", text: `${filledCount} of 3 slots filled` }));
     actionsRow.appendChild(util.el("div", { class: "row" }, [
-      util.el("button", { class: "btn btn-ghost btn-sm", disabled: filledCount === 0 || null, onclick: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } }, "Clear all"),
-      util.el("button", { class: "btn btn-primary", disabled: filledCount < 2 || null, onclick: () => runDeepAnalysis() }, "Run analysis")
+      util.el("button", { class: "btn btn-ghost btn-sm", disabled: filledCount === 0 || null, onclick: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } }, "Clear all"),
+      util.el("button", { class: "btn btn-primary" + (filledCount >= 2 && !cmpState.analysisRun ? " cmp-run-pulse" : ""), disabled: filledCount < 2 || null, onclick: () => runDeepAnalysis() }, "Run analysis")
     ]));
     slotsCard.appendChild(actionsRow);
 
@@ -5091,14 +5092,15 @@
         return;
       }
       if (filled.length === 1) {
-        const scored = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks())[0];
         body.appendChild(ui.empty({
-          title: "Add at least one more",
-          message: "Comparison needs two titles minimum. Below is your first slot, scored against your profile."
+          title: "Add at least one more title, then run the analysis",
+          message: "Comparison needs two titles minimum."
         }));
-        body.appendChild(cmpCard(scored));
         return;
       }
+
+      // Wait for the user to explicitly run the analysis.
+      if (!cmpState.analysisRun) return;
 
       const scoredList = Engine.compareBooks(filled, s.profile, s.weights, listAllBooks());
 
@@ -5135,6 +5137,7 @@
     function runDeepAnalysis() {
       const filled = cmpState.slots.filter(Boolean);
       if (filled.length < 2) return;
+      cmpState.analysisRun = true;
       const fresh = store.get();
       const scoredList = Engine.compareBooks(filled, fresh.profile, fresh.weights, listAllBooks());
       if (window.LumenAnalysis && window.LumenAnalysis.deepAnalysis) {
@@ -6506,7 +6509,7 @@
       commands.push({ label: "Compare: run deep analysis", hint: "", run: () => { router.go("compare"); setTimeout(() => renderCompare._runDeep && renderCompare._runDeep(), 80); } });
     }
     if (cmpState.slots && cmpState.slots.some(Boolean)) {
-      commands.push({ label: "Compare: clear all slots", hint: "", run: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; renderView(); } });
+      commands.push({ label: "Compare: clear all slots", hint: "", run: () => { cmpState.slots = [null, null, null]; cmpState.lastDeepAnalysis = null; cmpState.analysisRun = false; renderView(); } });
     }
 
     let host = document.getElementById("palette-host");
