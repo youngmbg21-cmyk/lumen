@@ -226,13 +226,25 @@
 
   // Pick a similarity search query from an anchor book's categories.
   function _similarityQuery(anchor) {
+    // Derive subgenre from categories when available.
     const cats = (anchor.categories || []).join(" ");
-    if (/contemporary/i.test(cats))                    return "contemporary romance fiction";
-    if (/historical/i.test(cats))                      return "historical romance fiction";
-    if (/paranormal|supernatural|fantasy/i.test(cats)) return "paranormal romance fiction";
-    if (/suspense|thriller|mystery/i.test(cats))       return "romantic suspense fiction";
-    if (/erotic/i.test(cats))                          return "erotic romance fiction";
-    return "subject:romance fiction";
+    let subgenre = "romance";
+    if (/contemporary/i.test(cats))                        subgenre = "contemporary romance";
+    else if (/historical/i.test(cats))                     subgenre = "historical romance";
+    else if (/paranormal|supernatural|fantasy/i.test(cats)) subgenre = "paranormal romance";
+    else if (/suspense|thriller|mystery/i.test(cats))      subgenre = "romantic suspense";
+    else if (/erotic/i.test(cats))                         subgenre = "erotic romance";
+
+    // Seed with meaningful title words so each book gets unique results.
+    const stopwords = new Set(["the","and","for","with","from","that","this","have","its","was","but","not","you","all","are","just","into","more","when","than","your","will","also","been","about","once"]);
+    const titleSeeds = anchor.title
+      .split(/\s+/)
+      .map(w => w.replace(/[^a-zA-Z]/g, "").toLowerCase())
+      .filter(w => w.length >= 4 && !stopwords.has(w))
+      .slice(0, 2)
+      .join(" ");
+
+    return titleSeeds ? `${titleSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
   }
 
   // Two-phase search: find the exact book first, then fill the remaining
