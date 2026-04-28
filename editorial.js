@@ -17,6 +17,7 @@
   "use strict";
 
   const ENDPOINT   = "https://api.anthropic.com/v1/messages";
+  const PROXY_URL  = "/api/analyze";
   const MODEL      = "claude-sonnet-4-6";
   const MAX_TOKENS = 2400;
 
@@ -24,6 +25,10 @@
   function getApiKey() {
     const D = window.LumenDiscovery;
     return (D && typeof D.getApiKey === "function") ? D.getApiKey() : "";
+  }
+  function getAdminKey() {
+    const D = window.LumenDiscovery;
+    return (D && typeof D.getAdminKey === "function") ? D.getAdminKey() : "";
   }
 
   // Typed error helper — every throw from this module is shaped as
@@ -210,9 +215,32 @@ ${candidatesFormatted}`
     );
   }
 
-  // --------------- Claude call (mirrors discovery.js) ---------------
+  // --------------- Claude call (proxy-first, mirrors discovery.js) ---------------
   async function callClaude(prompt) {
-    const apiKey = getApiKey();
+    // Try the Netlify proxy first — works for all visitors without a key.
+    try {
+      const pr = await fetch(PROXY_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "chat",
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+      if (pr.ok) return await pr.json();
+      // 404/405 = no proxy deployed (local dev); fall through to direct call.
+      if (pr.status !== 404 && pr.status !== 405) {
+        throw err("unknown", `Proxy responded HTTP ${pr.status}`);
+      }
+    } catch (e) {
+      if (e.code) throw e; // already shaped error
+      // Network error — fall through to direct call.
+    }
+
+    // Direct call fallback — requires a stored key.
+    const apiKey = getAdminKey() || getApiKey();
     if (!apiKey) throw err("no-key", "No Claude API key set");
 
     let res;

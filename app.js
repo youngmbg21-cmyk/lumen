@@ -5836,7 +5836,8 @@
         onclick: () => generateEditorialPick()
       }, "Generate"));
       empty.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-4)" }, text: "Uses your profile, your library, and what you've been reading." }));
-      if (ed.lastError) {
+      const showErr = ed.lastError && !(ed.lastError.code === "no-key");
+      if (showErr) {
         empty.appendChild(util.el("p", { class: "t-small", style: { color: "var(--danger)", marginTop: "var(--s-3)" }, text: ed.lastError.message || "Claude didn't respond — try again?" }));
       }
       wrap.appendChild(empty);
@@ -5871,7 +5872,7 @@
     footer.appendChild(util.el("p", { class: "t-small t-muted", style: { margin: 0 }, text: `Based on your ${librarySize} saved book${librarySize === 1 ? "" : "s"}, your profile, and your recent favorites.` }));
     wrap.appendChild(footer);
 
-    if (ed.lastError) {
+    if (ed.lastError && !(ed.lastError.code === "no-key")) {
       wrap.appendChild(util.el("p", { class: "t-small", style: { color: "var(--danger)", marginTop: "var(--s-3)" }, text: ed.lastError.message || "Claude didn't respond — try again?" }));
     }
     return wrap;
