@@ -151,6 +151,10 @@
   const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
 
   function isRomanceEligible(item) {
+    // Exclude pre-1950 books — these are almost always old bibliographic
+    // reference works or literary criticism that sneak through on "romance fiction" queries.
+    const year = parseInt(item.year, 10);
+    if (!isNaN(year) && year < 1950) return false;
     const cats = (item.categories || []).join(" ");
     if (!cats) return true;
     if (ROMANCE_DROP.test(cats)) return false;
