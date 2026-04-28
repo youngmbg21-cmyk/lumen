@@ -1412,13 +1412,39 @@ function mapCatalogBook(b) {
 
 function resolveCatalogBooks() {
   const builtin = JSON.parse(document.getElementById('bookData').textContent);
+  const seen = new Set(builtin.map(b => String(b.id)));
+  const merged = builtin.slice();
+
+  // Merge in any catalog override (applied via Settings → Curated catalog)
   try {
     const raw = localStorage.getItem('lumen:catalog-override');
-    if (!raw) return builtin;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.books) || !parsed.books.length) return builtin;
-    return parsed.books.map(mapCatalogBook);
-  } catch (e) { return builtin; }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && Array.isArray(parsed.books)) {
+        parsed.books.forEach(b => {
+          const mapped = mapCatalogBook(b);
+          if (!seen.has(String(mapped.id))) { merged.push(mapped); seen.add(String(mapped.id)); }
+        });
+      }
+    }
+  } catch (e) {}
+
+  // Merge in books from the main app's discovered/library state (lumen:v1)
+  try {
+    const raw = localStorage.getItem('lumen:v1');
+    if (raw) {
+      const state = JSON.parse(raw);
+      const discovered = Array.isArray(state && state.discovered) ? state.discovered : [];
+      discovered.forEach(b => {
+        if (!seen.has(String(b.id))) {
+          merged.push(mapCatalogBook(b));
+          seen.add(String(b.id));
+        }
+      });
+    }
+  } catch (e) {}
+
+  return merged.length > builtin.length ? merged : (merged.length ? merged : builtin);
 }
 
 const BOOKS = resolveCatalogBooks();
