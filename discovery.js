@@ -140,42 +140,12 @@
     return { via: "proxy", key: null };
   }
 
-  // ── Session throttle ──────────────────────────────────────────
-  // Tracks timestamps of AI calls in localStorage. Only calls made
-  // on today's calendar date (00:00–23:59 local time) count toward
-  // the cap; the slate resets automatically at midnight.
-  function _todayStart() {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-  }
-  function _readThrottle() {
-    try {
-      const raw = localStorage.getItem(THROTTLE_KEY);
-      return raw ? JSON.parse(raw) : [];
-    } catch (e) { return []; }
-  }
-  function _writeThrottle(list) {
-    try { localStorage.setItem(THROTTLE_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
-  }
-  function throttleRemaining() {
-    const start  = _todayStart();
-    const todayCount = _readThrottle().filter(ts => ts >= start).length;
-    return Math.max(0, getSessionCap() - todayCount);
-  }
-  function _recordThrottledCall() {
-    const start  = _todayStart();
-    const todaySoFar = _readThrottle().filter(ts => ts >= start);
-    todaySoFar.push(Date.now());
-    _writeThrottle(todaySoFar);
-  }
-  function _checkThrottle() {
-    if (throttleRemaining() <= 0) {
-      const err = new Error("session-throttled");
-      err.code = "throttled";
-      throw err;
-    }
-  }
+  // ── Session throttle (disabled) ───────────────────────────────
+  // Limit is currently off. throttleRemaining() returns Infinity and
+  // _checkThrottle() is a no-op so all call sites pass through unchanged.
+  function throttleRemaining() { return Infinity; }
+  function _recordThrottledCall() { /* no-op */ }
+  function _checkThrottle() { /* no-op */ }
 
   // Keywords that indicate a clearly non-fiction, non-genre result to discard.
   const ROMANCE_DROP = /education|academic|textbook|reference|science|history|biography|poetry|religion|cooking|travel|business|law|medical|computing|philosophy|psychology|self.?help|craft|art|music|sport/i;
