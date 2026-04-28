@@ -232,17 +232,22 @@
     return (data.items || []).map(_mapGBItem);
   }
 
-  // Build a similarity query from the anchor book's description and subgenre.
-  // Uses description words (not title words) so searching "Pucked Up" finds
-  // hockey-romance reads rather than other books with "pucked" in the title.
-  function _similarityQuery(anchor) {
+  // Derive the romance subgenre label from a book's category metadata.
+  function _subgenreFor(anchor) {
     const cats = (anchor.categories || []).join(" ");
-    let subgenre = "romance";
-    if (/contemporary/i.test(cats))                         subgenre = "contemporary romance";
-    else if (/historical/i.test(cats))                      subgenre = "historical romance";
-    else if (/paranormal|supernatural|fantasy/i.test(cats)) subgenre = "paranormal romance";
-    else if (/suspense|thriller|mystery/i.test(cats))       subgenre = "romantic suspense";
-    else if (/erotic/i.test(cats))                          subgenre = "erotic romance";
+    if (/contemporary/i.test(cats))                         return "contemporary romance";
+    if (/historical/i.test(cats))                           return "historical romance";
+    if (/paranormal|supernatural|fantasy/i.test(cats))      return "paranormal romance";
+    if (/suspense|thriller|mystery/i.test(cats))            return "romantic suspense";
+    if (/erotic/i.test(cats))                               return "erotic romance";
+    return "romance";
+  }
+
+  // Build a thematic search query from description keywords + subgenre.
+  // Never uses title words so searching "Pucked Up" finds hockey-romance
+  // reads rather than other books with "pucked" in the title.
+  function _similarityQuery(anchor) {
+    const subgenre = _subgenreFor(anchor);
 
     const stopwords = new Set([
       "the","and","for","with","from","that","this","have","its","was","but","not",
@@ -254,12 +259,9 @@
       "own","good","give","think","where","before","every","never","these","those","here",
       "since","while","until","does","did","said","same","long","down","high","very"
     ]);
-
-    // Exclude the searched book's own title words to avoid returning same-title results.
     const titleWords = new Set(
       anchor.title.toLowerCase().split(/\s+/).map(w => w.replace(/[^a-z]/g, "")).filter(Boolean)
     );
-
     const desc = (anchor.description || "").replace(/No description available\.?/i, "");
     const descSeeds = desc
       .split(/\s+/)
@@ -271,52 +273,74 @@
     return descSeeds ? `${descSeeds} ${subgenre} fiction` : `${subgenre} fiction`;
   }
 
-  // Two-phase search: find the exact book first, then fill the remaining
-  // slots with subgenre-matched similar titles.
+  // A book is usable only if it has both a real cover and a description.
+  // Google Books returns thumbnail URLs even for editions with no cover art,
+  // and those coverless editions almost always lack a description too.
+  function _hasGoodMeta(b) {
+    return !!b.thumbnail && b.description !== "No description available.";
+  }
+
+  // Two-phase search:
+  //   Phase 1 — find the best matching edition of the searched book,
+  //             preferring editions that have a cover and description.
+  //   Phase 2 — fill remaining slots with in-genre books that have covers.
+  //             Falls back to a broader subgenre query if the first pass
+  //             doesn't yield enough results.
   async function searchBooks(query, maxResults = 6) {
     if (!query || !query.trim()) return [];
     const gkey = getGoogleKey();
     const { title, author } = _parseQueryIntent(query.trim());
 
-    // Phase 1 — exact book lookup via intitle: (+ inauthor: if provided).
+    // Phase 1 — pick the edition with the best title match AND metadata.
     const strictParts = [`intitle:"${title.replace(/"/g, "")}"`];
     if (author) strictParts.push(`inauthor:"${author.replace(/"/g, "")}"`);
     let exactBook = null;
     try {
-      const exactItems = await _gbFetch(strictParts.join(" "), 5, gkey);
+      const exactItems = await _gbFetch(strictParts.join(" "), 10, gkey);
       if (exactItems.length) {
         const titleLc = title.toLowerCase();
         const scored = exactItems
           .map(b => {
             const t = b.title.toLowerCase();
-            const score = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
-            return { b, score };
+            const titleScore = t === titleLc ? 3 : t.includes(titleLc) ? 2 : titleLc.includes(t) ? 1 : 0;
+            const metaScore  = (b.thumbnail ? 2 : 0) + (_hasGoodMeta(b) ? 1 : 0);
+            return { b, score: titleScore * 10 + metaScore };
           })
           .sort((a, b_) => b_.score - a.score);
         exactBook = scored[0].b;
         exactBook.isExactMatch = true;
       }
     } catch (e) {
-      // Non-fatal — fall through to similarity search alone.
       console.warn("[Lumen Discovery] Exact lookup failed:", e.message);
     }
 
-    // Phase 2 — similar books based on the anchor's subgenre.
-    const similarCount = maxResults - (exactBook ? 1 : 0);
-    const simQuery = exactBook ? _similarityQuery(exactBook) : title + " subject:romance";
-    // Fetch generously — thumbnail + year + eligibility filters can drop many results.
-    const fetchCount = Math.max(similarCount * 6, 30);
-    const simItems = await _gbFetch(simQuery, fetchCount, gkey);
+    // Phase 2 — collect in-genre books with covers and descriptions.
+    const similarCount  = maxResults - (exactBook ? 1 : 0);
+    const exactTitleLc  = exactBook ? exactBook.title.toLowerCase() : "";
+    const seen          = new Set([exactTitleLc]);
 
-    const exactTitleLc = exactBook ? exactBook.title.toLowerCase() : "";
-    const similar = simItems
-      .filter(b => b.title.toLowerCase() !== exactTitleLc)
-      .filter(b => !!b.thumbnail)
-      .filter(isRomanceEligible)
-      .slice(0, similarCount);
+    function filterSim(items) {
+      return items
+        .filter(b => !seen.has(b.title.toLowerCase()))
+        .filter(_hasGoodMeta)
+        .filter(isRomanceEligible);
+    }
 
-    const results = exactBook ? [exactBook, ...similar] : similar.slice(0, maxResults);
-    return results.length ? results : simItems.filter(b => !!b.thumbnail).slice(0, maxResults);
+    // First pass — description-seeded query for thematic variety.
+    const simQuery   = exactBook ? _similarityQuery(exactBook) : `${title} romance fiction`;
+    const simItems   = await _gbFetch(simQuery, Math.max(similarCount * 6, 30), gkey);
+    let similar      = filterSim(simItems).slice(0, similarCount);
+    similar.forEach(b => seen.add(b.title.toLowerCase()));
+
+    // Second pass — broaden to subgenre-only if still short.
+    if (similar.length < similarCount) {
+      const subgenre    = _subgenreFor(exactBook || { categories: [] });
+      const moreItems   = await _gbFetch(`${subgenre} fiction`, Math.max((similarCount - similar.length) * 8, 30), gkey);
+      const more        = filterSim(moreItems).slice(0, similarCount - similar.length);
+      similar           = [...similar, ...more];
+    }
+
+    return exactBook ? [exactBook, ...similar] : similar.slice(0, maxResults);
   }
 
   // ── Low-level Claude POST helper ─────────────────────────────
