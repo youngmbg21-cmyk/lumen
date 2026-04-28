@@ -12,7 +12,7 @@
      Priority 1: Edge proxy at /api/analyze
      Priority 2: Admin key (set by operator, stored in lumen:admin-key)
      Priority 3: User key (lumen:claude-key) for power users
-   Session throttle: 10 AI calls per rolling 60-minute window.
+   Session throttle: 30 AI calls per calendar day (00:00–23:59).
    ============================================================ */
 (function () {
   "use strict";
@@ -22,10 +22,9 @@
   const DEMO_MODE_STORAGE    = "lumen:demo-mode";
   const SESSION_CAP_STORAGE  = "lumen:session-cap";
   const GBOOKS_KEY_STORAGE   = "lumen:gbooks-key";
-  const THROTTLE_KEY         = "lumen:throttle";   // sessionStorage
+  const THROTTLE_KEY         = "lumen:throttle";   // localStorage
   const PROXY_URL            = "/api/analyze";
-  const DEFAULT_THROTTLE_CAP = 10;
-  const THROTTLE_WINDOW_MS   = 60 * 60 * 1000;
+  const DEFAULT_THROTTLE_CAP = 30;
 
   // Migrate legacy lumen:admin-key → lumen:master-key on first load.
   (function _migrateLegacyAdminKey() {
@@ -142,28 +141,33 @@
   }
 
   // ── Session throttle ──────────────────────────────────────────
-  // Tracks timestamps of AI calls in sessionStorage. Drops entries
-  // older than THROTTLE_WINDOW_MS so the limit is a rolling window,
-  // not a hard session cap.
+  // Tracks timestamps of AI calls in localStorage. Only calls made
+  // on today's calendar date (00:00–23:59 local time) count toward
+  // the cap; the slate resets automatically at midnight.
+  function _todayStart() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  }
   function _readThrottle() {
     try {
-      const raw = sessionStorage.getItem(THROTTLE_KEY);
+      const raw = localStorage.getItem(THROTTLE_KEY);
       return raw ? JSON.parse(raw) : [];
     } catch (e) { return []; }
   }
   function _writeThrottle(list) {
-    try { sessionStorage.setItem(THROTTLE_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
+    try { localStorage.setItem(THROTTLE_KEY, JSON.stringify(list)); } catch (e) { /* quota */ }
   }
   function throttleRemaining() {
-    const now  = Date.now();
-    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
-    return Math.max(0, getSessionCap() - recent.length);
+    const start  = _todayStart();
+    const todayCount = _readThrottle().filter(ts => ts >= start).length;
+    return Math.max(0, getSessionCap() - todayCount);
   }
   function _recordThrottledCall() {
-    const now    = Date.now();
-    const recent = _readThrottle().filter(ts => now - ts < THROTTLE_WINDOW_MS);
-    recent.push(now);
-    _writeThrottle(recent);
+    const start  = _todayStart();
+    const todaySoFar = _readThrottle().filter(ts => ts >= start);
+    todaySoFar.push(Date.now());
+    _writeThrottle(todaySoFar);
   }
   function _checkThrottle() {
     if (throttleRemaining() <= 0) {

@@ -1916,11 +1916,11 @@
       const remaining = Disco.throttleRemaining ? Disco.throttleRemaining() : 0;
       const node = util.el("div", { class: "discovery-empty discovery-throttle" }, [
         util.el("h3", { class: "t-serif", style: { fontSize: "18px", color: "var(--accent)" },
-          text: "Hourly limit reached" }),
+          text: "Daily limit reached" }),
         util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "52ch", marginLeft: "auto", marginRight: "auto" },
-          text: `This session has used all ${10} AI analyses for this hour. The limit resets on a rolling 60-minute window — come back shortly and it will lift automatically.` }),
+          text: `You've used all 30 AI analyses for today. The limit resets at midnight — come back tomorrow and it will lift automatically.` }),
         util.el("p", { class: "t-tiny t-subtle", style: { marginTop: "var(--s-3)" },
-          text: `Remaining this hour: ${remaining}` })
+          text: `Remaining today: ${remaining}` })
       ]);
       return node;
     }
