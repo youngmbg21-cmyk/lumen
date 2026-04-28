@@ -193,7 +193,8 @@
     return { title: q, author: null };
   }
 
-  async function _gbFetch(q, maxResults, gkey) {
+  async function _gbFetch(q, maxResults, gkey, _attempt) {
+    _attempt = _attempt || 1;
     const url = "https://www.googleapis.com/books/v1/volumes"
       + "?q=" + encodeURIComponent(q)
       + "&maxResults=" + maxResults
@@ -205,21 +206,24 @@
       res = await fetch(url);
     } catch (networkErr) {
       console.error("[Lumen Discovery] Network error calling Google Books:", networkErr);
-      throw new Error("Can't reach Google Books — check your connection or see the console for the exact error.");
+      throw new Error("Can't reach Google Books — check your connection and try again.");
     }
     if (!res.ok) {
-      let detail = "";
-      try { detail = (await res.text()).slice(0, 300); } catch (e) { /* ignore */ }
-      console.error("[Lumen Discovery] Google Books returned", res.status, detail);
+      console.error("[Lumen Discovery] Google Books returned", res.status);
       if (res.status === 429 || res.status === 403) {
         const err = new Error(gkey
-          ? "Google Books rejected this key's quota (HTTP " + res.status + "). Check the key's daily limit in the Google Cloud console."
-          : "Google Books daily quota exhausted on this network (HTTP " + res.status + "). Add a Google Books API key in Settings to raise the cap."
+          ? "Google Books rejected this key's quota. Check the key's daily limit in the Google Cloud console."
+          : "Google Books daily quota exhausted on this network. Add a Google Books API key in Settings to raise the cap."
         );
         err.code = "quota";
         throw err;
       }
-      throw new Error(`Google Books returned HTTP ${res.status}.` + (detail ? ` ${detail}` : ""));
+      // Retry once on transient server errors (5xx).
+      if (res.status >= 500 && _attempt < 3) {
+        await new Promise(r => setTimeout(r, _attempt * 1500));
+        return _gbFetch(q, maxResults, gkey, _attempt + 1);
+      }
+      throw new Error("Google Books is temporarily unavailable — please try again in a moment.");
     }
     let data;
     try { data = await res.json(); } catch (e) {
