@@ -5541,14 +5541,24 @@
     const s = store.get();
     const ed = s.editorial || {};
     const wrap = util.el("div", { class: "page stack-lg" });
-    wrap.appendChild(util.el("div", { class: "page-head" }, [
+    const rlTop = editorialRateLimit();
+    const pageHeadChildren = [
       util.el("div", {}, [
         util.el("div", { class: "t-eyebrow", text: "Today" }),
         util.el("h1", { html: ed.currentPick && ed.currentPick.angleStatement
           ? `<em>${String(ed.currentPick.angleStatement).replace(/[<>]/g, "")}</em>`
           : "Three books, chosen and <em>written</em> for you." })
       ])
-    ]));
+    ];
+    if (ed.currentPick && !editorialLoading) {
+      pageHeadChildren.push(util.el("button", {
+        class: "btn btn-primary",
+        disabled: rlTop.allowed ? null : true,
+        title: rlTop.allowed ? "" : `Regeneration unlocks at ${rlTop.unlockAt.toLocaleTimeString()}`,
+        onclick: () => generateEditorialPick()
+      }, "Regenerate"));
+    }
+    wrap.appendChild(util.el("div", { class: "page-head" }, pageHeadChildren));
 
     // --- Loading state --------------------------------------------------
     if (editorialLoading) {
@@ -5605,19 +5615,9 @@
       wrap.appendChild(editorialBookBlock(b, byId.get(p.bookId) || p.summary, pick));
     });
 
-    // Footer: Regenerate + transparency note.
+    // Footer: transparency note.
     const librarySize = listAllBooks().filter(b => !(s.hidden || {})[b.id]).length;
-    const rl = editorialRateLimit();
-    const footer = util.el("div", { class: "row-wrap", style: { justifyContent: "space-between", alignItems: "center", marginTop: "var(--s-5)" } });
-    const regenBtn = util.el("button", {
-      class: "btn btn-primary",
-      disabled: rl.allowed ? null : true,
-      title: rl.allowed ? "" : `Regeneration unlocks at ${rl.unlockAt.toLocaleTimeString()}`,
-      onclick: () => generateEditorialPick()
-    }, "Regenerate");
-    footer.appendChild(regenBtn);
-    footer.appendChild(util.el("p", { class: "t-small t-muted", style: { margin: 0 }, text: `Based on your ${librarySize} saved book${librarySize === 1 ? "" : "s"}, your profile, and your recent favorites.` }));
-    wrap.appendChild(footer);
+    wrap.appendChild(util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-5)" }, text: `Based on your ${librarySize} saved book${librarySize === 1 ? "" : "s"}, your profile, and your recent favorites.` }));
 
     if (ed.lastError && !(ed.lastError.code === "no-key")) {
       wrap.appendChild(util.el("p", { class: "t-small", style: { color: "var(--danger)", marginTop: "var(--s-3)" }, text: ed.lastError.message || "Claude didn't respond — try again?" }));
