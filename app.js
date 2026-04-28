@@ -355,9 +355,9 @@
   const ROUTES = [
     { id: "discover",     label: "Today",         short: "Today",    group: "main",     render: () => views.discover() },
     { id: "terminal",     label: "Signals",       short: "Signals",  group: "main",     render: () => views.terminal() },
-    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
     { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
+    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
     { id: "chat",         label: "Connections",   short: "Connect",  group: "main",     render: () => views.chat() },
     { id: "journal",      label: "Journal",       short: "Journal",  group: "personal", render: () => views.journal() },
     { id: "vault",        label: "Vault",         short: "Vault",    group: "personal", render: () => views.vault() },
