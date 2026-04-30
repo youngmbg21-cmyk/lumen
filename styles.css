@@ -6260,13 +6260,23 @@ body[data-sidenav="overlay"] .lumen-terminal {
   transform: translateY(-2px) !important;
 }
 .page-margin-notes .mn-pile-column .mn-pile-cover {
-  width: 100%;
-  height: clamp(120px, 18vh, 200px);
-  background-size: cover;
-  background-position: center;
-  border-radius: 2px;
+  /* Match the spread hero cover dimensions and the natural 2:3
+     book aspect ratio so the image fills without cropping or
+     letterboxing — this is what makes covers look "full" rather
+     than grainy/cut at the edges. */
+  width: clamp(110px, 13vh, 150px);
+  aspect-ratio: 2 / 3;
+  height: auto;
+  margin: 0 auto;
   background-color: var(--bg-deep);
   box-shadow: 0 10px 22px rgba(120,60,80,0.18), 0 0 0 1px var(--border-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.page-margin-notes .mn-cover {
+  /* Hero cover gets the same enforced 2:3 ratio for parity. */
+  aspect-ratio: 2 / 3;
+  height: auto;
 }
 .page-margin-notes .mn-pile-column .mn-pile-tag {
   display: flex;

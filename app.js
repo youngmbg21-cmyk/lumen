@@ -6224,18 +6224,20 @@
   }
 
   // hero book + the user's profile so it grounds in real data
-  // without an LLM call. Batch 3 may swap this for an LLM letter.
+  // without an LLM call. Tight by design — 3 short paragraphs,
+  // ~120 words, so it never overflows the right page even when
+  // the LLM letter doesn't load.
   function biancaLetterFor(heroBook, heroPickEntry, profile) {
-    const reasons = ((heroPickEntry && heroPickEntry.contributions) || []).slice(0, 2);
+    const reasons = ((heroPickEntry && heroPickEntry.contributions) || []).slice(0, 1);
     const reasonProse = reasons.length
-      ? reasons.join(", and ")
-      : "the fit score lined up against your taste profile";
+      ? reasons[0].replace(/\.$/, "").toLowerCase()
+      : "your fit score lined up against your taste profile";
     const heat = heroBook.heat_level || 3;
     const heatNote = heat >= 4
-      ? "The heat here runs hot — explicit on the page, not implied."
+      ? "Heat runs hot — explicit on the page, not implied."
       : heat <= 2
-      ? "The heat here is restrained — sensual without being graphic."
-      : "The heat here is psychological — that's the only honest caveat.";
+      ? "Heat is restrained — sensual, not graphic."
+      : "Heat is psychological more than explicit. That's the honest caveat.";
     const pageNo = 14 + ((heroBook.id || "x").charCodeAt(0) % 18);
     return [
       "Reader,",
@@ -6370,9 +6372,26 @@
       util.el("span", { class: "mn-fit-tag", text: `fit ${heroEntry.fitScore || "?"}` })
     ]));
 
-    // Letter — render newlines as paragraph breaks.
-    const letterText = (pick.biancaLetter && pick.biancaLetter.trim())
+    // Letter — render newlines as paragraph breaks. Hard-capped at
+    // ~180 words at display time so an over-long LLM response can't
+    // push the layout past the page. The LLM prompt asks for 160-180
+    // words; this is the safety net.
+    const rawLetter = (pick.biancaLetter && pick.biancaLetter.trim())
       || biancaLetterFor(hero, heroEntry, st.profile);
+    const letterText = (function capWords(text, maxWords) {
+      const words = text.split(/\s+/);
+      if (words.length <= maxWords) return text;
+      // Trim back to the last sentence boundary that fits, so the cut
+      // doesn't land mid-thought. Falls back to a hard slice if no
+      // boundary is in range.
+      const truncated = words.slice(0, maxWords).join(" ");
+      const lastStop = Math.max(
+        truncated.lastIndexOf(". "),
+        truncated.lastIndexOf("? "),
+        truncated.lastIndexOf("! ")
+      );
+      return lastStop > 60 ? truncated.slice(0, lastStop + 1) : truncated + "…";
+    })(rawLetter, 200);
     const letterEl = util.el("div", { class: "mn-handwritten" });
     letterText.split(/\n\n+/).forEach((para, i) => {
       if (i > 0) letterEl.appendChild(util.el("br"));

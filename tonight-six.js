@@ -108,7 +108,7 @@ ${heroNote}${coldNote}
 WHAT TO WRITE:
 
 1. angleStatement — one sentence under 22 words that frames tonight's six as a set. No hype.
-2. biancaLetter — a short letter to the reader (Reader, …) that goes on the right page of an open-book spread, beside the hero book. 4 to 7 short paragraphs. Signed "— your reader, marked at p. N" where N is a plausible page number for the hero book. Reference WHY the hero is for them tonight (lean on the engine reasons + their profile). Be honest about heat / weight / pacing — if the heat is psychological and not on the page, say that. Use **bold** for the hero's title only when first named.
+2. biancaLetter — a tight, honest letter to the reader (Reader, …) that goes on the right page of an open-book spread, beside the hero book. HARD LIMIT: 160-180 words total, including "Reader," and the signature. 3 short paragraphs is plenty — never more than 4. The letter must fit on the page without scrolling, so density and editing matter more than coverage. Reference WHY the hero is for them tonight (one engine reason or one profile note is enough — don't list everything). Be honest about heat / weight / pacing in one sentence — if the heat is psychological and not on the page, say so plainly. Use **bold** for the hero's title only when first named. Sign it "— your reader, marked at p. N" where N is a plausible page number.
 3. picks — for each of the six books in the order given, write a one-sentence summary (under 28 words) that names what the book DOES rather than what it's about. These show up as small annotations on the reading-pile cards and the constellation rail. Vary how they open — don't all start with "A …".
 
 Return STRICT JSON, no markdown fences, no commentary, matching this shape exactly:
