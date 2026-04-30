@@ -468,7 +468,16 @@
       node.innerHTML = renderMarkdown(m.text || "");
       body.appendChild(node);
     });
-    setTimeout(() => { body.scrollTop = body.scrollHeight; }, 10);
+    // Scroll so the START of the latest message sits at the top of
+    // the visible chat area, not the bottom. Long replies used to
+    // land the user at the end and force a scroll back up; this
+    // keeps the read top-down.
+    setTimeout(() => {
+      const last = body.lastElementChild;
+      if (!last) return;
+      const top = last.offsetTop - 8; // small breathing room
+      body.scrollTop = Math.max(0, top);
+    }, 10);
   }
 
   // Types the supplied HTML into `target` character by character,
@@ -508,8 +517,10 @@
       const addition = cur.full.slice(cur.i, nextI);
       cur.node.nodeValue = cur.full.slice(0, nextI);
       cur.i = nextI;
-      // Auto-scroll as text grows.
-      if (body) body.scrollTop = body.scrollHeight;
+      // Don't auto-scroll during the typing animation. The initial
+      // render already placed the start of this reply at the top of
+      // the visible area; pinning to the bottom every burst would
+      // drag the user away from the text they're trying to read.
       // Punctuation pause — feels like a breath at sentence boundaries.
       const lastChar = addition.slice(-1);
       const delay = ".?!".includes(lastChar) ? 180
