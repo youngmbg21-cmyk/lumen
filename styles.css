@@ -5674,3 +5674,267 @@ body[data-sidenav="overlay"] .lumen-terminal {
   .mn-pageno-right { position: static; display: block; margin-top: 24px; text-align: right; }
   .mn-sticky { position: static; transform: rotate(2deg); margin-top: 22px; width: auto; max-width: 220px; }
 }
+
+/* ============================================================
+   The Constellation — hero + polar chart + side rail + gallery.
+   Lifted from the prototype design. Skips .lc-header / .lc-nav /
+   .btn-* / .chip / .eyebrow because Lumen already has those (or
+   uses .t-eyebrow). .lc-section-head is shared with Margin Notes.
+   ============================================================ */
+.page-constellation { padding: 0; }
+
+.lc-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 32px;
+  align-items: end;
+  padding: clamp(36px, 6vw, 72px) clamp(20px, 4vw, 64px) 28px;
+}
+.lc-h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(38px, 5.5vw, 72px);
+  margin: 8px 0 16px;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: var(--text);
+}
+.lc-h1 em { color: var(--accent-deep); font-weight: 500; }
+.lc-lede {
+  max-width: 60ch;
+  font-size: 16px;
+  color: var(--text-soft);
+  line-height: 1.55;
+  text-wrap: pretty;
+  margin: 0 0 18px;
+}
+.lc-legend {
+  display: flex; gap: 24px; flex-wrap: wrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+}
+.lc-legend b { color: var(--accent-deep); font-weight: 500; }
+
+.lc-hero-meta { display: flex; gap: 16px; flex-wrap: wrap; }
+.lc-meta-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  padding: 16px 20px;
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 110px;
+}
+.lc-big {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 36px;
+  color: var(--accent-deep);
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+}
+
+.lc-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  gap: 32px;
+  padding: 16px clamp(20px, 4vw, 64px) 56px;
+  align-items: start;
+}
+.lc-chart-wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-4);
+  padding: 24px;
+  box-shadow: var(--shadow-soft);
+  aspect-ratio: 1 / 1;
+  min-height: 600px;
+}
+.lc-chart {
+  width: 100%; height: 100%;
+  overflow: visible;
+}
+.lc-rail {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-4);
+  padding: 28px 28px 24px;
+  box-shadow: var(--shadow-soft);
+  position: sticky;
+  top: 100px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.lc-rail-title {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 32px;
+  margin: 4px 0 0;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+}
+.lc-rail-title em { color: var(--accent-deep); }
+.lc-rail-byline {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 16px;
+  color: var(--text-soft);
+}
+.lc-rail-meta {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.lc-cover {
+  width: 110px; height: 165px;
+  background-size: cover; background-position: center;
+  background-color: var(--bg-deep);
+  box-shadow: 0 12px 24px rgba(142,46,68,.18), 0 0 0 1px var(--border-strong);
+  border-radius: 2px;
+}
+.lc-fit-num {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 56px;
+  color: var(--accent-deep);
+  letter-spacing: -0.04em;
+  line-height: 0.85;
+}
+.lc-stats {
+  margin-top: 10px;
+  display: flex; flex-direction: column; gap: 5px;
+  font-size: 11px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+}
+.lc-insight {
+  margin: 4px 0 0;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 17px;
+  line-height: 1.45;
+  color: var(--accent-deep);
+  padding-left: 14px;
+  border-left: 2px solid var(--accent-deep);
+  text-wrap: pretty;
+}
+.lc-desc {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--text-soft);
+  line-height: 1.55;
+  text-wrap: pretty;
+}
+.lc-why {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.lc-why li {
+  display: flex; gap: 10px; align-items: flex-start;
+  font-size: 13px; color: var(--text);
+}
+.lc-why li.muted { color: var(--text-soft); }
+.lc-why .plus, .lc-why .minus {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 600;
+  margin-top: -2px;
+}
+.lc-why .plus  { color: var(--accent-deep); }
+.lc-why .minus { color: var(--text-mute); }
+.lc-actions { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+.lc-gallery {
+  padding: 28px clamp(20px, 4vw, 64px) 56px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
+.lc-gallery .lc-section-head { margin-bottom: 22px; }
+.lc-gallery .lc-section-head h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 28px;
+  margin: 6px 0 0;
+  letter-spacing: -0.018em;
+}
+.lc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 18px;
+}
+.lc-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-3);
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 14px;
+  cursor: pointer;
+  transition: all 120ms cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.lc-card:hover { box-shadow: var(--shadow-soft); transform: translateY(-1px); }
+.lc-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-mid), var(--shadow-soft);
+}
+.lc-card-cover {
+  width: 80px; height: 120px;
+  background-size: cover; background-position: center;
+  background-color: var(--bg-deep);
+  border-radius: 2px;
+  box-shadow: 0 6px 14px rgba(142,46,68,.16), 0 0 0 1px var(--border-strong);
+}
+.lc-card-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.lc-card-body h4 {
+  font-family: var(--font-serif);
+  font-weight: 500;
+  font-size: 18px;
+  margin: 0;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+  text-wrap: pretty;
+}
+.lc-card-body h4 em { color: var(--accent-deep); }
+.lc-card-author {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.lc-card-stats {
+  margin-top: auto;
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--text-mute);
+  letter-spacing: 0.04em;
+}
+.lc-fit-pill {
+  display: inline-grid; place-items: center;
+  min-width: 32px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--accent-glow);
+  color: var(--accent-deep);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 600;
+  font-size: 13px;
+  border: 1px solid var(--accent-mid);
+  letter-spacing: 0;
+}
+
+@media (max-width: 1100px) {
+  .lc-main  { grid-template-columns: 1fr; }
+  .lc-rail  { position: static; }
+  .lc-hero  { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .lc-h1 { font-size: 36px; }
+  .lc-rail-meta { grid-template-columns: 1fr; }
+  .lc-cover { width: 130px; height: 195px; }
+}
