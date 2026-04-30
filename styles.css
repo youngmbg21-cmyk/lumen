@@ -1624,6 +1624,20 @@ body {
   gap: var(--s-3);
   flex-wrap: wrap;
 }
+.profile-first-run {
+  border-left: 3px solid var(--accent);
+  padding: var(--s-5);
+}
+.profile-cta {
+  text-align: center;
+  padding: var(--s-5);
+}
+.discovery-gate {
+  text-align: center;
+  padding: var(--s-6);
+  border-left: 3px solid var(--accent);
+}
+.discovery-gate h3 { color: var(--accent); }
 .profile-strict-inline {
   display: inline-flex;
   align-items: center;

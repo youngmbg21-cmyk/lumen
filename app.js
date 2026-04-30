@@ -374,12 +374,21 @@
     go(id) { location.hash = `#/${id}`; }
   };
 
-  // Discovery Phase: on a bare load (no hash) redirect to the
-  // Discovery view so testers land on the search experience, not
-  // the empty Today editorial tab.
-  (function setDiscoveryDefault() {
+  // Bare loads (no hash) route based on whether the user has
+  // confirmed their preferences yet. First-time visitors land on
+  // Profile so they set their taste before searching; returning
+  // users go straight to Discovery.
+  (function setBootDefault() {
     if (!location.hash || location.hash === "#" || location.hash === "#/") {
-      location.replace("#/discovery");
+      const done = (() => {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return false;
+          const parsed = JSON.parse(raw);
+          return !!(parsed && parsed.ui && parsed.ui.onboardingDone);
+        } catch (e) { return false; }
+      })();
+      location.replace(done ? "#/discovery" : "#/profile");
     }
   })();
 
@@ -1635,6 +1644,21 @@
         util.el("p", { class: "lede", text: "Type a book title to find that exact book plus five reads in the same genre." })
       ])
     ]));
+
+    if (!store.get().ui.onboardingDone) {
+      const gate = util.el("div", { class: "card discovery-gate" }, [
+        util.el("div", { class: "t-eyebrow", text: "Set up first" }),
+        util.el("h3", { class: "t-serif", style: { marginTop: "var(--s-2)" }, text: "Set your preferences before searching" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)", maxWidth: "60ch" }, text: "Lumen tailors every result to your taste profile. Head to the Profile tab, tune the sliders and chips, then come back here to search." }),
+        util.el("button", {
+          class: "btn btn-primary btn-lg",
+          style: { marginTop: "var(--s-3)" },
+          onclick: () => router.go("profile")
+        }, "Open Profile")
+      ]);
+      wrap.appendChild(gate);
+      return wrap;
+    }
 
     // Hero search — full-width, no sidebar
     const hero = util.el("div", { class: "disco-hero" });
@@ -5660,11 +5684,8 @@
 
     profile() {
       const wrap = util.el("div", { class: "page profile-page stack-lg" });
+      const firstRun = !store.get().ui.onboardingDone;
 
-      // Compact inline strictness control — small segmented pill that
-      // sits in the page-head alongside Re-run onboarding. Replaces the
-      // full-width Content Controls bar that previously spanned the
-      // page.
       const strictControl = util.el("div", { class: "profile-strict-inline" });
       strictControl.appendChild(util.el("span", { class: "profile-strict-label", text: "Strictness" }));
       strictControl.appendChild(segmented("warnStrict", [
@@ -5679,10 +5700,18 @@
           util.el("p", { class: "lede", text: "Every field feeds the weighted fit score. Leave any at default if you have no preference — the engine will treat it neutrally. Changes apply instantly across the dashboard." })
         ]),
         util.el("div", { class: "row profile-head-actions" }, [
-          strictControl,
-          util.el("button", { class: "btn btn-small", onclick: () => launchOnboarding(true) }, "Re-run onboarding")
+          strictControl
         ])
       ]));
+
+      if (firstRun) {
+        const banner = util.el("div", { class: "card profile-first-run" }, [
+          util.el("div", { class: "t-eyebrow", text: "Step 1 of 1" }),
+          util.el("h3", { class: "t-serif", style: { marginTop: "var(--s-2)" }, text: "Set your preferences before you search" }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "var(--s-2)" }, text: "Lumen reads every slider and chip below to shape recommendations. Tune what you want, then hit the button at the bottom to start exploring. You can change anything later — this page is your control panel." })
+        ]);
+        wrap.appendChild(banner);
+      }
 
       const col = util.el("div", { class: "stack-lg" });
 
@@ -5805,6 +5834,23 @@
         scenariosCard.appendChild(row);
       });
       col.appendChild(scenariosCard);
+
+      const ctaCard = util.el("div", { class: "card profile-cta" });
+      const ctaLabel = firstRun
+        ? "When you're done tuning, head to Discover and start searching."
+        : "Preferences are saved automatically. Update anything anytime.";
+      ctaCard.appendChild(util.el("p", { class: "t-small t-muted", text: ctaLabel }));
+      ctaCard.appendChild(util.el("button", {
+        class: "btn btn-primary btn-lg",
+        style: { marginTop: "var(--s-3)" },
+        onclick: () => {
+          if (!store.get().ui.onboardingDone) {
+            store.update(s => { s.ui.onboardingDone = true; });
+          }
+          router.go("discovery");
+        }
+      }, firstRun ? "Save and start exploring" : "Go to Discover"));
+      col.appendChild(ctaCard);
 
       wrap.appendChild(col);
 
@@ -6378,84 +6424,6 @@
   }
 
   /* -------------------- boot -------------------- */
-  /* -------------------- onboarding wizard -------------------- */
-  const ONBOARD_STEPS = [
-    {
-      title: "Welcome to Lumen",
-      body: () => util.el("div", { class: "stack" }, [
-        util.el("p", { class: "t-muted", text: "Lumen is a private reading companion for adult literature. A few quick questions shape every recommendation. You can skip or change any answer later." }),
-        util.el("p", { class: "t-small t-subtle", text: "Everything you enter here stays on this device." })
-      ])
-    },
-    {
-      title: "How much heat are you looking for?",
-      body: () => {
-        const s = store.get();
-        return util.el("div", { class: "stack" }, [
-          util.el("p", { class: "t-muted", text: "A 1 is barely-there sensuality; a 5 is unreserved." }),
-          numericSlider("heat", "Heat level"),
-          numericSlider("explicit", "Explicitness")
-        ]);
-      }
-    },
-    {
-      title: "Consent and edges",
-      body: () => util.el("div", { class: "stack" }, [
-        util.el("p", { class: "t-muted", text: "Two firm anchors. Consent clarity is how clearly consent is shown in the text; taboo tolerance is your appetite for transgressive material." }),
-        numericSlider("consent", "Consent clarity"),
-        numericSlider("taboo", "Taboo tolerance")
-      ])
-    },
-    {
-      title: "Story shape",
-      body: () => util.el("div", { class: "stack" }, [
-        util.el("p", { class: "t-muted", text: "Do you want plot architecture, or are you here for the scenes themselves?" }),
-        numericSlider("plot", "Plot vs scene"),
-        numericSlider("emotion", "Emotional intensity")
-      ])
-    },
-    {
-      title: "What should never come up",
-      body: () => util.el("div", { class: "stack" }, [
-        util.el("p", { class: "t-muted", text: "Anything you select here is an absolute filter. Books carrying these warnings are never shown." }),
-        chipGroup("exclude", "", ALL_WARNINGS, { exclude: true }),
-        util.el("div", { class: "field-help", text: "Common choices: underage content, consent violations, exploitation." })
-      ])
-    }
-  ];
-
-  function launchOnboarding(force = false) {
-    const s = store.get();
-    if (!force && s.ui.onboardingDone) return;
-
-    let step = 0;
-    const render = () => {
-      const def = ONBOARD_STEPS[step];
-      const body = util.el("div");
-      body.appendChild(def.body());
-
-      const progress = util.el("div", { class: "t-tiny t-subtle", style: { marginBottom: "var(--s-3)" }, text: `Step ${step + 1} of ${ONBOARD_STEPS.length}` });
-      body.insertBefore(progress, body.firstChild);
-
-      const host = document.getElementById("modal-host");
-      ui.modal({
-        title: def.title,
-        body,
-        secondary: step > 0 ? { label: "Back", onClick: () => { step -= 1; setTimeout(render, 10); } } : { label: "Skip for now", onClick: () => {
-          store.update(s2 => { s2.ui.onboardingDone = true; });
-          ui.toast("You can rerun onboarding from your profile any time.");
-        }},
-        primary: step === ONBOARD_STEPS.length - 1
-          ? { label: "Finish", onClick: () => {
-              store.update(s2 => { s2.ui.onboardingDone = true; });
-              renderView();
-              ui.toast("Profile saved. Your daily picks are ready.");
-            }}
-          : { label: "Next", onClick: () => { step += 1; setTimeout(render, 10); } }
-      });
-    };
-    render();
-  }
 
   function adultGate() {
     if (store.get().ui.adultConfirmed) return;
@@ -6473,7 +6441,7 @@
              <p class="t-small t-subtle" style="margin-top: var(--s-3);">Your profile and everything you save stays on this device.</p>`,
       primary: { label: "I'm an adult — continue", onClick: () => {
         store.update(s => { s.ui.adultConfirmed = true; });
-        if (!store.get().ui.onboardingDone) setTimeout(() => launchOnboarding(false), 250);
+        if (!store.get().ui.onboardingDone) router.go("profile");
       }},
       secondary: { label: "Leave", onClick: () => { location.href = "about:blank"; } }
     });
