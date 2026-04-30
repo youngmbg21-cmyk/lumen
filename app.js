@@ -775,6 +775,25 @@
     return store.get().bookStates[bookId] || "none";
   }
 
+  // Bookids the user has already classified in a way that excludes
+  // them from "new recommendation" surfaces. Today picks, Bianca's
+  // roster, and her fallback eligible-pick filter all consult this so
+  // a book you've finished, are currently reading, abandoned, or
+  // marked "not for me" never comes back as a fresh suggestion.
+  // Favorites are NOT excluded — they're a positive taste signal,
+  // not new picks (a "favourited" book that's also "read" is caught
+  // by the read filter anyway).
+  function excludedFromNewRecs() {
+    const s = store.get();
+    const out = new Set();
+    Object.keys(s.hidden || {}).forEach(id => out.add(id));
+    Object.keys(s.dailyPicksRejected || {}).forEach(id => out.add(id));
+    Object.entries(s.bookStates || {}).forEach(([id, v]) => {
+      if (v === "read" || v === "reading" || v === "skip") out.add(id);
+    });
+    return out;
+  }
+
   // Favourites are orthogonal to reading state — a user can
   // "favourite" something they've never read and something
   // they've read multiple times. Stored as { [bookId]: timestamp }
@@ -4034,7 +4053,11 @@
         };
       }).filter(Boolean);
     } else {
-      const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
+      // Fallback when Today hasn't generated yet — exclude anything
+      // the user has already classified so Bianca's mental "top 3"
+      // matches the rule the editorial pool will use once it runs.
+      const exclude = excludedFromNewRecs();
+      const eligible = ranked.scored.filter(x => !exclude.has(x.book.id));
       picks = eligible.slice(0, 3).map(x => ({
         id: x.book.id, title: x.book.title, author: x.book.author,
         fitScore: x.fitScore, confidence: x.confidence,
@@ -4169,32 +4192,48 @@
     const s = store.get();
     const now = new Date();
 
-    // Collect last 5 rated books. bookStates has "want" / "reading"
-    // / "read" / "skip". Treat "read" as rated. If no ratings exist,
-    // fall back to the most recently-added library entries.
+    // Collect the user's reading-state buckets. The persona rules
+    // require Bianca to never re-recommend already-read, currently-
+    // reading, or skipped books, so each gets its own list in the
+    // system context — both as taste signal (rated/want) and as
+    // explicit "off limits for fresh recs" (read/reading/skip).
     const allRated = Object.entries(s.bookStates || {})
       .filter(([, v]) => v === "read")
       .map(([id]) => findBook(id))
       .filter(Boolean)
-      .slice(0, 5);
+      .slice(0, 8);
     const wantToRead = Object.entries(s.bookStates || {})
       .filter(([, v]) => v === "want")
       .map(([id]) => findBook(id))
       .filter(Boolean)
       .slice(0, 8);
+    const currentlyReading = Object.entries(s.bookStates || {})
+      .filter(([, v]) => v === "reading")
+      .map(([id]) => findBook(id))
+      .filter(Boolean)
+      .slice(0, 6);
+    const skippedBooks = Object.entries(s.bookStates || {})
+      .filter(([, v]) => v === "skip")
+      .map(([id]) => findBook(id))
+      .filter(Boolean)
+      .slice(0, 8);
 
     // The roster is the pool of book ids Bianca is allowed to recommend.
-    // Keep it generous: every recommendation must come from this list, so
-    // a roster that's too small forces her to either decline or break the
-    // marker rule. Cap at 40 — caching absorbs the extra system-prompt
-    // tokens, and the model can scan that list cheaply.
+    // It must NOT include anything the user has already classified as
+    // read / reading / skip / hidden / rejected — those are off-limits
+    // for fresh picks. dailyPicks and biancaPinned go in even if they
+    // overlap, because Bianca needs to be able to talk about what's
+    // currently on screen. Cap at 40 — caching absorbs the extra
+    // system-prompt tokens, and the model can scan that list cheaply.
     const ROSTER_CAP = 40;
+    const recExclude = excludedFromNewRecs();
     const topLibrary = (ctx.dailyPicks || []).concat(
       ctx.biancaPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
     );
     const rosterIds = new Set(topLibrary.map(b => b.id));
     for (const b of listAllBooks()) {
       if (rosterIds.size >= ROSTER_CAP) break;
+      if (recExclude.has(b.id)) continue;
       if (!rosterIds.has(b.id) && !(s.hidden || {})[b.id]) {
         topLibrary.push({ id: b.id, title: b.title, author: b.author, fitScore: null });
         rosterIds.add(b.id);
@@ -4249,6 +4288,12 @@
     const wantLines = wantToRead.length
       ? wantToRead.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
       : ["(nothing saved to want-to-read)"];
+    const currentlyReadingLines = currentlyReading.length
+      ? currentlyReading.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
+      : ["(nothing in progress)"];
+    const skippedLines = skippedBooks.length
+      ? skippedBooks.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
+      : ["(none)"];
     const rosterLines = topLibrary.slice(0, ROSTER_CAP).map(b =>
       `- ${b.title}${b.author ? " by " + b.author : ""} (id=${b.id})`);
 
@@ -4265,13 +4310,19 @@
       `--- environmental focus ---`,
       ...focusLines,
       ``,
-      `--- library history (last 5 rated / "read") ---`,
+      `--- already read (DO NOT recommend again — use as taste signal only) ---`,
       ...ratedLines,
       ``,
-      `--- want to read (up to 8) ---`,
+      `--- currently reading (DO NOT recommend — they're already in this) ---`,
+      ...currentlyReadingLines,
+      ``,
+      `--- not for me / skipped (NEVER recommend — user explicitly rejected) ---`,
+      ...skippedLines,
+      ``,
+      `--- want to read (saved for later — fine to mention or recommend) ---`,
       ...wantLines,
       ``,
-      `--- library roster (for ENHANCED_BOOK_CARD ids) ---`,
+      `--- library roster (for ENHANCED_BOOK_CARD ids — these are safe picks) ---`,
       ...rosterLines,
       ``,
       `--- daily picks on screen ---`,
@@ -4280,7 +4331,7 @@
       `--- pinned to Bianca ---`,
       ...(pinnedLines.length ? pinnedLines : ["(none)"]),
       ``,
-      `--- rejected (never recommend as a daily pick) ---`,
+      `--- rejected from daily picks (NEVER recommend) ---`,
       ...(rejectedPickLines.length ? rejectedPickLines : ["(none)"]),
       ``,
       `--- compare slots ---`,
@@ -5501,8 +5552,12 @@
       return;
     }
     const st = store.get();
-    const hidden = st.hidden || {};
-    const pool = listAllBooks().filter(b => !hidden[b.id]);
+    // Pool excludes anything the user has already classified
+    // (read / reading / skip / hidden / rejected-from-daily-picks)
+    // so Today never re-picks a book the user told us they're
+    // done with or already in.
+    const exclude = excludedFromNewRecs();
+    const pool = listAllBooks().filter(b => !exclude.has(b.id));
     const coldStart = pool.length < 5;
     const candidates = selectEditorialCandidates(st.profile, pool, { pickCount: 3, topN: 20 });
     const angle = chooseEditorialAngle();
