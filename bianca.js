@@ -21,8 +21,8 @@
   let opened = false;
   // Width state machine: "dock" (380) → "wide" (560) → "focus" (≈50vw, 760 cap).
   // Focus also reflows the main page content so it isn't obscured.
-  const WIDTHS = ["dock", "wide", "focus"];
-  let width = "dock";
+  const WIDTHS = ["wide", "focus"];
+  let width = "wide";
   let lastFocus = null;
 
   // Persisted after first pin — stops the "tip" bubble from reappearing.
@@ -105,7 +105,7 @@
     const compose = document.createElement("form");
     compose.className = "bianca-compose";
     composeTA = document.createElement("textarea");
-    composeTA.placeholder = "Message Bianca… try /picks, /swap, /why, /compare, /library, /profile";
+    composeTA.placeholder = "Message Bianca…";
     composeTA.rows = 1;
     // Auto-grow up to 5 rows so longer messages don't feel cramped.
     composeTA.addEventListener("input", autosizeCompose);

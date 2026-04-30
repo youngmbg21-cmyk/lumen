@@ -2289,7 +2289,7 @@ body {
 
 .chat-suggestions {
   display: flex; flex-wrap: wrap; gap: var(--s-2);
-  padding: var(--s-3) var(--s-5);
+  padding: var(--s-4) var(--s-5);
   border-top: 1px solid var(--border);
   background: var(--bg-raised);
 }
@@ -2824,17 +2824,23 @@ body[data-privacy-blur="on"] .app-main::after {
 .bianca-share-actions .btn { padding: 3px 9px; font-size: 11px; }
 
 /* Mood-chip row — primary entry to a conversation.
-   Always visible above the compose box. */
+   Always visible above the compose box. Horizontal overflow is
+   scrollable but the scrollbar is hidden on every engine; a soft
+   right-edge fade hints that more chips exist when the row overflows. */
 .bianca-moods {
   display: flex;
   gap: 6px;
-  padding: var(--s-2) var(--s-4);
+  padding: var(--s-3) var(--s-4);
   background: var(--bg-raised);
   border-top: 1px solid var(--border);
   overflow-x: auto;
   align-items: center;
-  scrollbar-width: thin;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+          mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
+.bianca-moods::-webkit-scrollbar { display: none; }
 .bianca-moods-lead {
   font-family: var(--font-serif);
   font-style: italic;
@@ -2880,7 +2886,17 @@ body[data-privacy-blur="on"] .app-main::after {
   padding: 8px 10px;
   font-size: 13px;
   font-family: var(--font-sans);
+  /* No scrollbar buttons until the autosize cap is hit; thin bar
+     instead of the chunky default. */
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
+.bianca-compose textarea::-webkit-scrollbar { width: 6px; }
+.bianca-compose textarea::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+.bianca-compose textarea::-webkit-scrollbar-button { display: none; }
 .bianca-compose textarea:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
