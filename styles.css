@@ -6461,6 +6461,7 @@ body[data-sidenav="overlay"] .lumen-terminal {
 .page-boudoir .bd-library {
   overflow: hidden;
   min-width: 0;
+  --bd-col-size: 145px; /* overwritten by JS measurement after render */
 }
 .page-boudoir .bd-toolbar {
   display: flex;
@@ -7025,8 +7026,8 @@ body[data-sidenav="overlay"] .lumen-terminal {
 }
 .page-boudoir .bd-shelf-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(var(--bd-col-size, 145px), 1fr));
+  gap: 8px;
   align-items: end;
   padding: 0 0 8px;
 }

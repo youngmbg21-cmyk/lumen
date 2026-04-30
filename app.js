@@ -7008,6 +7008,22 @@
     main.insertBefore(mirror, main.firstChild);
 
     wrap.appendChild(main);
+
+    // After the element lands in the DOM, measure the library's
+    // beside-mirror width and lock the column size so exactly 6
+    // books fit per row. Below the mirror the library BFC expands
+    // to full width and auto-fill packs in more columns at the
+    // same cell size.
+    const BD_GAP = 8;
+    const BD_COLS = 6;
+    requestAnimationFrame(() => {
+      const w = library.offsetWidth;
+      if (w > 0) {
+        const colSize = Math.floor((w - BD_GAP * (BD_COLS - 1)) / BD_COLS);
+        library.style.setProperty('--bd-col-size', colSize + 'px');
+      }
+    });
+
     return wrap;
   }
 
