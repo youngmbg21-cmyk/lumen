@@ -6252,6 +6252,33 @@
       return wrap;
     }
 
+    // 2-column main: pile-column (left, 5 vertical cards) + open-
+    // book spread (right). Replaces the previous bottom-strip pile
+    // so all six covers are always visible without forcing scroll.
+    const mnMain = util.el("section", { class: "mn-main" });
+
+    // Reading pile — narrow vertical column on the left.
+    const pileCol = util.el("aside", { class: "mn-pile-column" });
+    pileCol.appendChild(util.el("div", { class: "t-eyebrow mn-pile-head", text: "On the pile" }));
+    pileEntries.slice(0, 5).forEach((entry) => {
+      const b = findBook(entry.bookId);
+      if (!b) return;
+      const card = util.el("article", {
+        class: "mn-pile-card",
+        onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
+      });
+      card.appendChild(util.el("div", { class: "mn-pile-cover",
+        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {}
+      }));
+      const tag = util.el("div", { class: "mn-pile-tag" }, [
+        util.el("em", { text: b.title }),
+        util.el("span", { text: `fit ${entry.fitScore || "?"}` })
+      ]);
+      card.appendChild(tag);
+      pileCol.appendChild(card);
+    });
+    mnMain.appendChild(pileCol);
+
     // Open-book spread.
     const spreadWrap = util.el("section", { class: "mn-spread-wrap" });
     const spread = util.el("article", { class: "mn-spread" });
@@ -6353,38 +6380,8 @@
       onclick: () => generateTonightSix()
     }, rl.allowed ? "Regenerate" : `Locked until ${rl.unlockAt && rl.unlockAt.toLocaleTimeString()}`));
     spreadWrap.appendChild(actions);
-    wrap.appendChild(spreadWrap);
-
-    // Reading pile — five tilted cards.
-    const pileSection = util.el("section", { class: "mn-pile-section" });
-    pileSection.appendChild(util.el("div", { class: "lc-section-head" }, [
-      util.el("div", {}, [
-        util.el("div", { class: "t-eyebrow", text: "Tonight's reading pile" }),
-        util.el("h3", { text: "Other books I set on your nightstand." })
-      ])
-    ]));
-    const pile = util.el("div", { class: "mn-pile" });
-    const rotations = [-3.6, 2.2, -1.4, 3.0, -2.4];
-    pileEntries.slice(0, 5).forEach((entry, i) => {
-      const b = findBook(entry.bookId);
-      if (!b) return;
-      const card = util.el("article", {
-        class: "mn-pile-card",
-        style: { transform: `rotate(${rotations[i] || 0}deg)` },
-        onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
-      });
-      card.appendChild(util.el("div", { class: "mn-pile-cover",
-        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {}
-      }));
-      const tag = util.el("div", { class: "mn-pile-tag" }, [
-        util.el("em", { text: b.title }),
-        util.el("span", { text: `fit ${entry.fitScore || "?"}` })
-      ]);
-      card.appendChild(tag);
-      pile.appendChild(card);
-    });
-    pileSection.appendChild(pile);
-    wrap.appendChild(pileSection);
+    mnMain.appendChild(spreadWrap);
+    wrap.appendChild(mnMain);
 
     return wrap;
   }
