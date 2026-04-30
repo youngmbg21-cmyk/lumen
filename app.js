@@ -87,6 +87,16 @@
         generationsToday: [],
         lastError: null
       },
+      // Margin Notes / Constellation feature — a separate 6-pick
+      // generation that two views (margin-notes + constellation)
+      // both read from. Kept distinct from editorial.currentPick so
+      // the existing 3-pick Today flow keeps working unchanged.
+      tonightSix: {
+        currentPick: null,
+        history: [],
+        generationsToday: [],
+        lastError: null
+      },
       ui: {
         theme: "rose",
         discreet: false,
@@ -136,6 +146,12 @@
       merged.editorial = Object.assign(
         { currentPick: null, history: [], generationsToday: [], lastError: null },
         merged.editorial || {}
+      );
+      // Margin Notes / Constellation — back-fill the slot on older
+      // stores so the new views can render without null-checking.
+      merged.tonightSix = Object.assign(
+        { currentPick: null, history: [], generationsToday: [], lastError: null },
+        merged.tonightSix || {}
       );
       return merged;
     } catch (e) {
@@ -353,17 +369,19 @@
 
   /* -------------------- router -------------------- */
   const ROUTES = [
-    { id: "discover",     label: "Today",         short: "Today",    group: "main",     render: () => views.discover() },
-    { id: "terminal",     label: "Signals",       short: "Signals",  group: "main",     render: () => views.terminal() },
-    { id: "library",      label: "Library",       short: "Library",  group: "main",     render: () => views.library() },
-    { id: "compare",      label: "Compare",       short: "Compare",  group: "main",     render: () => views.compare() },
-    { id: "discovery",    label: "Discovery",     short: "Discover", group: "main",     render: () => views.discovery() },
-    { id: "chat",         label: "Connections",   short: "Connect",  group: "main",     render: () => views.chat() },
-    { id: "journal",      label: "Journal",       short: "Journal",  group: "personal", render: () => views.journal() },
-    { id: "vault",        label: "Vault",         short: "Vault",    group: "personal", render: () => views.vault() },
-    { id: "profile",      label: "Profile",       short: "Profile",  group: "settings", render: () => views.profile() },
-    { id: "settings",     label: "Settings",      short: "Settings", group: "hidden",   render: () => views.settings() },
-    { id: "transparency", label: "Transparency",  short: "Trust",    group: "settings", render: () => views.transparency() }
+    { id: "discover",      label: "Today",         short: "Today",     group: "main",     render: () => views.discover() },
+    { id: "margin-notes",  label: "Margin Notes",  short: "Notes",     group: "main",     render: () => views.marginNotes() },
+    { id: "constellation", label: "Constellation", short: "Stars",     group: "main",     render: () => views.constellation() },
+    { id: "terminal",      label: "Signals",       short: "Signals",   group: "main",     render: () => views.terminal() },
+    { id: "library",       label: "Library",       short: "Library",   group: "main",     render: () => views.library() },
+    { id: "compare",       label: "Compare",       short: "Compare",   group: "main",     render: () => views.compare() },
+    { id: "discovery",     label: "Discovery",     short: "Discover",  group: "main",     render: () => views.discovery() },
+    { id: "chat",          label: "Connections",   short: "Connect",   group: "main",     render: () => views.chat() },
+    { id: "journal",       label: "Journal",       short: "Journal",   group: "personal", render: () => views.journal() },
+    { id: "vault",         label: "Vault",         short: "Vault",     group: "personal", render: () => views.vault() },
+    { id: "profile",       label: "Profile",       short: "Profile",   group: "settings", render: () => views.profile() },
+    { id: "settings",      label: "Settings",      short: "Settings",  group: "hidden",   render: () => views.settings() },
+    { id: "transparency",  label: "Transparency",  short: "Trust",     group: "settings", render: () => views.transparency() }
   ];
 
   const router = {
@@ -5600,6 +5618,95 @@
     }
   }
 
+  /* ==================================================================
+     Margin Notes / Constellation — 6-pick generator. Mirrors the
+     editorial generator's shape so the existing helpers compose, but
+     stays in its own slot (s.tonightSix) so Today's 3-pick flow is
+     untouched. Batch 1 is deterministic — picks the top 6 of the
+     weighted-random selection and synthesizes per-book summaries from
+     the engine's "why" reasons. Batch 2 will swap in an LLM call that
+     also produces Bianca's tonight's-letter for the Margin Notes
+     hero pane.
+     ================================================================== */
+  function tonightSixRateLimit() {
+    const st = store.get();
+    const now = Date.now();
+    const recent = ((st.tonightSix && st.tonightSix.generationsToday) || [])
+      .filter(ts => typeof ts === "number" && now - ts < 24 * 60 * 60 * 1000);
+    return { count: recent.length, list: recent, allowed: recent.length < 5,
+             unlockAt: recent.length >= 5 ? new Date(recent[0] + 24 * 60 * 60 * 1000) : null };
+  }
+
+  function tonightSixBooksFor(pick) {
+    const byId = new Map((pick.books || []).map(p => [p.bookId, p.summary]));
+    const books = [];
+    byId.forEach((_summary, id) => { const b = findBook(id); if (b) books.push(b); });
+    return { books, byId };
+  }
+
+  // Deterministic per-book summary from the engine's why-reasons.
+  // Stand-in for Batch 2's Bianca-voiced letter.
+  function synthesizeSummary(scored) {
+    const reasons = (scored.why && scored.why.reasons) || [];
+    if (reasons.length) return reasons.slice(0, 2).join(". ") + ".";
+    return "Strong fit against your current taste profile.";
+  }
+
+  async function generateTonightSix() {
+    const rl = tonightSixRateLimit();
+    if (!rl.allowed) {
+      store.update(s => { s.tonightSix.lastError = { at: Date.now(), code: "rate-limit",
+        message: `Regeneration unlocks at ${rl.unlockAt.toLocaleTimeString()}` }; });
+      renderView();
+      return;
+    }
+    const st = store.get();
+    const exclude = excludedFromNewRecs();
+    const pool = listAllBooks().filter(b => !exclude.has(b.id));
+    if (pool.length < 6) {
+      store.update(s => { s.tonightSix.lastError = { at: Date.now(), code: "cold-start",
+        message: "Not enough catalog books match your filters yet." }; });
+      renderView();
+      return;
+    }
+    const candidates = selectEditorialCandidates(st.profile, pool, { pickCount: 6, topN: 24 });
+    const angle = chooseEditorialAngle();
+
+    store.update(s => { s.tonightSix.lastError = null; });
+    renderView();
+
+    try {
+      const pick = {
+        id: "t6_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+        generatedAt: Date.now(),
+        angle, anglePrompt: angle.label,
+        books: candidates.map(c => ({
+          bookId: c.book.id,
+          summary: synthesizeSummary(c),
+          fitScore: c.fitScore,
+          confidence: c.confidence
+        })),
+        angleStatement: `Tonight's six, drawn against your taste — ${angle.label.toLowerCase()}.`,
+        biancaLetter: null  // populated by Batch 2's LLM pass
+      };
+      store.update(s => {
+        s.tonightSix = s.tonightSix || {};
+        if (s.tonightSix.currentPick) {
+          s.tonightSix.history = [s.tonightSix.currentPick].concat(s.tonightSix.history || []).slice(0, 10);
+        }
+        s.tonightSix.currentPick = pick;
+        s.tonightSix.generationsToday = ((s.tonightSix.generationsToday || []).concat(Date.now()))
+          .filter(ts => Date.now() - ts < 24 * 60 * 60 * 1000);
+        s.tonightSix.lastError = null;
+      });
+    } catch (e) {
+      store.update(s => { s.tonightSix.lastError = { at: Date.now(), code: (e && e.code) || "unknown",
+        message: (e && e.message) || "Generation failed" }; });
+    } finally {
+      renderView();
+    }
+  }
+
   function editorialHumanAgo(ts) {
     const d = Math.max(0, Date.now() - ts);
     const mins = Math.round(d / 60000);
@@ -5738,10 +5845,108 @@
     return wrap;
   }
 
+  /* ==================================================================
+     Margin Notes (page one) and The Constellation (page two) —
+     Batch 1 placeholders. They share s.tonightSix.currentPick so
+     "the same six books" is automatic. Batch 2 ships the full
+     Margin Notes layout (open-book spread, reading pile). Batch 3
+     ships the Constellation polar chart.
+     ================================================================== */
+  function renderMarginNotes()  { return renderTonightSixView("margin-notes"); }
+  function renderConstellation() { return renderTonightSixView("constellation"); }
+
+  function renderTonightSixView(which) {
+    const wrap = util.el("div", { class: "page stack-lg" });
+    const title = which === "margin-notes" ? "Margin Notes" : "The Constellation";
+    const lede  = which === "margin-notes"
+      ? "Tonight's six, with a note from Bianca alongside. The full layout ships in the next pass."
+      : "The same six books, charted as a constellation. The full chart ships in the next pass.";
+
+    wrap.appendChild(util.el("div", { class: "page-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: title }),
+        util.el("h1", { html: which === "margin-notes"
+          ? "<em>The book I left</em> on your nightstand."
+          : "<em>Your taste sky,</em> charted for the evening." }),
+        util.el("p", { class: "lede", text: lede })
+      ])
+    ]));
+
+    const st = store.get();
+    const pick = (st.tonightSix && st.tonightSix.currentPick) || null;
+    const err  = (st.tonightSix && st.tonightSix.lastError) || null;
+    const rl   = tonightSixRateLimit();
+
+    // Action row: Generate / Regenerate, plus the cross-page link.
+    const actions = util.el("div", { class: "row", style: { gap: "var(--s-3)", flexWrap: "wrap" } });
+    const genLabel = pick ? "Regenerate tonight's six" : "Generate tonight's six";
+    actions.appendChild(util.el("button", {
+      class: "btn btn-primary",
+      onclick: () => { generateTonightSix(); }
+    }, genLabel));
+    if (which === "margin-notes") {
+      actions.appendChild(util.el("button", {
+        class: "btn btn-ghost",
+        onclick: () => router.go("constellation")
+      }, "Explore →"));
+    } else {
+      actions.appendChild(util.el("button", {
+        class: "btn btn-ghost",
+        onclick: () => router.go("margin-notes")
+      }, "← Back to Margin Notes"));
+    }
+    wrap.appendChild(actions);
+
+    // Rate-limit / error state.
+    if (err) {
+      wrap.appendChild(util.el("div", { class: "card", style: { borderColor: "var(--danger)" } }, [
+        util.el("p", { class: "t-small", text: err.message || "Generation failed." })
+      ]));
+    } else if (!rl.allowed) {
+      wrap.appendChild(util.el("p", { class: "t-small t-subtle",
+        text: `Daily regeneration limit reached. Resets at ${rl.unlockAt.toLocaleTimeString()}.` }));
+    }
+
+    // Picks list (placeholder — title + author + fit). Batch 2/3 swap
+    // these for the rich layouts.
+    if (!pick) {
+      wrap.appendChild(util.el("div", { class: "card stack" }, [
+        util.el("p", { class: "t-muted",
+          text: "No picks generated yet. Hit Generate above to draw six books from the catalog against your taste profile." })
+      ]));
+    } else {
+      const card = util.el("div", { class: "card stack-lg" });
+      card.appendChild(util.el("p", { class: "t-small t-subtle", text: pick.angleStatement || "" }));
+      const list = util.el("ol", { style: { paddingLeft: "1.2em", margin: 0 } });
+      pick.books.forEach(p => {
+        const b = findBook(p.bookId);
+        if (!b) return;
+        const li = util.el("li", { style: { marginBottom: "var(--s-3)" } }, [
+          util.el("strong", { text: b.title }),
+          util.el("span", { class: "t-subtle", text: ` by ${b.author || "Unknown"} · fit ${p.fitScore || "?"}` }),
+          util.el("p", { class: "t-small t-muted", style: { marginTop: "4px" }, text: p.summary || "" })
+        ]);
+        list.appendChild(li);
+      });
+      card.appendChild(list);
+      wrap.appendChild(card);
+    }
+
+    return wrap;
+  }
+
   /* -------------------- views -------------------- */
   const views = {
     discover() {
       return renderEditorial();
+    },
+
+    marginNotes() {
+      return renderMarginNotes();
+    },
+
+    constellation() {
+      return renderConstellation();
     },
 
     library() {
