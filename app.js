@@ -7002,7 +7002,12 @@
     frame.appendChild(glass);
     frame.appendChild(util.el("div", { class: "bd-mirror-base" }));
     mirror.appendChild(frame);
-    main.appendChild(mirror);
+    // Insert as the FIRST child of .bd-main so the mirror's float-
+    // right anchors at the top — library content (toolbar, quick
+    // tabs, shelves) flows around it. Source order matters for
+    // floats, so this placement is what makes the magazine wrap
+    // layout work.
+    main.insertBefore(mirror, main.firstChild);
 
     wrap.appendChild(main);
     return wrap;

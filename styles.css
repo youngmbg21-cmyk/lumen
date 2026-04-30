@@ -6454,16 +6454,22 @@ body[data-sidenav="overlay"] .lumen-terminal {
   white-space: nowrap;
 }
 
+/* Block container so the mirror can float and the library can
+   flow around it. Below the mirror's natural height the library
+   auto-extends to full width — that's the magazine wrap-around. */
 .page-boudoir .bd-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(320px, 32vw, 420px);
-  gap: clamp(20px, 3vw, 36px);
+  /* flow-root contains the floated mirror so it doesn't escape
+     into following sections, while still letting library content
+     flow around it. */
+  display: flow-root;
   padding: 8px clamp(20px, 4vw, 64px) 56px;
-  align-items: start;
 }
 
-/* ── Library (left column) ───────────────────────────────────── */
-.page-boudoir .bd-library { min-width: 0; }
+/* ── Library — sibling block; explicitly NOT a flow-root because
+   we WANT it to flow around the floated mirror sibling. ─── */
+.page-boudoir .bd-library {
+  min-width: 0;
+}
 .page-boudoir .bd-toolbar {
   display: flex;
   justify-content: space-between;
@@ -6684,11 +6690,13 @@ body[data-sidenav="overlay"] .lumen-terminal {
   background: var(--bg-surface);
 }
 
-/* ── Mirror (right column) ───────────────────────────────────── */
+/* ── Mirror — floats right; library flows around it.
+   Once the library is taller than the mirror, the float ends
+   and subsequent shelf rows take the full content width. ───── */
 .page-boudoir .bd-mirror {
-  position: sticky;
-  top: 90px;
-  align-self: start;
+  float: right;
+  width: clamp(320px, 32vw, 420px);
+  margin: 0 0 24px clamp(20px, 3vw, 36px);
 }
 .page-boudoir .bd-mirror-frame {
   position: relative;
@@ -6795,10 +6803,15 @@ body[data-sidenav="overlay"] .lumen-terminal {
   border-radius: 0 0 var(--r-3) var(--r-3);
 }
 
-/* On narrow screens the mirror unsticks and stacks below. */
+/* On narrow screens the float gets out of the way and the mirror
+   stacks below the library. Floats are quirky in tight spaces; a
+   single column reads better and avoids cramped book rows. */
 @media (max-width: 1100px) {
-  .page-boudoir .bd-main { grid-template-columns: 1fr; }
-  .page-boudoir .bd-mirror { position: static; }
+  .page-boudoir .bd-mirror {
+    float: none;
+    width: auto;
+    margin: 24px 0 0;
+  }
 }
 @media (max-width: 600px) {
   .page-boudoir .bd-hero { grid-template-columns: 1fr; }
@@ -7019,26 +7032,20 @@ body[data-sidenav="overlay"] .lumen-terminal {
   color: var(--text-mute);
 }
 .page-boudoir .bd-shelf-row {
-  display: flex;
-  gap: clamp(10px, 1.2vw, 16px);
-  align-items: flex-end;
-  overflow-x: auto;
-  padding: 0 4px 8px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-.page-boudoir .bd-shelf-row::-webkit-scrollbar { height: 6px; }
-.page-boudoir .bd-shelf-row::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
+  /* Grid that auto-fills however many ~120px columns the available
+     width can hold. Next to the floated mirror that's typically 6;
+     past the mirror's bottom edge it grows to 9-12. No horizontal
+     scroll — overflowing books wrap to additional rows. */
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: clamp(12px, 1.4vw, 18px);
+  align-items: end;
+  padding: 0 0 8px;
 }
 
-/* Spine — a compact card sized like a real book spine. The
-   prototype calls them spines metaphorically; visually they're
-   tight cover+tag pairs in a row. */
+/* Spine fills its grid cell so column count drives sizing. */
 .page-boudoir .bd-spine {
-  flex: 0 0 auto;
-  width: clamp(96px, 9vw, 128px);
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
