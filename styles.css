@@ -2673,16 +2673,19 @@ body[data-privacy-blur="on"] .app-main::after {
 }
 
 .bianca-context {
+  /* Hidden for the friends-test build — the route pill ("Today",
+     "Library", etc.) is decorative; the system prompt already gives
+     Claude the route, and the strip was crowding the panel header.
+     The DOM stays in place so renderContext doesn't need to change. */
+  display: none;
   padding: var(--s-2) var(--s-4);
   background: var(--bg-sunken);
   border-bottom: 1px solid var(--border);
-  display: flex;
   flex-wrap: wrap;
   gap: 6px;
   min-height: 34px;
   align-items: center;
 }
-.bianca-context:empty { display: none; }
 .bianca-context .ctx-chip {
   font-size: 11px;
   padding: 2px 8px;
@@ -2705,7 +2708,9 @@ body[data-privacy-blur="on"] .app-main::after {
   overflow-x: auto;
   scrollbar-width: thin;
 }
-.bianca-pinned-tray.is-empty { padding: 6px var(--s-4); }
+/* Empty bookmark tray was visual noise on first launch — only render
+   the tray when the user has actually pinned something. */
+.bianca-pinned-tray.is-empty { display: none; }
 .bianca-pinned-empty {
   font-size: 11px;
   color: var(--text-subtle);
@@ -2844,7 +2849,7 @@ body[data-privacy-blur="on"] .app-main::after {
 .bianca-moods-lead {
   font-family: var(--font-serif);
   font-style: italic;
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-mute);
   flex-shrink: 0;
   margin-right: 2px;
@@ -2852,8 +2857,8 @@ body[data-privacy-blur="on"] .app-main::after {
 .bianca-mood-chip {
   flex-shrink: 0;
   font-family: var(--font-sans);
-  font-size: 12px;
-  padding: 5px 11px;
+  font-size: 11px;
+  padding: 3px 8px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border);
   background: var(--bg-sunken);

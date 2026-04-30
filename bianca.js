@@ -937,27 +937,13 @@
     else panel.appendChild(line);
   }
 
-  // Route-aware quick-reply chips that morph with real state. These
-  // sit alongside the existing mood chip row so the primary entry
-  // points remain mood-first but context prompts are one tap away.
+  // Route-aware quick-reply chips. Disabled for the friends-test
+  // build — the row crowded the compose area for little benefit.
+  // Slash commands (/why, /swap, etc.) still work.
   function renderQuickReplies() {
-    if (!moodRow) return;
-    // Remove any prior quick-reply row — we re-render in place.
-    const prior = panel && panel.querySelector(".bianca-quick-replies");
+    if (!panel) return;
+    const prior = panel.querySelector(".bianca-quick-replies");
     if (prior) prior.remove();
-    const chips = contextualQuickReplies(ctxState);
-    if (!chips.length) return;
-    const row = document.createElement("div");
-    row.className = "bianca-quick-replies";
-    chips.forEach(c => {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "bianca-quick-reply-chip";
-      b.textContent = c.label;
-      b.addEventListener("click", () => send(c.send));
-      row.appendChild(b);
-    });
-    moodRow.insertAdjacentElement("afterend", row);
   }
 
   function contextualQuickReplies(ctx) {
