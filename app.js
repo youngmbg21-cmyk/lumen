@@ -6802,8 +6802,11 @@
     inner.appendChild(util.el("div", { class: "bd-mirror-quote",
       text: boudoirMirrorQuote(allBooks, st.profile) }));
 
-    // Heat distribution histogram — REAL counts.
-    const histSection = (label, getter) => {
+    // Histograms — REAL counts. Each bar is a lens trigger: click
+    // sets s.boudoir.lens to that kind+value; click again clears.
+    // The active bar gets a deeper fill so the user can see which
+    // signal is filtering the shelf.
+    const histSection = (label, getter, lensKind) => {
       const section = util.el("div", { class: "bd-mirror-section" });
       section.appendChild(util.el("div", { class: "t-eyebrow", text: label }));
       const bins = [1, 2, 3, 4, 5].map(v => ({ v, n: allBooks.filter(b => Number(getter(b)) === v).length }));
@@ -6811,9 +6814,18 @@
       const histRow = util.el("div", { class: "bd-hist" });
       bins.forEach(b => {
         const h = (b.n / max) * 60 + 8;
-        const bar = util.el("div", {
-          class: "bd-hist-bar",
-          style: { height: h + "px" }
+        const isActive = lensKind && lens.kind === lensKind && Number(lens.value) === b.v;
+        const bar = util.el("button", {
+          class: "bd-hist-bar" + (isActive ? " active" : "") + (lensKind ? "" : " subtle"),
+          type: "button",
+          "aria-label": lensKind ? `Filter to ${label.toLowerCase()} ${b.v}` : `${label} ${b.v}: ${b.n}`,
+          style: { height: h + "px" },
+          onclick: lensKind ? () => {
+            store.update(s => {
+              s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: lensKind, value: b.v };
+            });
+            renderView();
+          } : null
         }, [
           util.el("span", { class: "bd-hist-n", text: String(b.n) }),
           util.el("span", { class: "bd-hist-v", text: String(b.v) })
@@ -6823,9 +6835,101 @@
       section.appendChild(histRow);
       return section;
     };
-    inner.appendChild(histSection("Heat distribution", b => b.heat_level));
-    inner.appendChild(histSection("Emotional intensity", b => b.emotional_intensity));
-    inner.appendChild(histSection("Taboo tolerance", b => b.taboo_level));
+    inner.appendChild(histSection("Heat distribution",  b => b.heat_level,          "heat"));
+    inner.appendChild(histSection("Emotional intensity", b => b.emotional_intensity, null));
+    inner.appendChild(histSection("Taboo tolerance",    b => b.taboo_level,          null));
+
+    // ── Mood section — top 5 tones, clickable.
+    const toneCounts = {};
+    allBooks.forEach(b => (b.tone || []).forEach(t => { toneCounts[t] = (toneCounts[t] || 0) + 1; }));
+    const topMoods = Object.entries(toneCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (topMoods.length) {
+      const moodSection = util.el("div", { class: "bd-mirror-section" });
+      moodSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Mood you choose" }));
+      const moodList = util.el("div", { class: "bd-moods" });
+      topMoods.forEach(([tone, count]) => {
+        const pct = Math.round(count / Math.max(1, allBooks.length) * 100);
+        const isActive = lens.kind === "mood" && lens.value === tone;
+        moodList.appendChild(util.el("button", {
+          class: "bd-mood" + (isActive ? " active" : ""),
+          type: "button",
+          "aria-label": `Filter to ${tone} mood`,
+          onclick: () => {
+            store.update(s => {
+              s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: "mood", value: tone };
+            });
+            renderView();
+          }
+        }, [
+          util.el("span", { class: "bd-mood-dot" }),
+          util.el("span", { class: "bd-mood-label", text: util.humanise(tone) }),
+          util.el("span", { class: "bd-mood-pct", text: pct + "%" })
+        ]));
+      });
+      moodSection.appendChild(moodList);
+      inner.appendChild(moodSection);
+    }
+
+    // ── Trope section — top 8 tropes, clickable rows with bars.
+    const tropeCounts = {};
+    allBooks.forEach(b => (b.trope_tags || b.trope || []).forEach(t => {
+      tropeCounts[t] = (tropeCounts[t] || 0) + 1;
+    }));
+    const topTropes = Object.entries(tropeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    if (topTropes.length) {
+      const tropeSection = util.el("div", { class: "bd-mirror-section" });
+      tropeSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Tropes you keep returning to" }));
+      const tropeMax = topTropes[0][1];
+      const tropeList = util.el("ul", { class: "bd-tropes" });
+      topTropes.forEach(([trope, count]) => {
+        const isActive = lens.kind === "trope" && lens.value === trope;
+        const li = util.el("li", {});
+        li.appendChild(util.el("button", {
+          class: "bd-trope" + (isActive ? " active" : ""),
+          type: "button",
+          "aria-label": `Filter to ${trope}`,
+          onclick: () => {
+            store.update(s => {
+              s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: "trope", value: trope };
+            });
+            renderView();
+          }
+        }, [
+          util.el("span", { class: "bd-trope-bar", style: { width: `${(count / tropeMax) * 100}%` } }),
+          util.el("span", { class: "bd-trope-name", text: util.humanise(trope) }),
+          util.el("span", { class: "bd-trope-n", text: String(count) })
+        ]));
+        tropeList.appendChild(li);
+      });
+      tropeSection.appendChild(tropeList);
+      inner.appendChild(tropeSection);
+    }
+
+    // ── Pacing section — read-only visualization (top 3 pacing
+    // values from real catalog data, displayed as % of library).
+    const pacingCounts = {};
+    allBooks.forEach(b => (b.pacing || []).forEach(p => {
+      pacingCounts[p] = (pacingCounts[p] || 0) + 1;
+    }));
+    const topPacing = Object.entries(pacingCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    if (topPacing.length) {
+      const pacingSection = util.el("div", { class: "bd-mirror-section" });
+      pacingSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Pacing you finish" }));
+      const pacingTotal = topPacing.reduce((a, [, n]) => a + n, 0) || 1;
+      const pacingBars = util.el("div", { class: "bd-bars" });
+      topPacing.forEach(([label, count]) => {
+        const pct = Math.round(count / pacingTotal * 100);
+        pacingBars.appendChild(util.el("div", { class: "bd-pace" }, [
+          util.el("span", { class: "bd-pace-label", text: util.humanise(label) }),
+          util.el("div", { class: "bd-pace-track" }, [
+            util.el("div", { class: "bd-pace-fill", style: { width: pct + "%" } })
+          ]),
+          util.el("span", { class: "bd-pace-pct", text: pct + "%" })
+        ]));
+      });
+      pacingSection.appendChild(pacingBars);
+      inner.appendChild(pacingSection);
+    }
 
     // Totals foot.
     const foot = util.el("div", { class: "bd-mirror-section bd-mirror-foot" });

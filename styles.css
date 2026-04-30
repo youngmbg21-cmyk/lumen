@@ -6787,3 +6787,182 @@ body[data-sidenav="overlay"] .lumen-terminal {
   .page-boudoir .bd-hero { grid-template-columns: 1fr; }
   .page-boudoir .bd-toolbar { flex-direction: column; align-items: flex-start; }
 }
+
+/* ============================================================
+   Boudoir — Batch 2: bidirectional lens + mood / trope / pacing.
+   Histogram bars become clickable buttons with hover + active
+   states. Mood / trope rows + pacing bars complete the mirror.
+   ============================================================ */
+
+/* Histograms — clickable variant. Subtle variant has no hover/
+   pointer (heat is clickable in Batch 2; emo and taboo stay
+   read-only viz so the lens vocabulary doesn't get crowded). */
+.page-boudoir .bd-hist-bar {
+  border: 1px solid var(--accent-mid);
+  background: var(--accent-glow);
+  cursor: pointer;
+  transition: all 120ms cubic-bezier(0.2, 0.6, 0.2, 1);
+  font: inherit;
+  appearance: none;
+}
+.page-boudoir .bd-hist-bar:hover:not(.subtle) {
+  background: var(--accent-mid);
+  border-color: var(--accent-deep);
+}
+.page-boudoir .bd-hist-bar.active {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+}
+.page-boudoir .bd-hist-bar.active .bd-hist-v { color: #fff; }
+.page-boudoir .bd-hist-bar.subtle {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Mood section — pill-style buttons in a row. */
+.page-boudoir .bd-moods {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.page-boudoir .bd-mood {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  padding: 6px 12px 6px 10px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all 120ms cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.page-boudoir .bd-mood:hover {
+  border-color: var(--accent-deep);
+  color: var(--text);
+}
+.page-boudoir .bd-mood.active {
+  background: var(--accent-deep);
+  color: #fff;
+  border-color: var(--accent-deep);
+}
+.page-boudoir .bd-mood-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+}
+.page-boudoir .bd-mood.active .bd-mood-dot { background: #fff; }
+.page-boudoir .bd-mood-label { font-weight: 500; letter-spacing: 0.02em; }
+.page-boudoir .bd-mood-pct {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-mute);
+  margin-left: 2px;
+}
+.page-boudoir .bd-mood.active .bd-mood-pct { color: rgba(255,255,255,0.85); }
+
+/* Tropes — list of bars, each clickable. */
+.page-boudoir .bd-tropes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.page-boudoir .bd-trope {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  background: transparent;
+  border: 1px solid transparent;
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  color: var(--text);
+  transition: background 120ms;
+}
+.page-boudoir .bd-trope:hover { background: var(--bg-sunk); }
+.page-boudoir .bd-trope.active {
+  background: var(--accent-glow);
+  border-color: var(--accent-mid);
+}
+.page-boudoir .bd-trope-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-glow);
+  border-radius: var(--r-2);
+  z-index: 0;
+  transition: width 220ms cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.page-boudoir .bd-trope.active .bd-trope-bar { background: var(--accent-mid); }
+.page-boudoir .bd-trope-name {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-boudoir .bd-trope-n {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-mute);
+}
+.page-boudoir .bd-trope.active .bd-trope-n { color: var(--accent-deep); }
+
+/* Pacing — read-only horizontal bars. */
+.page-boudoir .bd-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.page-boudoir .bd-pace {
+  display: grid;
+  grid-template-columns: 80px 1fr 36px;
+  align-items: center;
+  gap: 10px;
+}
+.page-boudoir .bd-pace-label {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.page-boudoir .bd-pace-track {
+  height: 6px;
+  background: var(--bg-sunk);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+.page-boudoir .bd-pace-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-deep));
+  border-radius: var(--r-pill);
+}
+.page-boudoir .bd-pace-pct {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-mute);
+  text-align: right;
+}
