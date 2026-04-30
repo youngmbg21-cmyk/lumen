@@ -6745,12 +6745,8 @@
     hero.appendChild(lock);
     wrap.appendChild(hero);
 
-    // ── 2-col main: library + mirror ───────────────────────────
+    // ── Main content ─────────────────────────────────────────────
     const main = util.el("section", { class: "bd-main" });
-    const topZone = util.el("div", { class: "bd-top-zone" });
-    const belowMirror = util.el("div", { class: "bd-below-mirror" });
-
-    // ─── LIBRARY (left column of topZone) ─────
     const library = util.el("div", { class: "bd-library" });
 
     // Toolbar.
@@ -6833,219 +6829,48 @@
     });
     library.appendChild(quickTabs);
 
-    // Library — shelf view (default) or grid view based on state.
-    if (!sorted.length) {
-      library.appendChild(util.el("div", { class: "bd-empty" }, [
-        util.el("div", { style: { fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "26px", color: "var(--accent-deep)" },
-          text: "Nothing matches this lens — yet." }),
-        util.el("div", { style: { color: "var(--text-soft)", marginTop: "6px" },
-          text: "Touch a different signal in the mirror, or clear the lens." })
-      ]));
-    } else if (boud.view === "grid") {
-      library.appendChild(renderBoudoirGrid(sorted, fitById));
-    } else {
-      library.appendChild(renderBoudoirShelf(sorted, fitById));
-    }
-    topZone.appendChild(library);
-
-    // ─── MIRROR (right column of topZone) ─────
-    const mirror = util.el("aside", { class: "bd-mirror" });
-    const frame = util.el("div", { class: "bd-mirror-frame" });
-    const glass = util.el("div", { class: "bd-mirror-glass" });
-    const inner = util.el("div", { class: "bd-mirror-inner" });
-    inner.appendChild(util.el("div", { class: "bd-mirror-eyebrow", text: "— A reading of you —" }));
-    inner.appendChild(util.el("div", { class: "bd-mirror-quote",
-      text: boudoirMirrorQuote(allBooks, st.profile) }));
-
-    // Histograms — REAL counts. Each bar is a lens trigger: click
-    // sets s.boudoir.lens to that kind+value; click again clears.
-    // The active bar gets a deeper fill so the user can see which
-    // signal is filtering the shelf.
-    const histSection = (label, getter, lensKind) => {
-      const section = util.el("div", { class: "bd-mirror-section" });
-      section.appendChild(util.el("div", { class: "t-eyebrow", text: label }));
-      const bins = [1, 2, 3, 4, 5].map(v => ({ v, n: allBooks.filter(b => Number(getter(b)) === v).length }));
-      const max = Math.max(1, ...bins.map(b => b.n));
-      const histRow = util.el("div", { class: "bd-hist" });
-      bins.forEach(b => {
-        const h = (b.n / max) * 60 + 8;
-        const isActive = lensKind && lens.kind === lensKind && Number(lens.value) === b.v;
-        const bar = util.el("button", {
-          class: "bd-hist-bar" + (isActive ? " active" : "") + (lensKind ? "" : " subtle"),
-          type: "button",
-          "aria-label": lensKind ? `Filter to ${label.toLowerCase()} ${b.v}` : `${label} ${b.v}: ${b.n}`,
-          style: { height: h + "px" },
-          onclick: lensKind ? () => {
-            store.update(s => {
-              s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: lensKind, value: b.v };
-            });
-            renderView();
-          } : null
-        }, [
-          util.el("span", { class: "bd-hist-n", text: String(b.n) }),
-          util.el("span", { class: "bd-hist-v", text: String(b.v) })
-        ]);
-        histRow.appendChild(bar);
-      });
-      section.appendChild(histRow);
-      return section;
-    };
-    inner.appendChild(histSection("Heat distribution",  b => b.heat_level,          "heat"));
-    inner.appendChild(histSection("Emotional intensity", b => b.emotional_intensity, null));
-    inner.appendChild(histSection("Taboo tolerance",    b => b.taboo_level,          null));
-
-    // ── Mood section — top 5 tones, clickable.
-    const toneCounts = {};
-    allBooks.forEach(b => (b.tone || []).forEach(t => { toneCounts[t] = (toneCounts[t] || 0) + 1; }));
-    const topMoods = Object.entries(toneCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    if (topMoods.length) {
-      const moodSection = util.el("div", { class: "bd-mirror-section" });
-      moodSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Mood you choose" }));
-      const moodList = util.el("div", { class: "bd-moods" });
-      topMoods.forEach(([tone, count]) => {
-        const pct = Math.round(count / Math.max(1, allBooks.length) * 100);
-        const isActive = lens.kind === "mood" && lens.value === tone;
-        moodList.appendChild(util.el("button", {
-          class: "bd-mood" + (isActive ? " active" : ""),
-          type: "button",
-          "aria-label": `Filter to ${tone} mood`,
-          onclick: () => {
-            store.update(s => {
-              s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: "mood", value: tone };
-            });
-            renderView();
-          }
-        }, [
-          util.el("span", { class: "bd-mood-dot" }),
-          util.el("span", { class: "bd-mood-label", text: util.humanise(tone) }),
-          util.el("span", { class: "bd-mood-pct", text: pct + "%" })
-        ]));
-      });
-      moodSection.appendChild(moodList);
-      inner.appendChild(moodSection);
-    }
-
-    // ── Trope section — top 8 tropes, clickable rows with bars.
+    // ── Trope filter strip — top 8 most-frequent tropes as clickable
+    //    chips. Clicking sets the trope lens; clicking again clears it.
     const tropeCounts = {};
     allBooks.forEach(b => (b.trope_tags || b.trope || []).forEach(t => {
-      tropeCounts[t] = (tropeCounts[t] || 0) + 1;
+      if (t) tropeCounts[t] = (tropeCounts[t] || 0) + 1;
     }));
-    const topTropes = Object.entries(tropeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
+    const topTropes = Object.entries(tropeCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k]) => k);
     if (topTropes.length) {
-      const tropeSection = util.el("div", { class: "bd-mirror-section" });
-      tropeSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Tropes you keep returning to" }));
-      const tropeMax = topTropes[0][1];
-      const tropeList = util.el("ul", { class: "bd-tropes" });
-      topTropes.forEach(([trope, count]) => {
+      const tropeStrip = util.el("div", { class: "bd-trope-strip" });
+      tropeStrip.appendChild(util.el("span", { class: "t-eyebrow bd-trope-strip-label", text: "Tropes you keep returning to" }));
+      const tropeChips = util.el("div", { class: "bd-trope-chips" });
+      topTropes.forEach(trope => {
         const isActive = lens.kind === "trope" && lens.value === trope;
-        const li = util.el("li", {});
-        li.appendChild(util.el("button", {
-          class: "bd-trope" + (isActive ? " active" : ""),
-          type: "button",
-          "aria-label": `Filter to ${trope}`,
+        tropeChips.appendChild(util.el("button", {
+          class: "bd-tab" + (isActive ? " active" : ""),
           onclick: () => {
             store.update(s => {
               s.boudoir.lens = isActive ? { kind: "all", value: null } : { kind: "trope", value: trope };
             });
             renderView();
           }
-        }, [
-          util.el("span", { class: "bd-trope-bar", style: { width: `${(count / tropeMax) * 100}%` } }),
-          util.el("span", { class: "bd-trope-name", text: util.humanise(trope) }),
-          util.el("span", { class: "bd-trope-n", text: String(count) })
-        ]));
-        tropeList.appendChild(li);
+        }, util.humanise(trope)));
       });
-      tropeSection.appendChild(tropeList);
-      inner.appendChild(tropeSection);
+      tropeStrip.appendChild(tropeChips);
+      library.appendChild(tropeStrip);
     }
 
-    // ── Pacing section — read-only visualization (top 3 pacing
-    // values from real catalog data, displayed as % of library).
-    const pacingCounts = {};
-    allBooks.forEach(b => (b.pacing || []).forEach(p => {
-      pacingCounts[p] = (pacingCounts[p] || 0) + 1;
-    }));
-    const topPacing = Object.entries(pacingCounts).sort((a, b) => b[1] - a[1]).slice(0, 3);
-    if (topPacing.length) {
-      const pacingSection = util.el("div", { class: "bd-mirror-section" });
-      pacingSection.appendChild(util.el("div", { class: "t-eyebrow", text: "Pacing you finish" }));
-      const pacingTotal = topPacing.reduce((a, [, n]) => a + n, 0) || 1;
-      const pacingBars = util.el("div", { class: "bd-bars" });
-      topPacing.forEach(([label, count]) => {
-        const pct = Math.round(count / pacingTotal * 100);
-        pacingBars.appendChild(util.el("div", { class: "bd-pace" }, [
-          util.el("span", { class: "bd-pace-label", text: util.humanise(label) }),
-          util.el("div", { class: "bd-pace-track" }, [
-            util.el("div", { class: "bd-pace-fill", style: { width: pct + "%" } })
-          ]),
-          util.el("span", { class: "bd-pace-pct", text: pct + "%" })
-        ]));
-      });
-      pacingSection.appendChild(pacingBars);
-      inner.appendChild(pacingSection);
-    }
-
-    // Totals foot.
-    const foot = util.el("div", { class: "bd-mirror-section bd-mirror-foot" });
-    const meta = util.el("div", { class: "bd-mirror-meta" });
-    [[totalBooks, "in shelf"], [totalRead, "read"], [totalSaved, "saved"]].forEach(([n, label]) => {
-      meta.appendChild(util.el("div", {}, [
-        util.el("span", { class: "bd-big", text: String(n) }),
-        util.el("span", { class: "t-eyebrow", text: label })
+    // Library — shelf view (default) or grid view based on state.
+    if (!sorted.length) {
+      library.appendChild(util.el("div", { class: "bd-empty" }, [
+        util.el("div", { style: { fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "26px", color: "var(--accent-deep)" },
+          text: "Nothing matches this lens — yet." }),
+        util.el("div", { style: { color: "var(--text-soft)", marginTop: "6px" },
+          text: "Try a different filter above, or clear the lens to see all books." })
       ]));
-    });
-    foot.appendChild(meta);
-    inner.appendChild(foot);
-
-    glass.appendChild(inner);
-    frame.appendChild(glass);
-    frame.appendChild(util.el("div", { class: "bd-mirror-base" }));
-    mirror.appendChild(frame);
-    topZone.appendChild(mirror);
-    main.appendChild(topZone);
-    main.appendChild(belowMirror);
+    } else if (boud.view === "grid") {
+      library.appendChild(renderBoudoirGrid(sorted, fitById));
+    } else {
+      library.appendChild(renderBoudoirShelf(sorted, fitById));
+    }
+    main.appendChild(library);
     wrap.appendChild(main);
-
-    // After the element lands in the DOM:
-    // 1. Measure the library column width → set --bd-col-size so
-    //    exactly 6 books fit per row in the beside-mirror section.
-    // 2. Measure the mirror height → move any shelves that overflow
-    //    past the mirror's bottom into belowMirror at full width.
-    //    The same --bd-col-size means the same book dimensions, but
-    //    auto-fill packs in more columns across the wider space.
-    const BD_GAP = 8;
-    const BD_COLS = 6;
-    requestAnimationFrame(() => {
-      const libW = library.offsetWidth;
-      if (libW > 0) {
-        const colSize = Math.floor((libW - BD_GAP * (BD_COLS - 1)) / BD_COLS);
-        const colVal = colSize + 'px';
-        library.style.setProperty('--bd-col-size', colVal);
-        belowMirror.style.setProperty('--bd-col-size', colVal);
-      }
-
-      // Split shelves: move those past the mirror's bottom to the
-      // full-width below zone so they fill the right-hand space.
-      const mirrorH = mirror.offsetHeight;
-      const shelvesEl = library.querySelector('.bd-shelves');
-      if (shelvesEl && mirrorH > 0) {
-        const shelfEls = Array.from(shelvesEl.children);
-        let cumH = 0;
-        let splitIdx = shelfEls.length;
-        for (let i = 0; i < shelfEls.length; i++) {
-          cumH += shelfEls[i].offsetHeight;
-          if (cumH > mirrorH) { splitIdx = i + 1; break; }
-        }
-        const toMove = shelfEls.slice(splitIdx);
-        if (toMove.length) {
-          const belowShelves = util.el("div", { class: "bd-shelves" });
-          toMove.forEach(s => belowShelves.appendChild(s));
-          belowMirror.appendChild(belowShelves);
-        }
-      }
-    });
-
     return wrap;
   }
 

@@ -6451,23 +6451,8 @@ body[data-sidenav="overlay"] .lumen-terminal {
   padding: 8px clamp(12px, 2vw, 32px) 40px;
 }
 
-/* Two-column grid: library left (flexible) | mirror right (fixed).
-   align-items:start lets the mirror be sticky within its cell. */
-.page-boudoir .bd-top-zone {
-  display: grid;
-  grid-template-columns: 1fr clamp(260px, 26vw, 360px);
-  gap: 0 16px;
-  align-items: start;
-}
-
 .page-boudoir .bd-library {
   min-width: 0;
-  --bd-col-size: 145px;
-}
-
-/* Full-width zone below the mirror — JS moves overflow shelves here. */
-.page-boudoir .bd-below-mirror {
-  margin-top: clamp(20px, 2.4vw, 32px);
 }
 .page-boudoir .bd-toolbar {
   display: flex;
@@ -6572,6 +6557,23 @@ body[data-sidenav="overlay"] .lumen-terminal {
   background: var(--accent-deep);
   color: #fff;
   border-color: var(--accent-deep);
+}
+
+.page-boudoir .bd-trope-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 0 16px;
+  border-top: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.page-boudoir .bd-trope-strip-label {
+  color: var(--text-mute);
+}
+.page-boudoir .bd-trope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .page-boudoir .bd-grid {
@@ -6689,13 +6691,8 @@ body[data-sidenav="overlay"] .lumen-terminal {
   background: var(--bg-surface);
 }
 
-/* Mirror lives in the right column of .bd-top-zone.
-   Sticky so it stays in view while scrolling the library column;
-   once the library column ends the mirror scrolls off naturally. */
-.page-boudoir .bd-mirror {
-  position: sticky;
-  top: 0;
-}
+/* Mirror removed from layout — rules retained as dead-safe fallback. */
+.page-boudoir .bd-mirror { display: none; }
 .page-boudoir .bd-mirror-frame {
   position: relative;
   background:
@@ -6804,15 +6801,6 @@ body[data-sidenav="overlay"] .lumen-terminal {
 /* On narrow screens the float gets out of the way and the mirror
    stacks below the library. Floats are quirky in tight spaces; a
    single column reads better and avoids cramped book rows. */
-@media (max-width: 1100px) {
-  .page-boudoir .bd-top-zone {
-    grid-template-columns: 1fr;
-  }
-  .page-boudoir .bd-mirror {
-    position: static;
-    margin-top: 24px;
-  }
-}
 @media (max-width: 600px) {
   .page-boudoir .bd-hero { grid-template-columns: 1fr; }
   .page-boudoir .bd-toolbar { flex-direction: column; align-items: flex-start; }
@@ -7033,7 +7021,7 @@ body[data-sidenav="overlay"] .lumen-terminal {
 }
 .page-boudoir .bd-shelf-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(var(--bd-col-size, 145px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
   gap: 8px;
   align-items: end;
   padding: 0 0 8px;
