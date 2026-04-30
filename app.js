@@ -97,6 +97,15 @@
         generationsToday: [],
         lastError: null
       },
+      // Boudoir — unified library + signals view. Lens is the active
+      // filter (kind: all|read|saved|heat|mood|trope|subgenre, value:
+      // typed per kind); view + sort persist between visits so the
+      // user lands back where they left off.
+      boudoir: {
+        lens: { kind: "all", value: null },
+        view: "shelf",   // shelf | grid
+        sort: "fit"      // fit | heat | recent
+      },
       ui: {
         theme: "rose",
         discreet: false,
@@ -153,6 +162,12 @@
         { currentPick: null, history: [], generationsToday: [], lastError: null },
         merged.tonightSix || {}
       );
+      // Boudoir — back-fill the lens / view / sort on older stores.
+      merged.boudoir = Object.assign(
+        { lens: { kind: "all", value: null }, view: "shelf", sort: "fit" },
+        merged.boudoir || {}
+      );
+      if (!merged.boudoir.lens) merged.boudoir.lens = { kind: "all", value: null };
       return merged;
     } catch (e) {
       return initialState();
@@ -373,6 +388,7 @@
     { id: "margin-notes",  label: "Margin Notes",  short: "Notes",     group: "main",     render: () => views.marginNotes() },
     { id: "constellation", label: "Constellation", short: "Stars",     group: "main",     render: () => views.constellation() },
     { id: "terminal",      label: "Signals",       short: "Signals",   group: "main",     render: () => views.terminal() },
+    { id: "boudoir",       label: "Boudoir",       short: "Boudoir",   group: "main",     render: () => views.boudoir() },
     { id: "library",       label: "Library",       short: "Library",   group: "main",     render: () => views.library() },
     { id: "compare",       label: "Compare",       short: "Compare",   group: "main",     render: () => views.compare() },
     { id: "discovery",     label: "Discovery",     short: "Discover",  group: "main",     render: () => views.discovery() },
@@ -6527,6 +6543,312 @@
     return wrap;
   }
 
+  /* ==================================================================
+     Boudoir — unified library + signals.
+
+     Single page that draws the user's library on the left and a
+     "vanity mirror" of their reading signals on the right. The
+     mirror's signals (heat distribution, mood mix, top tropes,
+     pacing) double as filters: tap any one and the library shows
+     only books that match that lens. The active lens lives in
+     s.boudoir.lens and renders as a clear-able chip in the toolbar.
+
+     Batch 1 ships: real privacy-line numbers, the toolbar (lens
+     chip + sort + view-toggle UI), a real-data flat library grid
+     with sort, and a mirror with real heat/emo/taboo histograms +
+     a deterministic-template "reading of you" quote. Batch 2 will
+     wire the bidirectional lens (clicking signals → filters), the
+     mood/trope/pacing sections, and the quick-tab filters. Batch 3
+     ships the shelf view and final visual polish.
+     ================================================================== */
+  function boudoirLensesMatch(book, lens) {
+    if (!lens || lens.kind === "all") return true;
+    if (lens.kind === "read")     return getReadingState(book.id) === "read";
+    if (lens.kind === "saved")    return getReadingState(book.id) === "want";
+    if (lens.kind === "favorite") return isFavorite(book.id);
+    if (lens.kind === "heat")     return Number(book.heat_level) === Number(lens.value);
+    if (lens.kind === "mood")     return (book.tone || []).includes(lens.value);
+    if (lens.kind === "trope")    return (book.trope_tags || book.trope || []).includes(lens.value);
+    if (lens.kind === "subgenre") return (book.subgenre || book.category) === lens.value;
+    return true;
+  }
+
+  function boudoirLensLabel(lens) {
+    if (!lens || lens.kind === "all") return "All books";
+    if (lens.kind === "heat")     return `Heat ${lens.value} of 5`;
+    if (lens.kind === "mood")     return `${String(lens.value)[0].toUpperCase()}${String(lens.value).slice(1)} mood`;
+    if (lens.kind === "trope")    return `“${lens.value}”`;
+    if (lens.kind === "subgenre") return lens.value;
+    if (lens.kind === "read")     return "Read";
+    if (lens.kind === "saved")    return "Saved";
+    if (lens.kind === "favorite") return "Favourites";
+    return "All books";
+  }
+
+  // Deterministic 3-sentence "reading of you" derived from the
+  // user's profile + library composition. Picks the strongest
+  // signal in each of three slots so the read feels specific
+  // without an LLM call.
+  function boudoirMirrorQuote(books, profile) {
+    if (!books.length) return "Your boudoir is still empty. Save a book or two and the mirror will start to read you back.";
+    // 1. heat preference
+    const heatAvg = books.reduce((a, b) => a + (b.heat_level || 3), 0) / books.length;
+    const explicitAvg = books.reduce((a, b) => a + (b.explicitness || b.explicit || b.heat_level || 3), 0) / books.length;
+    const heatSentence = heatAvg < 2.5
+      ? "You read for restraint and sensual prose more than the page itself."
+      : heatAvg < 3.5
+      ? "You read for slow restraint and literary heat."
+      : "You read hot and don't apologise for it.";
+    // 2. mood lean
+    const toneCounts = {};
+    books.forEach(b => (b.tone || []).forEach(t => { toneCounts[t] = (toneCounts[t] || 0) + 1; }));
+    const topTone = Object.entries(toneCounts).sort((a, b) => b[1] - a[1])[0];
+    const moodSentence = topTone
+      ? `${topTone[0][0].toUpperCase() + topTone[0].slice(1)} stories catch you the most often.`
+      : "Your mood mix is still settling.";
+    // 3. completion
+    const readBooks = books.filter(b => getReadingState(b.id) === "read");
+    const completionSentence = readBooks.length >= 5
+      ? "You finish the books that hold their breath."
+      : readBooks.length >= 1
+      ? "Your shelf is still growing into shape."
+      : "Mark a book as read and I'll sharpen this read of you.";
+    return `${heatSentence} ${moodSentence} ${completionSentence}`;
+  }
+
+  function renderBoudoir() {
+    const wrap = util.el("div", { class: "page page-boudoir lumen-site" });
+    const st = store.get();
+    const boud = st.boudoir || { lens: { kind: "all", value: null }, view: "shelf", sort: "fit" };
+    const lens = boud.lens || { kind: "all", value: null };
+    const sort = boud.sort || "fit";
+
+    // Working library — everything visible (skip hidden, but include
+    // both curated catalogue + user-added discovered books).
+    const allBooks = listAllBooks().filter(b => !(st.hidden || {})[b.id]);
+
+    // Apply lens.
+    const filtered = allBooks.filter(b => boudoirLensesMatch(b, lens));
+
+    // Engine-rank to recover fitScores for sorting + the cards.
+    const ranked = (window.LumenEngine && typeof window.LumenEngine.rankRecommendations === "function")
+      ? window.LumenEngine.rankRecommendations(st.profile, st.weights, filtered).scored
+      : filtered.map(b => ({ book: b, fitScore: 0 }));
+    const fitById = new Map(ranked.map(s => [s.book.id, s.fitScore]));
+
+    // Sort.
+    const sorted = filtered.slice();
+    if (sort === "fit")    sorted.sort((a, b) => (fitById.get(b.id) || 0) - (fitById.get(a.id) || 0));
+    if (sort === "heat")   sorted.sort((a, b) => (b.heat_level || 0) - (a.heat_level || 0));
+    if (sort === "recent") sorted.sort((a, b) => (getReadingState(b.id) === "read" ? 1 : 0) - (getReadingState(a.id) === "read" ? 1 : 0));
+
+    // Privacy line numbers — REAL, from state.
+    const totalBooks = allBooks.length;
+    const totalRead  = allBooks.filter(b => getReadingState(b.id) === "read").length;
+    const totalSaved = allBooks.filter(b => getReadingState(b.id) === "want").length;
+
+    // ── Hero band ─────────────────────────────────────────────
+    const hero = util.el("section", { class: "bd-hero" });
+    hero.appendChild(util.el("div", {}, [
+      util.el("div", { class: "t-eyebrow", text: "Library & Signals · together" }),
+      util.el("h1", { class: "bd-h1", html: "<em>Your boudoir.</em><br>Every book you keep, seen through every signal you give." }),
+      util.el("p", { class: "bd-lede",
+        text: "The mirror at right is your taste, drawn from what you've read, saved, and lingered on. Touch any line of it — a heat band, a mood, a trope — and the shelf rearranges itself for that version of you. Nothing here leaves the room." })
+    ]));
+    const lock = util.el("div", { class: "bd-lock" });
+    const lockSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    lockSvg.setAttribute("width", "32"); lockSvg.setAttribute("height", "32");
+    lockSvg.setAttribute("viewBox", "0 0 40 40");
+    lockSvg.innerHTML = '<rect x="9" y="18" width="22" height="16" rx="2" fill="none" stroke="var(--accent-deep)" stroke-width="1.4"/>'
+      + '<path d="M14 18 V13 a6 6 0 0 1 12 0 V18" fill="none" stroke="var(--accent-deep)" stroke-width="1.4"/>'
+      + '<circle cx="20" cy="26" r="1.6" fill="var(--accent-deep)"/>';
+    lock.appendChild(lockSvg);
+    lock.appendChild(util.el("span", { text: `Kept private · ${totalBooks} book${totalBooks === 1 ? "" : "s"} · ${totalRead} read · ${totalSaved} saved` }));
+    hero.appendChild(lock);
+    wrap.appendChild(hero);
+
+    // ── 2-col main: library + mirror ───────────────────────────
+    const main = util.el("section", { class: "bd-main" });
+
+    // ─── LIBRARY (left) ─────
+    const library = util.el("div", { class: "bd-library" });
+
+    // Toolbar.
+    const toolbar = util.el("div", { class: "bd-toolbar" });
+    const lensDisplay = util.el("div", { class: "bd-lens-display" });
+    lensDisplay.appendChild(util.el("span", { class: "t-eyebrow", style: { marginRight: "8px" }, text: "Now showing" }));
+    const lensChip = util.el("span", { class: "bd-lens-chip" }, [
+      util.el("em", { text: boudoirLensLabel(lens) }),
+      util.el("span", { class: "bd-lens-count", text: String(sorted.length) })
+    ]);
+    if (lens.kind !== "all") {
+      lensChip.appendChild(util.el("button", {
+        class: "bd-lens-x",
+        "aria-label": "Clear lens",
+        onclick: () => {
+          store.update(s => { s.boudoir.lens = { kind: "all", value: null }; });
+          renderView();
+        }
+      }, "×"));
+    }
+    lensDisplay.appendChild(lensChip);
+    toolbar.appendChild(lensDisplay);
+
+    const toolbarRight = util.el("div", { class: "bd-toolbar-right" });
+    // Sort chips.
+    const sortRow = util.el("div", { class: "bd-sort" });
+    sortRow.appendChild(util.el("span", { class: "t-eyebrow", text: "Sort" }));
+    [["fit", "By fit"], ["heat", "By heat"], ["recent", "Recent"]].forEach(([k, label]) => {
+      sortRow.appendChild(util.el("button", {
+        class: "chip" + (sort === k ? " active" : ""),
+        onclick: () => {
+          store.update(s => { s.boudoir.sort = k; });
+          renderView();
+        }
+      }, label));
+    });
+    toolbarRight.appendChild(sortRow);
+
+    // View toggle (shelf vs grid). Wired to state but Batch 1 only
+    // renders the grid view; the shelf view ships in Batch 3, at
+    // which point this toggle becomes meaningful.
+    const viewToggle = util.el("div", { class: "bd-viewtoggle" });
+    [["shelf", "Shelf"], ["grid", "Grid"]].forEach(([k, label]) => {
+      viewToggle.appendChild(util.el("button", {
+        class: (boud.view === k ? "active" : ""),
+        title: `${label} view`,
+        onclick: () => {
+          store.update(s => { s.boudoir.view = k; });
+          renderView();
+        }
+      }, label));
+    });
+    toolbarRight.appendChild(viewToggle);
+    toolbar.appendChild(toolbarRight);
+    library.appendChild(toolbar);
+
+    // Quick-tab filters — All / Read / Saved + 2 subgenres pulled
+    // from the actual catalogue (most-common subgenres).
+    const subgenreCounts = {};
+    allBooks.forEach(b => {
+      const k = b.subgenre || b.category;
+      if (k) subgenreCounts[k] = (subgenreCounts[k] || 0) + 1;
+    });
+    const topSubs = Object.entries(subgenreCounts).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => k);
+    const quickTabs = util.el("div", { class: "bd-quicktabs" });
+    const tabDefs = [
+      { lensKind: "all", label: "All" },
+      { lensKind: "read", label: `Read · ${totalRead}` },
+      { lensKind: "saved", label: `Saved · ${totalSaved}` }
+    ].concat(topSubs.map(s => ({ lensKind: "subgenre", value: s, label: s })));
+    tabDefs.forEach(t => {
+      const isActive = lens.kind === t.lensKind && (t.value || null) === (lens.value || null);
+      quickTabs.appendChild(util.el("button", {
+        class: "bd-tab" + (isActive ? " active" : ""),
+        onclick: () => {
+          store.update(s => { s.boudoir.lens = { kind: t.lensKind, value: t.value || null }; });
+          renderView();
+        }
+      }, t.label));
+    });
+    library.appendChild(quickTabs);
+
+    // Library — flat grid for Batch 1 (real shelf view ships in Batch 3).
+    if (!sorted.length) {
+      library.appendChild(util.el("div", { class: "bd-empty" }, [
+        util.el("div", { style: { fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "26px", color: "var(--accent-deep)" },
+          text: "Nothing matches this lens — yet." }),
+        util.el("div", { style: { color: "var(--text-soft)", marginTop: "6px" },
+          text: "Touch a different signal in the mirror, or clear the lens." })
+      ]));
+    } else {
+      const grid = util.el("div", { class: "bd-grid" });
+      sorted.forEach(b => {
+        const card = util.el("article", {
+          class: "bd-card",
+          onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
+        });
+        const coverWrap = tonightCoverEl(b, "bd-card-cover");
+        if (getReadingState(b.id) === "read") {
+          coverWrap.appendChild(util.el("span", { class: "bd-card-read", text: "read" }));
+        }
+        if (isFavorite(b.id)) {
+          coverWrap.appendChild(util.el("span", { class: "bd-card-fav", text: "❦" }));
+        }
+        card.appendChild(coverWrap);
+        const body = util.el("div", { class: "bd-card-body" }, [
+          util.el("div", { class: "t-eyebrow", text: b.subgenre || b.category || "" }),
+          util.el("h4", { html: `<em>${util.humanise(b.title)}</em>` }),
+          util.el("div", { class: "bd-card-author", text: b.author || "" }),
+          util.el("div", { class: "bd-card-stats" }, [
+            util.el("span", { class: "lc-fit-pill", text: String(fitById.get(b.id) || "—") }),
+            util.el("span", { text: `HEAT ${b.heat_level || "?"}/5` }),
+            util.el("span", { text: ((b.pacing || [])[0] || "—").toString() })
+          ])
+        ]);
+        card.appendChild(body);
+        grid.appendChild(card);
+      });
+      library.appendChild(grid);
+    }
+    main.appendChild(library);
+
+    // ─── MIRROR (right) ─────
+    const mirror = util.el("aside", { class: "bd-mirror" });
+    const frame = util.el("div", { class: "bd-mirror-frame" });
+    const glass = util.el("div", { class: "bd-mirror-glass" });
+    const inner = util.el("div", { class: "bd-mirror-inner" });
+    inner.appendChild(util.el("div", { class: "bd-mirror-eyebrow", text: "— A reading of you —" }));
+    inner.appendChild(util.el("div", { class: "bd-mirror-quote",
+      text: boudoirMirrorQuote(allBooks, st.profile) }));
+
+    // Heat distribution histogram — REAL counts.
+    const histSection = (label, getter) => {
+      const section = util.el("div", { class: "bd-mirror-section" });
+      section.appendChild(util.el("div", { class: "t-eyebrow", text: label }));
+      const bins = [1, 2, 3, 4, 5].map(v => ({ v, n: allBooks.filter(b => Number(getter(b)) === v).length }));
+      const max = Math.max(1, ...bins.map(b => b.n));
+      const histRow = util.el("div", { class: "bd-hist" });
+      bins.forEach(b => {
+        const h = (b.n / max) * 60 + 8;
+        const bar = util.el("div", {
+          class: "bd-hist-bar",
+          style: { height: h + "px" }
+        }, [
+          util.el("span", { class: "bd-hist-n", text: String(b.n) }),
+          util.el("span", { class: "bd-hist-v", text: String(b.v) })
+        ]);
+        histRow.appendChild(bar);
+      });
+      section.appendChild(histRow);
+      return section;
+    };
+    inner.appendChild(histSection("Heat distribution", b => b.heat_level));
+    inner.appendChild(histSection("Emotional intensity", b => b.emotional_intensity));
+    inner.appendChild(histSection("Taboo tolerance", b => b.taboo_level));
+
+    // Totals foot.
+    const foot = util.el("div", { class: "bd-mirror-section bd-mirror-foot" });
+    const meta = util.el("div", { class: "bd-mirror-meta" });
+    [[totalBooks, "in shelf"], [totalRead, "read"], [totalSaved, "saved"]].forEach(([n, label]) => {
+      meta.appendChild(util.el("div", {}, [
+        util.el("span", { class: "bd-big", text: String(n) }),
+        util.el("span", { class: "t-eyebrow", text: label })
+      ]));
+    });
+    foot.appendChild(meta);
+    inner.appendChild(foot);
+
+    glass.appendChild(inner);
+    frame.appendChild(glass);
+    frame.appendChild(util.el("div", { class: "bd-mirror-base" }));
+    mirror.appendChild(frame);
+    main.appendChild(mirror);
+
+    wrap.appendChild(main);
+    return wrap;
+  }
+
   /* -------------------- views -------------------- */
   const views = {
     discover() {
@@ -6539,6 +6861,10 @@
 
     constellation() {
       return renderConstellation();
+    },
+
+    boudoir() {
+      return renderBoudoir();
     },
 
     library() {
