@@ -5414,3 +5414,263 @@ body[data-sidenav="overlay"] .lumen-terminal {
   }
   .sidenav-pulltab { display: none !important; }
 }
+
+/* ============================================================
+   Margin Notes — open-book spread + reading pile.
+   Lifted from the prototype design. CSS variables (bg-deep,
+   accent-deep, gold, text-soft, border-strong, font-serif,
+   shadow-soft) all already exist in Lumen's :root, so no extra
+   palette plumbing is needed. .lc-section-head reused below
+   ships as well so the Constellation batch can reuse it.
+   ============================================================ */
+.page-margin-notes { padding: 0; }
+
+.mn-ribbon {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 32px;
+  flex-wrap: wrap;
+  padding: clamp(28px, 5vw, 56px) clamp(20px, 4vw, 64px) 16px;
+}
+.mn-h1 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(34px, 4.6vw, 60px);
+  margin: 6px 0 0;
+  letter-spacing: -0.022em;
+  line-height: 1.04;
+}
+.mn-h1 em { color: var(--accent-deep); font-weight: 500; }
+
+.mn-spread-wrap { padding: 16px clamp(20px, 4vw, 64px) 32px; }
+.mn-spread {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(180,140,120,0.06) 100%),
+    var(--bg-surface);
+  box-shadow: 0 30px 60px rgba(120,60,80,0.18), 0 0 0 1px var(--border-strong);
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 720px;
+}
+.mn-grain {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: repeating-linear-gradient(180deg, transparent 0 28px, rgba(120,80,60,0.05) 28px 29px);
+  opacity: 0.4;
+}
+.mn-dogear { position: absolute; right: 0; top: 0; }
+.mn-spine {
+  position: absolute;
+  top: 0; bottom: 0;
+  left: 50%;
+  width: 18px;
+  transform: translateX(-50%);
+  background:
+    linear-gradient(90deg,
+      transparent 0%,
+      rgba(120,80,60,0.04) 30%,
+      rgba(120,80,60,0.18) 50%,
+      rgba(120,80,60,0.04) 70%,
+      transparent 100%);
+  pointer-events: none;
+}
+.mn-page {
+  position: relative;
+  padding: clamp(30px, 4vw, 56px);
+  z-index: 1;
+}
+.mn-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: clamp(34px, 4vw, 54px);
+  margin: 0;
+  letter-spacing: -0.022em;
+  line-height: 1.0;
+  color: var(--text);
+}
+.mn-title em { color: var(--accent-deep); font-weight: 500; }
+.mn-byline {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 17px;
+  color: var(--text-soft);
+  margin: 4px 0 24px;
+}
+.mn-bookrow {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.mn-cover {
+  width: 200px; height: 300px;
+  background-size: cover; background-position: center;
+  background-color: var(--bg-deep);
+  box-shadow: 0 18px 36px rgba(120,60,80,0.22), 0 0 0 1px var(--border-strong);
+  border-radius: 2px;
+  transform: rotate(-1.4deg);
+}
+.mn-bookrow-text { min-width: 0; }
+.mn-desc {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--text);
+  margin: 0;
+  text-wrap: pretty;
+}
+.mn-page-foot {
+  position: absolute; bottom: 28px; left: clamp(30px, 4vw, 56px); right: clamp(30px, 4vw, 56px);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.mn-tropes { display: flex; gap: 8px; flex-wrap: wrap; }
+.mn-trope {
+  display: inline-flex;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-soft);
+  background: transparent;
+}
+.mn-pageno {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-mute);
+}
+.mn-pageno-right {
+  position: absolute; bottom: 28px; right: clamp(30px, 4vw, 56px);
+}
+
+/* Right page — Bianca's margin */
+.mn-rail-head {
+  display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px;
+}
+.mn-rule { flex: 1; height: 1px; background: var(--border); }
+.mn-fit-tag {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 14px;
+  color: var(--text-mute);
+}
+.mn-handwritten {
+  font-family: 'Caveat', 'Cormorant Garamond', cursive;
+  font-size: clamp(18px, 1.6vw, 24px);
+  line-height: 1.5;
+  color: var(--accent-deep);
+  transform: rotate(-0.6deg);
+  padding-right: 12px;
+  max-width: 56ch;
+  white-space: pre-wrap;
+}
+.mn-sticky {
+  position: absolute;
+  right: clamp(30px, 4vw, 56px); top: clamp(30px, 4vw, 56px);
+  width: 168px;
+  background: #fef4a8;
+  padding: 14px 16px;
+  transform: rotate(3.4deg);
+  box-shadow: 0 8px 18px rgba(80,40,20,.20);
+  font-family: var(--font-sans);
+}
+.mn-sticky-head {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #7a5a2a;
+  margin-bottom: 8px;
+}
+.mn-sticky-rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 5px 10px;
+  font-size: 11px;
+  color: #5a4220;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.mn-actions {
+  display: flex; gap: 10px; justify-content: center;
+  margin-top: 28px; flex-wrap: wrap;
+}
+.mn-actions .btn-primary { flex: 0 0 auto; min-width: 200px; }
+
+/* Reading pile section */
+.mn-pile-section {
+  padding: clamp(40px, 6vw, 72px) clamp(20px, 4vw, 64px) 56px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
+.mn-pile-section h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 28px;
+  margin: 6px 0 0;
+  letter-spacing: -0.018em;
+}
+.mn-pile {
+  margin-top: 32px;
+  display: flex;
+  gap: 36px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: center;
+}
+.mn-pile-card {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px;
+  transition: transform 220ms cubic-bezier(0.2, 0.6, 0.2, 1);
+  cursor: pointer;
+}
+.mn-pile-card:hover {
+  transform: rotate(0deg) translateY(-6px) !important;
+}
+.mn-pile-cover {
+  width: 140px; height: 210px;
+  background-size: cover; background-position: center;
+  background-color: var(--bg-deep);
+  box-shadow: 0 14px 28px rgba(120,60,80,0.22), 0 0 0 1px var(--border-strong);
+  border-radius: 2px;
+}
+.mn-pile-tag {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-soft);
+  white-space: nowrap;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  box-shadow: var(--shadow-soft);
+}
+.mn-pile-tag em { color: var(--accent-deep); font-weight: 500; font-style: italic; }
+.mn-pile-tag span {
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--text-mute); font-style: normal; font-weight: 600;
+  font-family: var(--font-sans);
+}
+
+/* Section head reused by Constellation batch as well. */
+.lc-section-head {
+  display: flex; justify-content: space-between; align-items: end;
+  gap: 24px; flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .mn-spread { grid-template-columns: 1fr; }
+  .mn-spine { display: none; }
+  .mn-page-left { border-bottom: 1px solid var(--border); }
+  .mn-bookrow { grid-template-columns: 1fr; }
+  .mn-cover { width: 160px; height: 240px; transform: rotate(-2deg); margin: 0 auto; }
+  .mn-page-foot { position: static; margin-top: 24px; }
+  .mn-pageno-right { position: static; display: block; margin-top: 24px; text-align: right; }
+  .mn-sticky { position: static; transform: rotate(2deg); margin-top: 22px; width: auto; max-width: 220px; }
+}
