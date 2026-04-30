@@ -5956,10 +5956,18 @@ body[data-sidenav="overlay"] .lumen-terminal {
 .app-main:has(.page-constellation) {
   padding: 0;
   overflow: hidden;
+  /* .app uses min-height: 100vh, so .app-main can grow past the
+     viewport when the content is tall — which is why these pages
+     were still scrolling. Pin .app-main itself to viewport-minus-
+     topbar so the page wrapper inside actually has a bounded
+     parent to inherit height: 100% from. */
+  height: calc(100vh - var(--shell-topbar));
+  max-height: calc(100vh - var(--shell-topbar));
 }
 .page-margin-notes,
 .page-constellation {
   height: 100%;
+  max-height: 100%;
   max-width: none;
   margin: 0;
   display: flex;
@@ -6205,4 +6213,119 @@ body[data-sidenav="overlay"] .lumen-terminal {
   .page-constellation { height: auto; max-height: none; overflow: visible; }
   .page-constellation .lc-main { grid-template-columns: 1fr; }
   .page-constellation .lc-rail { overflow-y: visible; }
+}
+
+/* ============================================================
+   Margin Notes — 2-column layout (pile on left, spread on right).
+   Replaces the prior bottom-strip pile so all six covers are
+   visible without forcing scroll, even on a 720p screen.
+   Cards are narrower, titles are larger, and the column
+   independently scrolls if the pile ever exceeds available
+   height (so the spread on the right never gets squeezed).
+   ============================================================ */
+.page-margin-notes .mn-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(150px, 14vw, 200px) minmax(0, 1fr);
+  gap: clamp(12px, 1.6vw, 22px);
+  padding: 0 clamp(16px, 3vw, 40px) clamp(10px, 1.6vh, 18px);
+  align-items: stretch;
+}
+.page-margin-notes .mn-pile-column {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 1.2vh, 14px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+.page-margin-notes .mn-pile-head {
+  margin: 4px 0 2px;
+}
+/* Override the previous horizontal-pile card rules now that the */
+/* pile lives in a vertical column.                              */
+.page-margin-notes .mn-pile-column .mn-pile-card {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  align-items: stretch;
+  cursor: pointer;
+  transform: none;
+  transition: transform 220ms cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.page-margin-notes .mn-pile-column .mn-pile-card:hover {
+  transform: translateY(-2px) !important;
+}
+.page-margin-notes .mn-pile-column .mn-pile-cover {
+  width: 100%;
+  height: clamp(120px, 18vh, 200px);
+  background-size: cover;
+  background-position: center;
+  border-radius: 2px;
+  background-color: var(--bg-deep);
+  box-shadow: 0 10px 22px rgba(120,60,80,0.18), 0 0 0 1px var(--border-strong);
+}
+.page-margin-notes .mn-pile-column .mn-pile-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  white-space: normal;
+  text-align: left;
+  font-family: var(--font-serif);
+  font-style: italic;
+  /* Bigger title font as requested — 16px instead of 13. */
+  font-size: clamp(14px, 1.7vh, 17px);
+  line-height: 1.2;
+  color: var(--text-soft);
+  box-shadow: var(--shadow-soft);
+}
+.page-margin-notes .mn-pile-column .mn-pile-tag em {
+  color: var(--accent-deep);
+  font-style: italic;
+  font-weight: 500;
+  /* Clip long titles to two lines so the column rhythm holds. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-margin-notes .mn-pile-column .mn-pile-tag span {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-top: 2px;
+}
+
+/* The bottom-strip pile is gone now — neutralise the old @media */
+/* rules that hid it on short viewports.                          */
+@media (max-height: 720px) {
+  .page-margin-notes .mn-pile-section { display: none; }
+}
+
+/* On narrow screens the 2-col stack collapses to 1-col so the   */
+/* pile sits above the spread, scrollable as a normal page.       */
+@media (max-width: 900px) {
+  .page-margin-notes .mn-main {
+    grid-template-columns: 1fr;
+  }
+  .page-margin-notes .mn-pile-column {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 6px;
+  }
+  .page-margin-notes .mn-pile-column .mn-pile-card {
+    flex: 0 0 140px;
+    width: 140px;
+  }
 }
