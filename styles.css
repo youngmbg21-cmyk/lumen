@@ -5938,3 +5938,271 @@ body[data-sidenav="overlay"] .lumen-terminal {
   .lc-rail-meta { grid-template-columns: 1fr; }
   .lc-cover { width: 130px; height: 195px; }
 }
+
+/* ============================================================
+   Margin Notes + The Constellation — fit-to-viewport mode.
+   These two tabs lock to the visible viewport: no page scroll,
+   internal layout flexes to fill, fonts and cover sizes scale
+   with vh so a 13" laptop and a 27" monitor both see one
+   complete screen. On viewports shorter than 720px the
+   nice-to-have strips at the bottom (reading pile, gallery)
+   collapse so the essentials stay on screen.
+
+   Implementation: :has() lets us strip the parent .app-main's
+   padding only when one of these pages is mounted — every
+   other route keeps its normal scrolling chrome.
+   ============================================================ */
+.app-main:has(.page-margin-notes),
+.app-main:has(.page-constellation) {
+  padding: 0;
+  overflow: hidden;
+}
+.page-margin-notes,
+.page-constellation {
+  height: 100%;
+  max-width: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Margin Notes — fit overrides ─────────────────────────── */
+.page-margin-notes .mn-ribbon {
+  padding: clamp(12px, 2vh, 22px) clamp(16px, 3vw, 40px) clamp(8px, 1.4vh, 14px);
+  flex: 0 0 auto;
+}
+.page-margin-notes .mn-h1 {
+  font-size: clamp(22px, 3.4vh, 34px);
+  margin: 2px 0 0;
+  line-height: 1.1;
+}
+.page-margin-notes .mn-spread-wrap {
+  padding: 0 clamp(16px, 3vw, 40px) clamp(10px, 1.6vh, 18px);
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.page-margin-notes .mn-spread {
+  min-height: 0;
+  flex: 1 1 auto;
+  height: 100%;
+}
+.page-margin-notes .mn-page {
+  padding: clamp(16px, 2.4vh, 28px) clamp(18px, 2.6vw, 36px);
+  overflow: hidden;
+}
+.page-margin-notes .mn-title {
+  font-size: clamp(20px, 3vh, 32px);
+  line-height: 1.05;
+}
+.page-margin-notes .mn-byline {
+  font-size: clamp(12px, 1.5vh, 15px);
+  margin: 2px 0 clamp(8px, 1.4vh, 16px);
+}
+.page-margin-notes .mn-bookrow {
+  grid-template-columns: clamp(96px, 14vh, 150px) 1fr;
+  gap: clamp(14px, 2vw, 22px);
+}
+.page-margin-notes .mn-cover {
+  width: clamp(96px, 14vh, 150px);
+  height: clamp(144px, 21vh, 225px);
+  transform: rotate(-1.4deg);
+}
+.page-margin-notes .mn-desc {
+  font-size: clamp(12px, 1.6vh, 15px);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-margin-notes .mn-page-foot {
+  position: static;
+  margin-top: clamp(8px, 1.4vh, 16px);
+}
+.page-margin-notes .mn-trope {
+  font-size: clamp(11px, 1.3vh, 13px);
+  padding: 2px 8px;
+}
+.page-margin-notes .mn-handwritten {
+  font-size: clamp(13px, 1.7vh, 18px);
+  line-height: 1.4;
+  padding-right: 8px;
+  max-width: 52ch;
+}
+.page-margin-notes .mn-sticky {
+  position: absolute;
+  right: clamp(14px, 2vw, 28px);
+  top: clamp(14px, 2vh, 28px);
+  width: clamp(120px, 12vw, 150px);
+  padding: 10px 12px;
+  transform: rotate(3.4deg);
+}
+.page-margin-notes .mn-sticky-head { font-size: 8px; margin-bottom: 6px; }
+.page-margin-notes .mn-sticky-rows { font-size: 10px; gap: 3px 8px; }
+.page-margin-notes .mn-pageno { font-size: 12px; }
+.page-margin-notes .mn-pageno-right {
+  position: absolute;
+  bottom: clamp(10px, 1.4vh, 18px);
+  right: clamp(18px, 2.6vw, 36px);
+}
+.page-margin-notes .mn-actions {
+  flex: 0 0 auto;
+  margin-top: clamp(10px, 1.4vh, 18px);
+  gap: 8px;
+}
+.page-margin-notes .mn-actions .btn { padding: 6px 14px; font-size: 12px; min-width: 0; }
+.page-margin-notes .mn-actions .btn-primary { min-width: 140px; }
+
+.page-margin-notes .mn-pile-section {
+  flex: 0 0 auto;
+  padding: clamp(10px, 1.6vh, 18px) clamp(16px, 3vw, 40px) clamp(12px, 1.8vh, 22px);
+  border-top: 1px solid var(--border);
+  background: var(--bg-sunk);
+}
+.page-margin-notes .mn-pile-section h3 { font-size: clamp(14px, 1.8vh, 20px); margin-top: 2px; }
+.page-margin-notes .mn-pile {
+  margin-top: clamp(8px, 1.2vh, 14px);
+  gap: clamp(14px, 2vw, 24px);
+}
+.page-margin-notes .mn-pile-cover {
+  width: clamp(70px, 9vh, 100px);
+  height: clamp(105px, 13.5vh, 150px);
+}
+.page-margin-notes .mn-pile-tag { padding: 4px 10px; font-size: 11px; }
+.page-margin-notes .mn-pile-tag span { font-size: 9px; }
+
+/* ── Constellation — fit overrides ────────────────────────── */
+.page-constellation .lc-hero {
+  padding: clamp(14px, 2.4vh, 24px) clamp(16px, 3vw, 40px) clamp(8px, 1.4vh, 14px);
+  flex: 0 0 auto;
+  align-items: center;
+  gap: clamp(16px, 2vw, 28px);
+}
+.page-constellation .lc-h1 {
+  font-size: clamp(22px, 3.6vh, 36px);
+  margin: 2px 0 6px;
+  line-height: 1;
+}
+.page-constellation .lc-lede {
+  font-size: clamp(12px, 1.5vh, 14px);
+  line-height: 1.4;
+  margin: 0 0 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-constellation .lc-legend { font-size: 10px; gap: 12px; }
+.page-constellation .lc-meta-card {
+  padding: 8px 12px;
+  min-width: 80px;
+  gap: 2px;
+}
+.page-constellation .lc-big { font-size: clamp(20px, 3vh, 28px); }
+
+.page-constellation .lc-main {
+  padding: 0 clamp(16px, 3vw, 40px) clamp(10px, 1.4vh, 16px);
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) clamp(280px, 32vw, 380px);
+  gap: clamp(14px, 2vw, 22px);
+  align-items: stretch;
+}
+.page-constellation .lc-chart-wrap {
+  padding: clamp(8px, 1.2vh, 16px);
+  min-height: 0;
+  height: 100%;
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-constellation .lc-chart { max-height: 100%; max-width: 100%; }
+.page-constellation .lc-rail {
+  position: static;
+  padding: clamp(14px, 2vh, 22px) clamp(14px, 2vh, 22px) clamp(12px, 1.8vh, 18px);
+  gap: clamp(6px, 1vh, 12px);
+  overflow-y: auto;
+  height: 100%;
+  min-height: 0;
+}
+.page-constellation .lc-rail-title { font-size: clamp(18px, 2.6vh, 26px); margin: 0; }
+.page-constellation .lc-rail-byline { font-size: 13px; }
+.page-constellation .lc-rail-meta {
+  grid-template-columns: clamp(72px, 9vh, 100px) 1fr;
+  gap: 12px;
+}
+.page-constellation .lc-cover {
+  width: clamp(72px, 9vh, 100px);
+  height: clamp(108px, 13.5vh, 150px);
+}
+.page-constellation .lc-fit-num { font-size: clamp(28px, 4vh, 44px); }
+.page-constellation .lc-stats { gap: 3px; font-size: 10px; }
+.page-constellation .lc-insight { font-size: 14px; padding-left: 10px; line-height: 1.35; }
+.page-constellation .lc-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.page-constellation .lc-why li { font-size: 12px; }
+.page-constellation .lc-actions .btn { padding: 6px 14px; font-size: 11px; }
+
+.page-constellation .lc-gallery {
+  flex: 0 0 auto;
+  padding: clamp(10px, 1.6vh, 18px) clamp(16px, 3vw, 40px) clamp(12px, 1.8vh, 22px);
+  border-top: 1px solid var(--border);
+}
+.page-constellation .lc-gallery .lc-section-head { margin-bottom: 8px; }
+.page-constellation .lc-gallery .lc-section-head h3 { font-size: clamp(13px, 1.7vh, 18px); }
+.page-constellation .lc-grid {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+.page-constellation .lc-card {
+  padding: 8px;
+  grid-template-columns: 48px 1fr;
+  gap: 10px;
+}
+.page-constellation .lc-card-cover { width: 48px; height: 72px; }
+.page-constellation .lc-card-body h4 { font-size: 13px; line-height: 1.05; }
+.page-constellation .lc-card-author { font-size: 11px; }
+.page-constellation .lc-card-stats { font-size: 9px; gap: 6px; }
+.page-constellation .lc-fit-pill { font-size: 11px; min-width: 28px; padding: 2px 6px; }
+
+/* Where the action row lives on Margin Notes — pin it to the */
+/* end of spread-wrap regardless of internal spread height.   */
+.page-margin-notes .mn-spread-wrap > .row {
+  flex: 0 0 auto;
+}
+
+/* Drop the lowest-priority strips when the viewport is short. */
+@media (max-height: 720px) {
+  .page-margin-notes .mn-pile-section { display: none; }
+  .page-constellation .lc-gallery { display: none; }
+  .page-constellation .lc-lede { display: none; }
+  .page-constellation .lc-legend { display: none; }
+}
+@media (max-height: 600px) {
+  /* Even tighter — drop the description in the spread */
+  .page-margin-notes .mn-desc { -webkit-line-clamp: 4; }
+  .page-constellation .lc-desc { display: none; }
+  .page-constellation .lc-why li:nth-child(n+5) { display: none; }
+}
+
+/* When width is narrow, fall out of side-by-side and let the */
+/* user scroll within the page (fit-to-height stops being a   */
+/* sensible target on small/touch screens).                   */
+@media (max-width: 900px) {
+  .app-main:has(.page-margin-notes),
+  .app-main:has(.page-constellation) { overflow: auto; }
+  .page-margin-notes,
+  .page-constellation { height: auto; max-height: none; overflow: visible; }
+  .page-constellation .lc-main { grid-template-columns: 1fr; }
+  .page-constellation .lc-rail { overflow-y: visible; }
+}
