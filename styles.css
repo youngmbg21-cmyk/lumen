@@ -6447,21 +6447,27 @@ body[data-sidenav="overlay"] .lumen-terminal {
   white-space: nowrap;
 }
 
-/* Block container so the mirror can float and the library can
-   flow around it. Below the mirror's natural height the library
-   auto-extends to full width — that's the magazine wrap-around. */
 .page-boudoir .bd-main {
-  display: flow-root;
   padding: 8px clamp(12px, 2vw, 32px) 40px;
 }
 
-/* BFC so the library box shrinks to avoid the floated mirror
-   while the mirror is alongside it, then auto-expands to full
-   width once the content drops below the mirror's bottom edge. */
+/* Two-column grid: library left (flexible) | mirror right (fixed).
+   align-items:start lets the mirror be sticky within its cell. */
+.page-boudoir .bd-top-zone {
+  display: grid;
+  grid-template-columns: 1fr clamp(260px, 26vw, 360px);
+  gap: 0 16px;
+  align-items: start;
+}
+
 .page-boudoir .bd-library {
-  overflow: hidden;
   min-width: 0;
-  --bd-col-size: 145px; /* overwritten by JS measurement after render */
+  --bd-col-size: 145px;
+}
+
+/* Full-width zone below the mirror — JS moves overflow shelves here. */
+.page-boudoir .bd-below-mirror {
+  margin-top: clamp(20px, 2.4vw, 32px);
 }
 .page-boudoir .bd-toolbar {
   display: flex;
@@ -6683,13 +6689,12 @@ body[data-sidenav="overlay"] .lumen-terminal {
   background: var(--bg-surface);
 }
 
-/* ── Mirror — floats right; library flows around it.
-   Once the library is taller than the mirror, the float ends
-   and subsequent shelf rows take the full content width. ───── */
+/* Mirror lives in the right column of .bd-top-zone.
+   Sticky so it stays in view while scrolling the library column;
+   once the library column ends the mirror scrolls off naturally. */
 .page-boudoir .bd-mirror {
-  float: right;
-  width: clamp(260px, 26vw, 360px);
-  margin: 0 0 24px 12px;
+  position: sticky;
+  top: 0;
 }
 .page-boudoir .bd-mirror-frame {
   position: relative;
@@ -6800,10 +6805,12 @@ body[data-sidenav="overlay"] .lumen-terminal {
    stacks below the library. Floats are quirky in tight spaces; a
    single column reads better and avoids cramped book rows. */
 @media (max-width: 1100px) {
+  .page-boudoir .bd-top-zone {
+    grid-template-columns: 1fr;
+  }
   .page-boudoir .bd-mirror {
-    float: none;
-    width: auto;
-    margin: 24px 0 0;
+    position: static;
+    margin-top: 24px;
   }
 }
 @media (max-width: 600px) {

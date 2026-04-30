@@ -6747,8 +6747,10 @@
 
     // ── 2-col main: library + mirror ───────────────────────────
     const main = util.el("section", { class: "bd-main" });
+    const topZone = util.el("div", { class: "bd-top-zone" });
+    const belowMirror = util.el("div", { class: "bd-below-mirror" });
 
-    // ─── LIBRARY (left) ─────
+    // ─── LIBRARY (left column of topZone) ─────
     const library = util.el("div", { class: "bd-library" });
 
     // Toolbar.
@@ -6844,9 +6846,9 @@
     } else {
       library.appendChild(renderBoudoirShelf(sorted, fitById));
     }
-    main.appendChild(library);
+    topZone.appendChild(library);
 
-    // ─── MIRROR (right) ─────
+    // ─── MIRROR (right column of topZone) ─────
     const mirror = util.el("aside", { class: "bd-mirror" });
     const frame = util.el("div", { class: "bd-mirror-frame" });
     const glass = util.el("div", { class: "bd-mirror-glass" });
@@ -7000,27 +7002,47 @@
     frame.appendChild(glass);
     frame.appendChild(util.el("div", { class: "bd-mirror-base" }));
     mirror.appendChild(frame);
-    // Insert as the FIRST child of .bd-main so the mirror's float-
-    // right anchors at the top — library content (toolbar, quick
-    // tabs, shelves) flows around it. Source order matters for
-    // floats, so this placement is what makes the magazine wrap
-    // layout work.
-    main.insertBefore(mirror, main.firstChild);
-
+    topZone.appendChild(mirror);
+    main.appendChild(topZone);
+    main.appendChild(belowMirror);
     wrap.appendChild(main);
 
-    // After the element lands in the DOM, measure the library's
-    // beside-mirror width and lock the column size so exactly 6
-    // books fit per row. Below the mirror the library BFC expands
-    // to full width and auto-fill packs in more columns at the
-    // same cell size.
+    // After the element lands in the DOM:
+    // 1. Measure the library column width → set --bd-col-size so
+    //    exactly 6 books fit per row in the beside-mirror section.
+    // 2. Measure the mirror height → move any shelves that overflow
+    //    past the mirror's bottom into belowMirror at full width.
+    //    The same --bd-col-size means the same book dimensions, but
+    //    auto-fill packs in more columns across the wider space.
     const BD_GAP = 8;
     const BD_COLS = 6;
     requestAnimationFrame(() => {
-      const w = library.offsetWidth;
-      if (w > 0) {
-        const colSize = Math.floor((w - BD_GAP * (BD_COLS - 1)) / BD_COLS);
-        library.style.setProperty('--bd-col-size', colSize + 'px');
+      const libW = library.offsetWidth;
+      if (libW > 0) {
+        const colSize = Math.floor((libW - BD_GAP * (BD_COLS - 1)) / BD_COLS);
+        const colVal = colSize + 'px';
+        library.style.setProperty('--bd-col-size', colVal);
+        belowMirror.style.setProperty('--bd-col-size', colVal);
+      }
+
+      // Split shelves: move those past the mirror's bottom to the
+      // full-width below zone so they fill the right-hand space.
+      const mirrorH = mirror.offsetHeight;
+      const shelvesEl = library.querySelector('.bd-shelves');
+      if (shelvesEl && mirrorH > 0) {
+        const shelfEls = Array.from(shelvesEl.children);
+        let cumH = 0;
+        let splitIdx = shelfEls.length;
+        for (let i = 0; i < shelfEls.length; i++) {
+          cumH += shelfEls[i].offsetHeight;
+          if (cumH > mirrorH) { splitIdx = i + 1; break; }
+        }
+        const toMove = shelfEls.slice(splitIdx);
+        if (toMove.length) {
+          const belowShelves = util.el("div", { class: "bd-shelves" });
+          toMove.forEach(s => belowShelves.appendChild(s));
+          belowMirror.appendChild(belowShelves);
+        }
       }
     });
 
