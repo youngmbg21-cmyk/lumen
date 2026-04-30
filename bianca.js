@@ -410,7 +410,12 @@
       lastIdx = m.index + m[0].length;
     }
     if (lastIdx < (raw || "").length) out.push({ type: "text", text: raw.slice(lastIdx) });
-    return out.filter(p => p.type !== "text" || p.text.trim().length > 0);
+    // Trim leading/trailing whitespace around each text segment so the
+    // newlines that frame an [[ENHANCED_BOOK_CARD: …]] marker don't
+    // become empty <br><br> lines at the top or bottom of the bubble.
+    return out
+      .map(p => p.type === "text" ? { type: "text", text: p.text.trim() } : p)
+      .filter(p => p.type !== "text" || p.text.length > 0);
   }
 
   // Renders the whole thread. The newest Bianca message gets the
