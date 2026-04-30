@@ -65,6 +65,7 @@ exports.handler = async (event) => {
       messages: body.messages
     };
     if (body.system) payload.system = body.system;
+    if (body.cache_control) payload.cache_control = body.cache_control;
 
   } else {
     return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: "Unknown action" }) };

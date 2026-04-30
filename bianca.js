@@ -746,13 +746,14 @@
     renderMessages();
     if (composeTA) { composeTA.value = ""; autosizeCompose(); }
 
-    // Preferred path — LLM-backed Bianca. Needs Claude API key and the
-    // discovery bridge. Falls back to the rule-based responder on any
-    // failure so the app never silently dies.
+    // Preferred path — LLM-backed Bianca via the Netlify proxy
+    // (/api/analyze) or, if unavailable, a user-supplied direct key.
+    // _claudePost in discovery.js handles that fallback chain. We
+    // always try the LLM first and only fall through to the rule-based
+    // responder if the network call truly fails.
     const Disco = window.LumenDiscovery;
-    const hasKey = Disco && typeof Disco.chatWithBianca === "function" && Disco.getApiKey && Disco.getApiKey();
     let reply = "";
-    if (hasKey) {
+    if (Disco && typeof Disco.chatWithBianca === "function") {
       try {
         const systemContext = (window.Lumen && typeof window.Lumen.buildBiancaSystemContext === "function")
           ? window.Lumen.buildBiancaSystemContext(ctxState && ctxState.route) : "";

@@ -787,16 +787,29 @@
 
     setStatus("reading", "Bianca is thinking…");
 
+    // Top-level cache_control auto-places on the last cacheable block.
+    // The system prompt (persona + context) is mostly stable across
+    // turns within a session, so caching it knocks the per-turn cost
+    // down ~10x once the prefix is warm. If the prefix is below the
+    // model's minimum cacheable length the API silently no-ops it.
     let payload;
     try {
       payload = await _claudePost({
         directPayload: {
           model: "claude-sonnet-4-6",
-          max_tokens: 150,   // Discovery Mode: concise replies, budget-safe
+          max_tokens: 600,
           system,
-          messages: clean
+          messages: clean,
+          cache_control: { type: "ephemeral" }
         },
-        proxyPayload: { action: "chat", model: "claude-sonnet-4-6", max_tokens: 150, system, messages: clean }
+        proxyPayload: {
+          action: "chat",
+          model: "claude-sonnet-4-6",
+          max_tokens: 600,
+          system,
+          messages: clean,
+          cache_control: { type: "ephemeral" }
+        }
       });
     } catch (err) {
       setStatus("error", "Network call failed");

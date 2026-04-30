@@ -4004,17 +4004,45 @@
     const pool = listAllBooks();
     const visible = pool.filter(b => !hidden[b.id]);
     const ranked = Engine.rankRecommendations(s.profile, s.weights, visible);
+    const scoredById = new Map(ranked.scored.map(x => [x.book.id, x]));
 
-    // Daily picks = top 3 of ranked-and-not-rejected (mirror of
-    // views.discover()'s logic so Bianca sees the same list).
-    const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
-    const picks = eligible.slice(0, 3).map(x => ({
-      id: x.book.id, title: x.book.title, author: x.book.author,
-      fitScore: x.fitScore, confidence: x.confidence,
-      reasons: (x.why && x.why.reasons) || [],
-      warnings: x.book.content_warnings || [],
-      heat: x.book.heat_level
-    }));
+    // Daily picks must mirror what's actually shown on Today. The
+    // editorial flow uses weighted-random sampling, so a re-rank here
+    // would disagree with the screen. Read the persisted picks from
+    // s.editorial.currentPick.books and shape them; fall back to top-3
+    // of the ranking only when Today hasn't generated yet.
+    let picks;
+    const editorialBooks = (s.editorial && s.editorial.currentPick && s.editorial.currentPick.books) || null;
+    if (editorialBooks && editorialBooks.length) {
+      picks = editorialBooks.map(({ bookId }) => {
+        const x = scoredById.get(bookId);
+        if (x) {
+          return {
+            id: x.book.id, title: x.book.title, author: x.book.author,
+            fitScore: x.fitScore, confidence: x.confidence,
+            reasons: (x.why && x.why.reasons) || [],
+            warnings: x.book.content_warnings || [],
+            heat: x.book.heat_level
+          };
+        }
+        const b = pool.find(p => p.id === bookId);
+        if (!b) return null;
+        return {
+          id: b.id, title: b.title, author: b.author,
+          fitScore: 0, confidence: 0, reasons: [],
+          warnings: b.content_warnings || [], heat: b.heat_level
+        };
+      }).filter(Boolean);
+    } else {
+      const eligible = ranked.scored.filter(x => !rejectedPicks[x.book.id]);
+      picks = eligible.slice(0, 3).map(x => ({
+        id: x.book.id, title: x.book.title, author: x.book.author,
+        fitScore: x.fitScore, confidence: x.confidence,
+        reasons: (x.why && x.why.reasons) || [],
+        warnings: x.book.content_warnings || [],
+        heat: x.book.heat_level
+      }));
+    }
 
     const dismissedPicksDetail = Object.keys(rejectedPicks).map(id => {
       const b = pool.find(x => x.id === id);
@@ -4225,7 +4253,7 @@
     const compareLines = (ctx.compare.slots || []).filter(Boolean).map(c => `- ${c.title} (id=${c.id}, fit=${c.fit})`);
 
     return [
-      `sessionAt: ${now.toISOString()}`,
+      `sessionDate: ${now.toISOString().slice(0, 10)}`,
       `route: ${ctx.route}`,
       ``,
       `--- persona & hard constraints ---`,
