@@ -5645,9 +5645,13 @@
   }
 
   // Deterministic per-book summary from the engine's why-reasons.
-  // Stand-in for Batch 2's Bianca-voiced letter.
+  // selectEditorialCandidates exposes its reasons under `contributions`
+  // (with `why` as a fallback). Used for the pile-card mouseovers and
+  // as scaffolding the LLM letter (Batch 3) can refine.
   function synthesizeSummary(scored) {
-    const reasons = (scored.why && scored.why.reasons) || [];
+    const reasons = ((scored.contributions && scored.contributions.reasons)
+                  || (scored.why && scored.why.reasons)
+                  || (Array.isArray(scored.contributions) ? scored.contributions : []));
     if (reasons.length) return reasons.slice(0, 2).join(". ") + ".";
     return "Strong fit against your current taste profile.";
   }
@@ -5684,7 +5688,11 @@
           bookId: c.book.id,
           summary: synthesizeSummary(c),
           fitScore: c.fitScore,
-          confidence: c.confidence
+          confidence: c.confidence,
+          // Carry the engine's why-reasons through so the
+          // Margin Notes view can ground its Bianca-voice
+          // letter and pile annotations in real engine output.
+          contributions: ((c.contributions && c.contributions.reasons) || []).slice(0, 4)
         })),
         angleStatement: `Tonight's six, drawn against your taste — ${angle.label.toLowerCase()}.`,
         biancaLetter: null  // populated by Batch 2's LLM pass
@@ -5846,14 +5854,225 @@
   }
 
   /* ==================================================================
-     Margin Notes (page one) and The Constellation (page two) —
-     Batch 1 placeholders. They share s.tonightSix.currentPick so
-     "the same six books" is automatic. Batch 2 ships the full
-     Margin Notes layout (open-book spread, reading pile). Batch 3
-     ships the Constellation polar chart.
+     Margin Notes (page one) and The Constellation (page two) — they
+     share s.tonightSix.currentPick so "the same six books" is
+     automatic. Batch 2 ships the full Margin Notes layout (open-book
+     spread, Bianca's margin, reading pile). Constellation is still a
+     Batch 1 placeholder until Batch 3.
      ================================================================== */
-  function renderMarginNotes()  { return renderTonightSixView("margin-notes"); }
   function renderConstellation() { return renderTonightSixView("constellation"); }
+
+  // Deterministic Bianca-voice letter for the right page of the
+  // open-book spread. Pulls from the engine's why-reasons for the
+  // hero book + the user's profile so it grounds in real data
+  // without an LLM call. Batch 3 may swap this for an LLM letter.
+  function biancaLetterFor(heroBook, heroPickEntry, profile) {
+    const reasons = ((heroPickEntry && heroPickEntry.contributions) || []).slice(0, 2);
+    const reasonProse = reasons.length
+      ? reasons.join(", and ")
+      : "the fit score lined up against your taste profile";
+    const heat = heroBook.heat_level || 3;
+    const heatNote = heat >= 4
+      ? "The heat here runs hot — explicit on the page, not implied."
+      : heat <= 2
+      ? "The heat here is restrained — sensual without being graphic."
+      : "The heat here is psychological — that's the only honest caveat.";
+    const pageNo = 14 + ((heroBook.id || "x").charCodeAt(0) % 18);
+    return [
+      "Reader,",
+      "",
+      `I picked this for tonight because ${reasonProse}.`,
+      "",
+      heatNote,
+      "",
+      `— your reader, marked at p. ${pageNo}`
+    ].join("\n");
+  }
+
+  function renderMarginNotes() {
+    const wrap = util.el("div", { class: "page page-margin-notes lumen-site" });
+    const st = store.get();
+    const pick = (st.tonightSix && st.tonightSix.currentPick) || null;
+    const err  = (st.tonightSix && st.tonightSix.lastError) || null;
+    const rl   = tonightSixRateLimit();
+
+    // Tonight ribbon — eyebrow + h1 ("the book I left on your nightstand").
+    const ribbon = util.el("section", { class: "mn-ribbon" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Tonight · Margin Notes" }),
+        util.el("h1", { class: "mn-h1", html: "<em>The book I left</em> on your nightstand." })
+      ])
+    ]);
+    wrap.appendChild(ribbon);
+
+    // No picks yet — show empty state with Generate CTA.
+    if (!pick || !pick.books || !pick.books.length) {
+      const empty = util.el("div", { class: "card stack-lg", style: { margin: "0 clamp(20px, 4vw, 64px) 32px" } });
+      empty.appendChild(util.el("p", { class: "t-muted",
+        text: err
+          ? (err.message || "Generation failed.")
+          : "I haven't drawn tonight's six yet. Hit the button and I'll pick six against your taste — the one you'd start with on the left, five more on the pile." }));
+      const actions = util.el("div", { class: "row", style: { gap: "var(--s-3)", flexWrap: "wrap", marginTop: "var(--s-3)" } });
+      actions.appendChild(util.el("button", {
+        class: "btn btn-primary",
+        disabled: !rl.allowed,
+        onclick: () => generateTonightSix()
+      }, rl.allowed ? "Generate tonight's six" : `Locked until ${rl.unlockAt && rl.unlockAt.toLocaleTimeString()}`));
+      actions.appendChild(util.el("button", {
+        class: "btn btn-ghost",
+        onclick: () => router.go("constellation")
+      }, "Explore →"));
+      empty.appendChild(actions);
+      wrap.appendChild(empty);
+      return wrap;
+    }
+
+    // Hero = the highest-fit book. Pile = the rest in order.
+    const sorted = pick.books.slice().sort((a, b) => (b.fitScore || 0) - (a.fitScore || 0));
+    const heroEntry = sorted[0];
+    const pileEntries = sorted.slice(1);
+    const hero = findBook(heroEntry.bookId);
+    if (!hero) {
+      wrap.appendChild(util.el("p", { class: "t-muted", text: "Hero book missing from catalog. Regenerate." }));
+      return wrap;
+    }
+
+    // Open-book spread.
+    const spreadWrap = util.el("section", { class: "mn-spread-wrap" });
+    const spread = util.el("article", { class: "mn-spread" });
+    spread.appendChild(util.el("div", { "aria-hidden": "true", class: "mn-grain" }));
+    // Dog-ear corner SVG
+    const dogear = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    dogear.setAttribute("width", "46"); dogear.setAttribute("height", "46");
+    dogear.setAttribute("class", "mn-dogear");
+    dogear.innerHTML = '<polygon points="46,0 46,46 0,0" fill="var(--bg-deep)" />'
+      + '<line x1="0" y1="0" x2="46" y2="46" stroke="var(--border-strong)" stroke-width="0.5" />';
+    spread.appendChild(dogear);
+
+    // LEFT page — hero book.
+    const leftPage = util.el("div", { class: "mn-page mn-page-left" });
+    leftPage.appendChild(util.el("div", { class: "t-eyebrow", style: { marginBottom: "8px" }, text: "Today's reading" }));
+    leftPage.appendChild(util.el("h2", { class: "mn-title", html: `<em>${util.humanise(hero.title)}</em>` }));
+    leftPage.appendChild(util.el("div", { class: "mn-byline",
+      text: `by ${hero.author || "Unknown"}${hero.year ? " · " + hero.year : ""}` }));
+
+    const bookRow = util.el("div", { class: "mn-bookrow" });
+    const cover = util.el("div", { class: "mn-cover",
+      style: hero.thumbnail ? { backgroundImage: `url(${String(hero.thumbnail).replace(/^http:/, "https:")})` } : {}
+    });
+    bookRow.appendChild(cover);
+    const bookText = util.el("div", { class: "mn-bookrow-text" });
+    bookText.appendChild(util.el("p", { class: "mn-desc",
+      text: hero.short_summary || hero.description || "" }));
+    bookRow.appendChild(bookText);
+    leftPage.appendChild(bookRow);
+
+    // Page foot — tropes + page numeral.
+    const tropes = (hero.trope_tags || hero.trope || []).slice(0, 3);
+    const foot = util.el("div", { class: "mn-page-foot" }, [
+      util.el("div", { class: "mn-tropes" }, tropes.map(t => util.el("span", { class: "mn-trope" }, util.humanise(t)))),
+      util.el("span", { class: "mn-pageno", text: "— I —" })
+    ]);
+    leftPage.appendChild(foot);
+    spread.appendChild(leftPage);
+
+    // Spine.
+    spread.appendChild(util.el("div", { class: "mn-spine", "aria-hidden": "true" }));
+
+    // RIGHT page — Bianca's margin.
+    const rightPage = util.el("div", { class: "mn-page mn-page-right" });
+    rightPage.appendChild(util.el("div", { class: "mn-rail-head" }, [
+      util.el("span", { class: "t-eyebrow", style: { color: "var(--accent-deep)" }, text: "Bianca's margin" }),
+      util.el("span", { class: "mn-rule" }),
+      util.el("span", { class: "mn-fit-tag", text: `fit ${heroEntry.fitScore || "?"}` })
+    ]));
+
+    // Letter — render newlines as paragraph breaks.
+    const letterText = (pick.biancaLetter && pick.biancaLetter.trim())
+      || biancaLetterFor(hero, heroEntry, st.profile);
+    const letterEl = util.el("div", { class: "mn-handwritten" });
+    letterText.split(/\n\n+/).forEach((para, i) => {
+      if (i > 0) letterEl.appendChild(util.el("br"));
+      if (i > 0) letterEl.appendChild(util.el("br"));
+      letterEl.appendChild(document.createTextNode(para));
+    });
+    rightPage.appendChild(letterEl);
+
+    // Sticky note — HEAT/EMO/PACE/TABOO dots.
+    const dots = (n) => "●".repeat(Math.max(0, Math.min(5, n))) + "○".repeat(Math.max(0, 5 - Math.min(5, n)));
+    const sticky = util.el("aside", { class: "mn-sticky" });
+    sticky.appendChild(util.el("div", { class: "mn-sticky-head", text: "Tonight's dial" }));
+    const stickyRows = util.el("div", { class: "mn-sticky-rows" });
+    [
+      ["HEAT",  dots(hero.heat_level || 0)],
+      ["EMO",   dots(hero.emotional_intensity || 0)],
+      ["PACE",  ((hero.pacing || [])[0] || "—").toString().toLowerCase()],
+      ["TABOO", dots(hero.taboo_level || 0)]
+    ].forEach(([k, v]) => {
+      stickyRows.appendChild(util.el("span", { text: k }));
+      stickyRows.appendChild(util.el("span", { text: v }));
+    });
+    sticky.appendChild(stickyRows);
+    rightPage.appendChild(sticky);
+
+    rightPage.appendChild(util.el("span", { class: "mn-pageno mn-pageno-right", text: "— II —" }));
+    spread.appendChild(rightPage);
+    spreadWrap.appendChild(spread);
+
+    // Action row below spread — Begin / Save / Skip / Explore / Regenerate.
+    const actions = util.el("div", { class: "mn-actions" });
+    actions.appendChild(util.el("button", { class: "btn btn-primary",
+      onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(hero.id); }
+    }, "Begin reading"));
+    actions.appendChild(util.el("button", { class: "btn btn-ghost",
+      onclick: () => { setReadingState(hero.id, "want"); ui.toast("Saved to shelf."); renderView(); }
+    }, "Save to shelf"));
+    actions.appendChild(util.el("button", { class: "btn btn-ghost",
+      onclick: () => { setReadingState(hero.id, "skip"); ui.toast("Skipped — won't return as a fresh pick."); renderView(); }
+    }, "Skip tonight"));
+    actions.appendChild(util.el("button", { class: "btn btn-ghost",
+      onclick: () => router.go("constellation")
+    }, "Explore →"));
+    actions.appendChild(util.el("button", { class: "btn btn-ghost",
+      disabled: !rl.allowed,
+      onclick: () => generateTonightSix()
+    }, rl.allowed ? "Regenerate" : `Locked until ${rl.unlockAt && rl.unlockAt.toLocaleTimeString()}`));
+    spreadWrap.appendChild(actions);
+    wrap.appendChild(spreadWrap);
+
+    // Reading pile — five tilted cards.
+    const pileSection = util.el("section", { class: "mn-pile-section" });
+    pileSection.appendChild(util.el("div", { class: "lc-section-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Tonight's reading pile" }),
+        util.el("h3", { text: "Other books I set on your nightstand." })
+      ])
+    ]));
+    const pile = util.el("div", { class: "mn-pile" });
+    const rotations = [-3.6, 2.2, -1.4, 3.0, -2.4];
+    pileEntries.slice(0, 5).forEach((entry, i) => {
+      const b = findBook(entry.bookId);
+      if (!b) return;
+      const card = util.el("article", {
+        class: "mn-pile-card",
+        style: { transform: `rotate(${rotations[i] || 0}deg)` },
+        onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
+      });
+      card.appendChild(util.el("div", { class: "mn-pile-cover",
+        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {}
+      }));
+      const tag = util.el("div", { class: "mn-pile-tag" }, [
+        util.el("em", { text: b.title }),
+        util.el("span", { text: `fit ${entry.fitScore || "?"}` })
+      ]);
+      card.appendChild(tag);
+      pile.appendChild(card);
+    });
+    pileSection.appendChild(pile);
+    wrap.appendChild(pileSection);
+
+    return wrap;
+  }
 
   function renderTonightSixView(which) {
     const wrap = util.el("div", { class: "page stack-lg" });
