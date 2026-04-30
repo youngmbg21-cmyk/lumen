@@ -6966,3 +6966,151 @@ body[data-sidenav="overlay"] .lumen-terminal {
   color: var(--text-mute);
   text-align: right;
 }
+
+/* ============================================================
+   Boudoir — Batch 3: shelf view.
+   Books grouped by subgenre. Each shelf gets a label, a
+   horizontal row of "spines" (compact cover + title tag), and
+   a wood-plank bar beneath. The row scrolls horizontally on
+   overflow rather than wrapping, so the shelf reads as a
+   physical bookshelf rather than a grid that happens to be
+   sectioned.
+   ============================================================ */
+.page-boudoir .bd-shelves {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(20px, 2.4vw, 32px);
+}
+.page-boudoir .bd-shelf {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.page-boudoir .bd-shelf-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.page-boudoir .bd-shelf-count {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--text-mute);
+}
+.page-boudoir .bd-shelf-row {
+  display: flex;
+  gap: clamp(10px, 1.2vw, 16px);
+  align-items: flex-end;
+  overflow-x: auto;
+  padding: 0 4px 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.page-boudoir .bd-shelf-row::-webkit-scrollbar { height: 6px; }
+.page-boudoir .bd-shelf-row::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+/* Spine — a compact card sized like a real book spine. The
+   prototype calls them spines metaphorically; visually they're
+   tight cover+tag pairs in a row. */
+.page-boudoir .bd-spine {
+  flex: 0 0 auto;
+  width: clamp(96px, 9vw, 128px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  cursor: pointer;
+  transition: transform 180ms cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+.page-boudoir .bd-spine:hover {
+  transform: translateY(-4px);
+}
+.page-boudoir .bd-spine-cover {
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  position: relative;
+  background-color: var(--bg-deep);
+  box-shadow: 0 6px 14px rgba(120,60,80,0.18), 0 0 0 1px var(--border-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.page-boudoir .bd-spine-cover img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.page-boudoir .bd-fav {
+  position: absolute;
+  top: 4px; right: 6px;
+  font-size: 14px;
+  color: var(--gold);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+.page-boudoir .bd-read-mark {
+  position: absolute;
+  top: 4px; left: 4px;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--accent-deep);
+  box-shadow: 0 0 0 2px var(--bg-surface);
+}
+.page-boudoir .bd-spine-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 11px;
+  line-height: 1.15;
+  color: var(--text-soft);
+  box-shadow: var(--shadow-soft);
+}
+.page-boudoir .bd-spine-tag em {
+  color: var(--accent-deep);
+  font-weight: 500;
+  /* Two-line clamp so longer titles still fit a uniform row. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.page-boudoir .bd-spine-tag span {
+  font-family: var(--font-sans);
+  font-style: normal;
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  margin-top: 1px;
+}
+
+/* Wood-plank shelf bar — a thin bevelled strip beneath each row
+   that sells the bookshelf metaphor without going kitsch. */
+.page-boudoir .bd-shelf-bar {
+  height: 6px;
+  margin-top: 4px;
+  background:
+    linear-gradient(180deg,
+      rgba(193, 149, 101, 0.45) 0%,
+      rgba(193, 149, 101, 0.25) 40%,
+      rgba(120, 60, 80, 0.30) 100%);
+  border-radius: 1px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.4) inset,
+    0 -1px 0 rgba(0, 0, 0, 0.10) inset,
+    0 6px 8px -4px rgba(120, 60, 80, 0.18);
+}
