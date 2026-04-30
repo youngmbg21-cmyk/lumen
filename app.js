@@ -112,7 +112,10 @@
         onboardingDone: false,
         adultConfirmed: false,
         activeScenarioId: null
-      }
+      },
+      // Route IDs hidden from the sidebar nav. Settings (hidden group)
+      // is always accessible via the logo trapdoor regardless.
+      hiddenTabs: []
     };
   }
 
@@ -3329,6 +3332,48 @@
     ));
 
     wrap.appendChild(libCard);
+
+    // ── Navigation visibility ────────────────────────────────────────────
+    const navCard = util.el("div", { class: "card settings-card stack" });
+    navCard.appendChild(util.el("div", { class: "settings-card-head" }, [
+      util.el("div", {}, [
+        util.el("div", { class: "t-eyebrow", text: "Navigation" }),
+        util.el("p", { class: "t-small t-muted", style: { marginTop: "2px" },
+          text: "Check a tab to hide it from the sidebar. You can always come back here to restore it." })
+      ])
+    ]));
+    const navTabsWrap = util.el("div", { class: "settings-nav-tabs" });
+    const groupLabels = { main: "Read", personal: "You", settings: "More" };
+    ["main", "personal", "settings"].forEach(gid => {
+      const groupRoutes = ROUTES.filter(r => r.group === gid);
+      if (!groupRoutes.length) return;
+      navTabsWrap.appendChild(util.el("div", { class: "settings-nav-group-label", text: groupLabels[gid] }));
+      groupRoutes.forEach(r => {
+        const hiddenTabs = store.get().hiddenTabs || [];
+        const isHidden = hiddenTabs.includes(r.id);
+        const row = util.el("label", { class: "settings-nav-row" });
+        const cb = util.el("input", { type: "checkbox" });
+        cb.checked = isHidden;
+        cb.addEventListener("change", () => {
+          store.update(s => {
+            const ht = s.hiddenTabs || [];
+            if (cb.checked) {
+              if (!ht.includes(r.id)) ht.push(r.id);
+            } else {
+              const idx = ht.indexOf(r.id);
+              if (idx !== -1) ht.splice(idx, 1);
+            }
+            s.hiddenTabs = ht;
+          });
+          renderSidebar();
+        });
+        row.appendChild(cb);
+        row.appendChild(util.el("span", { class: "settings-nav-row-label", text: r.label }));
+        navTabsWrap.appendChild(row);
+      });
+    });
+    navCard.appendChild(navTabsWrap);
+    wrap.appendChild(navCard);
 
     // ── Curated catalog importer ────────────────────────────────────────
     wrap.appendChild(renderCatalogImporter());
@@ -7424,10 +7469,13 @@
       ROUTES.filter(r => r.group === g).some(r => r.id === current.id)
     );
 
+    const hiddenTabs = store.get().hiddenTabs || [];
     for (const [gid, g] of Object.entries(groups)) {
+      const visibleRoutes = ROUTES.filter(r => r.group === gid && !hiddenTabs.includes(r.id));
+      if (!visibleRoutes.length) continue;
       const group = util.el("div", { class: "nav-group", "data-group": gid });
       group.appendChild(util.el("div", { class: "nav-group-label", text: g.label }));
-      for (const r of ROUTES.filter(r => r.group === gid)) {
+      for (const r of visibleRoutes) {
         const link = util.el("a", {
           class: "nav-link",
           href: `#/${r.id}`,
@@ -7459,9 +7507,11 @@
 
     for (const [gid, g] of Object.entries(groups)) {
       if (!secondaryGroups.includes(gid)) continue;
+      const visibleDrawer = ROUTES.filter(r => r.group === gid && !hiddenTabs.includes(r.id));
+      if (!visibleDrawer.length) continue;
       const section = util.el("div", { class: "nav-more-drawer-section" });
       section.appendChild(util.el("div", { class: "nav-more-drawer-label", text: g.label }));
-      for (const r of ROUTES.filter(r => r.group === gid)) {
+      for (const r of visibleDrawer) {
         section.appendChild(util.el("a", {
           class: "nav-link",
           href: `#/${r.id}`,

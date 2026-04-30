@@ -3610,6 +3610,47 @@ body[data-privacy-blur="on"] .app-main::after {
   background: var(--bg-sunken);
   color: var(--text-subtle);
 }
+.settings-nav-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-nav-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+  padding: 12px 0 4px;
+}
+.settings-nav-group-label:first-child { padding-top: 4px; }
+.settings-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background 120ms;
+}
+.settings-nav-row:hover { background: var(--bg-sunken); }
+.settings-nav-row input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.settings-nav-row-label {
+  font-size: 13px;
+  color: var(--text);
+}
+.settings-nav-row:has(input:checked) .settings-nav-row-label {
+  color: var(--text-mute);
+  text-decoration: line-through;
+}
+
 .settings-hidden-row {
   display: flex;
   align-items: center;
