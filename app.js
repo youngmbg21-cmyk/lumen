@@ -5690,9 +5690,10 @@
           fitScore: c.fitScore,
           confidence: c.confidence,
           // Carry the engine's why-reasons through so the
-          // Margin Notes view can ground its Bianca-voice
-          // letter and pile annotations in real engine output.
-          contributions: ((c.contributions && c.contributions.reasons) || []).slice(0, 4)
+          // Margin Notes letter and Constellation rail can ground
+          // their text in real engine output without re-ranking.
+          contributions: ((c.contributions && c.contributions.reasons) || []).slice(0, 4),
+          partials:      ((c.contributions && c.contributions.partials) || []).slice(0, 3)
         })),
         angleStatement: `Tonight's six, drawn against your taste — ${angle.label.toLowerCase()}.`,
         biancaLetter: null  // populated by Batch 2's LLM pass
@@ -5703,6 +5704,10 @@
           s.tonightSix.history = [s.tonightSix.currentPick].concat(s.tonightSix.history || []).slice(0, 10);
         }
         s.tonightSix.currentPick = pick;
+        // The Constellation's active-star state is keyed by bookId,
+        // and a fresh pick may not contain the previously active id.
+        // Clear it so the renderer picks the new highest-fit book.
+        constellationActiveId = null;
         s.tonightSix.generationsToday = ((s.tonightSix.generationsToday || []).concat(Date.now()))
           .filter(ts => Date.now() - ts < 24 * 60 * 60 * 1000);
         s.tonightSix.lastError = null;
@@ -5860,7 +5865,278 @@
      spread, Bianca's margin, reading pile). Constellation is still a
      Batch 1 placeholder until Batch 3.
      ================================================================== */
-  function renderConstellation() { return renderTonightSixView("constellation"); }
+  // Active star on the Constellation chart. Click on any star or
+  // gallery card sets this and renderView() repaints. Cleared on
+  // each fresh generation (the new pick may not contain the old id).
+  let constellationActiveId = null;
+
+  function renderConstellation() {
+    const wrap = util.el("div", { class: "page page-constellation lumen-site" });
+    const st = store.get();
+    const pick = (st.tonightSix && st.tonightSix.currentPick) || null;
+    const err  = (st.tonightSix && st.tonightSix.lastError) || null;
+    const rl   = tonightSixRateLimit();
+
+    // Hero band — eyebrow + h1 + lede + legend + stat cards.
+    const heroLeft = util.el("div", { class: "lc-hero-text" }, [
+      util.el("div", { class: "t-eyebrow", text: "Tonight · The Constellation" }),
+      util.el("h1", { class: "lc-h1", html: "<em>Your taste sky,</em><br>charted for the evening." }),
+      util.el("p", { class: "lc-lede",
+        text: "Lumen has read for you tonight. Each star is a book chosen against your private profile — closer to centre means a stronger fit for the version of you reading tonight." }),
+      util.el("div", { class: "lc-legend" }, [
+        util.el("span", { html: "<b>RADIUS</b> · fit (closer = stronger)" }),
+        util.el("span", { html: "<b>ARC</b> · mood &amp; pacing" }),
+        util.el("span", { html: "<b>HUE</b> · tone" })
+      ])
+    ]);
+    const picksCount = pick && pick.books ? pick.books.length : 0;
+    const finishedThisMonth = (() => {
+      const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0);
+      const ts = monthStart.getTime();
+      return Object.values(st.bookStates || {}).filter(v => v === "read").length;
+    })();
+    const heroRight = util.el("div", { class: "lc-hero-meta" }, [
+      util.el("div", { class: "lc-meta-card" }, [
+        util.el("span", { class: "t-eyebrow", text: "Picks tonight" }),
+        util.el("span", { class: "lc-big", text: String(picksCount || "—") })
+      ]),
+      util.el("div", { class: "lc-meta-card" }, [
+        util.el("span", { class: "t-eyebrow", text: "Read · all-time" }),
+        util.el("span", { class: "lc-big", text: String(finishedThisMonth) })
+      ]),
+      util.el("div", { class: "lc-meta-card" }, [
+        util.el("span", { class: "t-eyebrow", text: "Library" }),
+        util.el("span", { class: "lc-big", text: String(listAllBooks().length) })
+      ])
+    ]);
+    wrap.appendChild(util.el("section", { class: "lc-hero" }, [heroLeft, heroRight]));
+
+    // Action row — Generate / Regenerate / Back.
+    const actions = util.el("div", { class: "row", style: { gap: "var(--s-3)", flexWrap: "wrap", padding: "0 clamp(20px, 4vw, 64px) 0" } });
+    actions.appendChild(util.el("button", {
+      class: "btn btn-primary",
+      disabled: !rl.allowed,
+      onclick: () => { constellationActiveId = null; generateTonightSix(); }
+    }, !pick ? "Generate tonight's six" : (rl.allowed ? "Regenerate" : `Locked until ${rl.unlockAt && rl.unlockAt.toLocaleTimeString()}`)));
+    actions.appendChild(util.el("button", {
+      class: "btn btn-ghost",
+      onclick: () => router.go("margin-notes")
+    }, "← Back to Margin Notes"));
+    wrap.appendChild(actions);
+
+    if (!pick || !pick.books || !pick.books.length) {
+      wrap.appendChild(util.el("div", { class: "card", style: { margin: "var(--s-5) clamp(20px, 4vw, 64px)" } }, [
+        util.el("p", { class: "t-muted",
+          text: err ? (err.message || "Generation failed.") : "Hit Generate above and the constellation paints in." })
+      ]));
+      return wrap;
+    }
+
+    // Establish the active book.
+    if (!constellationActiveId || !pick.books.find(b => b.bookId === constellationActiveId)) {
+      const top = pick.books.slice().sort((a, b) => (b.fitScore || 0) - (a.fitScore || 0))[0];
+      constellationActiveId = top && top.bookId;
+    }
+
+    // Polar plot params — verbatim from the prototype, with one
+    // safety clamp: low-fit books get pinned inside the "Stretch"
+    // ring so they don't fly off-canvas.
+    const VB = 900;
+    const cx = VB / 2;
+    const cy = VB / 2 + 12;
+    const R  = VB * 0.42;
+    const N  = pick.books.length;
+    const points = pick.books.map((entry, i) => {
+      const fit = entry.fitScore || 0;
+      const angle = (-150 + (i * (300 / Math.max(1, N - 1)))) * Math.PI / 180;
+      const rRaw = R * (1 - (fit - 70) / 40);
+      const r    = Math.max(70, Math.min(R * 1.05, rRaw));
+      return {
+        ...entry,
+        x: cx + Math.cos(angle) * r,
+        y: cy + Math.sin(angle) * r
+      };
+    });
+    const activePoint = points.find(p => p.bookId === constellationActiveId);
+
+    const sims = points.filter(p => p.bookId !== constellationActiveId).map(p => {
+      const a = points.find(x => x.bookId === constellationActiveId);
+      const ab = findBook(a.bookId), pb = findBook(p.bookId);
+      let sim = 0;
+      if (ab && pb) {
+        sim = 1 - (Math.abs((ab.heat_level||0)-(pb.heat_level||0))
+                 + Math.abs((ab.emotional_intensity||0)-(pb.emotional_intensity||0))
+                 + Math.abs((ab.taboo_level||0)-(pb.taboo_level||0))) / 15;
+      }
+      return { ...p, sim };
+    });
+
+    // Build the SVG chart.
+    const SVG = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", `0 0 ${VB} ${VB}`);
+    svg.setAttribute("class", "lc-chart");
+    svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
+    svg.innerHTML =
+      '<defs>'
+      + '<radialGradient id="poleGradF" cx="50%" cy="50%" r="50%">'
+      +   '<stop offset="0%" stop-color="var(--accent)" stop-opacity="0.30" />'
+      +   '<stop offset="60%" stop-color="var(--accent)" stop-opacity="0.06" />'
+      +   '<stop offset="100%" stop-color="var(--accent)" stop-opacity="0" />'
+      + '</radialGradient>'
+      + '<pattern id="starsF" width="60" height="60" patternUnits="userSpaceOnUse">'
+      +   '<circle cx="10" cy="20" r="0.7" fill="var(--text-mute)" opacity="0.3" />'
+      +   '<circle cx="40" cy="50" r="0.5" fill="var(--text-mute)" opacity="0.25" />'
+      +   '<circle cx="55" cy="10" r="0.6" fill="var(--text-mute)" opacity="0.3" />'
+      + '</pattern>'
+      + '</defs>'
+      + `<rect width="${VB}" height="${VB}" fill="url(#starsF)" />`;
+    [0.30, 0.55, 0.80, 1.05].forEach((m, i) => {
+      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="${R*m}" fill="none" stroke="var(--border-strong)" stroke-width="${i === 0 ? 1 : 0.5}" stroke-dasharray="${i === 0 ? 'none' : '2 4'}" opacity="0.55" />`;
+    });
+    [
+      { r: R * 0.30, label: "STRONGLY FITS" },
+      { r: R * 0.55, label: "FITS" },
+      { r: R * 0.80, label: "ADJACENT" },
+      { r: R * 1.05, label: "STRETCH" }
+    ].forEach(ring => {
+      svg.innerHTML += `<text x="${cx}" y="${cy - ring.r - 6}" fill="var(--text-mute)" font-size="11" font-family="var(--font-sans)" letter-spacing="0.18em" text-anchor="middle" font-weight="600">${ring.label}</text>`;
+    });
+    svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="64" fill="url(#poleGradF)" />`;
+    if (activePoint) {
+      sims.forEach(p => {
+        svg.innerHTML += `<line x1="${activePoint.x}" y1="${activePoint.y}" x2="${p.x}" y2="${p.y}" stroke="var(--accent)" stroke-width="0.8" stroke-dasharray="3 4" opacity="${(0.15 + p.sim * 0.55).toFixed(2)}" />`;
+      });
+    }
+    svg.innerHTML +=
+      `<circle cx="${cx}" cy="${cy}" r="9" fill="var(--accent-deep)" />`
+      + `<circle cx="${cx}" cy="${cy}" r="16" fill="none" stroke="var(--accent-deep)" stroke-width="0.6" />`
+      + `<text x="${cx}" y="${cy + 36}" fill="var(--accent-deep)" font-size="15" font-family="var(--font-serif)" font-style="italic" text-anchor="middle">You · tonight</text>`;
+    [
+      { a: -150, label: "TENDER" }, { a: -90, label: "LITERARY" },
+      { a: -30, label: "BRIGHT" }, { a: 30, label: "PLAYFUL" },
+      { a: 90, label: "TRANSGRESSIVE" }, { a: 150, label: "FORBIDDEN" }
+    ].forEach(({ a, label }) => {
+      const rad = a * Math.PI / 180;
+      const lr = R * 1.18;
+      svg.innerHTML += `<text x="${cx + Math.cos(rad) * lr}" y="${cy + Math.sin(rad) * lr}" fill="var(--text-mute)" font-size="11" font-family="var(--font-sans)" letter-spacing="0.24em" text-anchor="middle" font-weight="600">${label}</text>`;
+    });
+    // Star groups — appended via DOM so click handlers attach cleanly.
+    points.forEach(p => {
+      const isActive = p.bookId === constellationActiveId;
+      const b = findBook(p.bookId);
+      const moodColor = "var(--accent-deep)";
+      const g = document.createElementNS(SVG, "g");
+      g.setAttribute("transform", `translate(${p.x}, ${p.y})`);
+      g.style.cursor = "pointer";
+      g.addEventListener("click", () => { constellationActiveId = p.bookId; renderView(); });
+      g.innerHTML =
+        (isActive ? `<circle r="24" fill="${moodColor}" opacity="0.18" />` : "")
+        + `<circle r="${isActive ? 9 : 6}" fill="${moodColor}" stroke="${isActive ? 'var(--bg-surface)' : 'transparent'}" stroke-width="1.5" />`
+        + `<text y="-14" text-anchor="middle" fill="${isActive ? 'var(--text)' : 'var(--text-soft)'}" font-size="${isActive ? 15 : 13}" font-family="var(--font-serif)" font-style="italic" font-weight="${isActive ? 600 : 400}">${(b && b.title) || "Untitled"}</text>`
+        + `<text y="${isActive ? -32 : -29}" text-anchor="middle" fill="var(--text-mute)" font-size="10" font-family="var(--font-sans)" letter-spacing="0.14em" font-weight="600">FIT ${p.fitScore || "?"}</text>`;
+      svg.appendChild(g);
+    });
+
+    const chartWrap = util.el("div", { class: "lc-chart-wrap" });
+    chartWrap.appendChild(svg);
+
+    // Side rail — details for the active book.
+    const activeBook = findBook(constellationActiveId);
+    const activeEntry = pick.books.find(b => b.bookId === constellationActiveId) || pick.books[0];
+    const rail = util.el("aside", { class: "lc-rail" });
+    if (activeBook) {
+      rail.appendChild(util.el("div", { class: "t-eyebrow", text: "Now reading the chart" }));
+      rail.appendChild(util.el("h2", { class: "lc-rail-title", html: `<em>${util.humanise(activeBook.title)}</em>` }));
+      rail.appendChild(util.el("div", { class: "lc-rail-byline",
+        text: `by ${activeBook.author || "Unknown"}${activeBook.year ? " · " + activeBook.year : ""}${activeBook.subgenre || activeBook.category ? " · " + (activeBook.subgenre || activeBook.category) : ""}` }));
+
+      const meta = util.el("div", { class: "lc-rail-meta" });
+      meta.appendChild(util.el("div", { class: "lc-cover",
+        style: activeBook.thumbnail ? { backgroundImage: `url(${String(activeBook.thumbnail).replace(/^http:/, "https:")})` } : {} }));
+      meta.appendChild(util.el("div", {}, [
+        util.el("div", { class: "lc-fit-num", text: String(activeEntry.fitScore || "?") }),
+        util.el("div", { class: "t-eyebrow", text: `Fit · conf. ${activeEntry.confidence || "?"}%` }),
+        util.el("div", { class: "lc-stats" }, [
+          util.el("span", { text: `HEAT ${activeBook.heat_level || "?"}/5 · EMO ${activeBook.emotional_intensity || "?"}/5` }),
+          util.el("span", { text: `TABOO ${activeBook.taboo_level || "?"}/5 · CONS ${activeBook.consent_clarity || "?"}/5` }),
+          util.el("span", { text: ((activeBook.pacing || [])[0] || "—").toString().toUpperCase() })
+        ])
+      ]));
+      rail.appendChild(meta);
+
+      rail.appendChild(util.el("p", { class: "lc-insight", text: activeEntry.summary || "" }));
+      if (activeBook.description) rail.appendChild(util.el("p", { class: "lc-desc", text: activeBook.description }));
+
+      rail.appendChild(util.el("div", { class: "t-eyebrow", style: { marginBottom: "10px" }, text: "Why it sits where it does" }));
+      const why = util.el("ul", { class: "lc-why" });
+      (activeEntry.contributions || []).forEach(reason => {
+        why.appendChild(util.el("li", {}, [
+          util.el("span", { class: "plus", text: "+" }),
+          util.el("span", { text: reason })
+        ]));
+      });
+      (activeEntry.partials || []).forEach(reason => {
+        why.appendChild(util.el("li", { class: "muted" }, [
+          util.el("span", { class: "minus", text: "−" }),
+          util.el("span", { text: reason })
+        ]));
+      });
+      rail.appendChild(why);
+
+      const actEl = util.el("div", { class: "lc-actions" });
+      actEl.appendChild(util.el("button", { class: "btn btn-primary",
+        onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(activeBook.id); }
+      }, "Begin reading"));
+      actEl.appendChild(util.el("button", { class: "btn btn-ghost",
+        onclick: () => { setReadingState(activeBook.id, "want"); ui.toast("Saved to shelf."); renderView(); }
+      }, "Save"));
+      actEl.appendChild(util.el("button", { class: "btn btn-ghost",
+        onclick: () => { setReadingState(activeBook.id, "skip"); ui.toast("Skipped."); renderView(); }
+      }, "Skip"));
+      rail.appendChild(actEl);
+    }
+
+    wrap.appendChild(util.el("section", { class: "lc-main" }, [chartWrap, rail]));
+
+    // Gallery — all six as cards, sorted by fit.
+    const sorted = pick.books.slice().sort((a, b) => (b.fitScore || 0) - (a.fitScore || 0));
+    const grid = util.el("div", { class: "lc-grid" });
+    sorted.forEach(entry => {
+      const b = findBook(entry.bookId);
+      if (!b) return;
+      const card = util.el("article", {
+        class: "lc-card" + (entry.bookId === constellationActiveId ? " active" : ""),
+        onclick: () => { constellationActiveId = entry.bookId; renderView(); }
+      });
+      card.appendChild(util.el("div", { class: "lc-card-cover",
+        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {} }));
+      const body = util.el("div", { class: "lc-card-body" }, [
+        util.el("div", { class: "t-eyebrow", text: b.subgenre || b.category || "" }),
+        util.el("h4", { html: `<em>${util.humanise(b.title)}</em>` }),
+        util.el("div", { class: "lc-card-author", text: b.author || "" }),
+        util.el("div", { class: "lc-card-stats" }, [
+          util.el("span", { class: "lc-fit-pill", text: String(entry.fitScore || "?") }),
+          util.el("span", { text: `HEAT ${b.heat_level || "?"}/5` }),
+          util.el("span", { text: ((b.pacing || [])[0] || "—").toString() })
+        ])
+      ]);
+      card.appendChild(body);
+      grid.appendChild(card);
+    });
+    const gallery = util.el("section", { class: "lc-gallery" }, [
+      util.el("div", { class: "lc-section-head" }, [
+        util.el("div", {}, [
+          util.el("div", { class: "t-eyebrow", text: "All picks tonight" }),
+          util.el("h3", { text: "The full reading list, in order of fit." })
+        ])
+      ]),
+      grid
+    ]);
+    wrap.appendChild(gallery);
+
+    return wrap;
+  }
 
   // Deterministic Bianca-voice letter for the right page of the
   // open-book spread. Pulls from the engine's why-reasons for the
