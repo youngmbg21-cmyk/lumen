@@ -628,17 +628,17 @@
     const mainTone = [...termState.profile.tone][0] || "balanced";
     let headline, body;
     if (strong >= 20) {
-      headline = `Her compass is <em>richly served</em>.`;
-      body = `${strong} titles score above 70% — the library has strong depth in her preferred territory. Top subgenre for her: ${escapeHtml(topGenre)}.`;
+      headline = `I've been thinking about your taste. <em>The catalog has you covered.</em>`;
+      body = `${strong} titles clear 70%. There's real depth here — start with ${escapeHtml(topGenre)}.`;
     } else if (strong >= 8) {
-      headline = `A <em>specialist's</em> taste.`;
-      body = `${strong} titles meet her threshold. She's looking for specific signals — lean into ${escapeHtml(topGenre)} and the ${escapeHtml(mainTone)} tone range.`;
+      headline = `I've been thinking about your taste. <em>You know what you want.</em>`;
+      body = `${strong} titles hit your bar. You're picky in a useful way — lean into ${escapeHtml(topGenre)} and the ${escapeHtml(mainTone)} tone, that's where the catalog actually fits you.`;
     } else if (strong > 0) {
-      headline = `A <em>particular</em> reader.`;
-      body = `Only ${strong} titles score above 70%. Suggest widening tone filters or softening the consent floor by one step to expand the pool.`;
+      headline = `I've been thinking about your taste. <em>It's a sharp one.</em>`;
+      body = `Only ${strong} titles clear 70%. Loosen tone filters or drop the consent floor a notch and the pool widens fast.`;
     } else {
-      headline = `An <em>unmet</em> signature.`;
-      body = `No titles currently clear 70% fit. Try relaxing taboo tolerance or clearing tone filters — the catalogue is rich but narrow on her exact compass.`;
+      headline = `I've been thinking about your taste. <em>Nothing here is hitting yet.</em>`;
+      body = `No titles clear 70% as it stands. Pull back on taboo tolerance or clear a tone filter — the catalog's rich, but you've narrowed it past the matches.`;
     }
     $(root, "#insightTitle").innerHTML = headline;
     $(root, "#insightBody").textContent = body;
@@ -827,8 +827,8 @@
 
       <div class="insight">
         <div class="insight-label">Editor's brief</div>
-        <div class="insight-title" id="insightTitle">Your <em>signature</em> lands here.</div>
-        <div class="insight-body" id="insightBody">Your current compass favours emotionally-weighted narratives with moderate heat.</div>
+        <div class="insight-title" id="insightTitle">I've been thinking about your taste. <em>Here's what actually fits.</em></div>
+        <div class="insight-body" id="insightBody">You're leaning toward stories with weight — moderate heat, real emotional stakes.</div>
       </div>
     </aside>
 
