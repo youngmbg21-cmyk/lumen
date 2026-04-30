@@ -667,31 +667,35 @@
     });
   }
 
-  // Mood chips — primary entry point above the compose box. First-
-  // person phrasing, relevant to the erotica-fiction audience. Sends
-  // a templated prompt that the rule-based responder already handles.
+  // Mood + vibe chips — primary entry above the compose box. Mixes
+  // mood adjectives (slow burn, tender) with vibe-states (burnt out,
+  // need a win) so users can shortcut to either kind of ask. Each
+  // chip sends a plain-language prompt that nudges Bianca to pick
+  // from the catalog rather than describe in the abstract.
   const MOODS = [
-    { key: "slow burn",  label: "slow burn"  },
-    { key: "tender",     label: "tender"     },
-    { key: "intense",    label: "intense"    },
-    { key: "forbidden",  label: "forbidden"  },
-    { key: "escapist",   label: "escapist"   },
-    { key: "literary",   label: "literary"   },
-    { key: "short",      label: "short tonight" }
+    { key: "slow burn",  label: "slow burn",      prompt: "I'm in a slow-burn mood tonight. What from the catalog hits that without dragging?" },
+    { key: "tender",     label: "tender",         prompt: "I want something tender tonight. What from the catalog has weight without being heavy?" },
+    { key: "intense",    label: "intense",        prompt: "Pick me something intense from the catalog — the kind that knocks the wind out, in a good way." },
+    { key: "forbidden",  label: "forbidden",      prompt: "I want something with a forbidden edge from the catalog — sharp, not gimmicky." },
+    { key: "escapist",   label: "escapist",       prompt: "I want pure escape tonight. What from the catalog takes me out of my own head?" },
+    { key: "literary",   label: "literary",       prompt: "Pick me something with real writing from the catalog — texture and weight, not just plot." },
+    { key: "burnout",    label: "burnt out",      prompt: "I'm burnt out. What from the catalog is honest, low-stakes, and easy to keep reading?" },
+    { key: "win",        label: "need a win",     prompt: "I need a win tonight. What from the catalog ends well and earns it?" },
+    { key: "short",      label: "short tonight",  prompt: "I want something short tonight — what from the catalog runs tight and lands?" }
   ];
   function renderMoods() {
     if (!moodRow) return;
     moodRow.innerHTML = "";
     const lead = document.createElement("span");
     lead.className = "bianca-moods-lead";
-    lead.textContent = "Tonight I want…";
+    lead.textContent = "What's the read?";
     moodRow.appendChild(lead);
     MOODS.forEach(m => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "bianca-mood-chip";
       b.textContent = m.label;
-      b.addEventListener("click", () => send(`Show me something ${m.key} tonight.`));
+      b.addEventListener("click", () => send(m.prompt));
       moodRow.appendChild(b);
     });
   }
