@@ -6731,9 +6731,7 @@
     const hero = util.el("section", { class: "bd-hero" });
     hero.appendChild(util.el("div", {}, [
       util.el("div", { class: "t-eyebrow", text: "Library & Signals · together" }),
-      util.el("h1", { class: "bd-h1", html: "<em>Your boudoir.</em><br>Every book you keep, seen through every signal you give." }),
-      util.el("p", { class: "bd-lede",
-        text: "The mirror at right is your taste, drawn from what you've read, saved, and lingered on. Touch any line of it — a heat band, a mood, a trope — and the shelf rearranges itself for that version of you. Nothing here leaves the room." })
+      util.el("h1", { class: "bd-h1", html: "<em>Your boudoir.</em> Every book you keep, seen through every signal you give." })
     ]));
     const lock = util.el("div", { class: "bd-lock" });
     const lockSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
