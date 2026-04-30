@@ -5868,6 +5868,11 @@ body[data-sidenav="overlay"] .lumen-terminal {
   color: var(--text-soft);
   line-height: 1.55;
   text-wrap: pretty;
+  max-height: 9lh; /* ~6 visible lines before scrolling */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+  padding-right: 4px;
 }
 .lc-why {
   list-style: none; margin: 0; padding: 0;
