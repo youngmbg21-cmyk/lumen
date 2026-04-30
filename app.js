@@ -5696,22 +5696,61 @@
           partials:      ((c.contributions && c.contributions.partials) || []).slice(0, 3)
         })),
         angleStatement: `Tonight's six, drawn against your taste — ${angle.label.toLowerCase()}.`,
-        biancaLetter: null  // populated by Batch 2's LLM pass
+        // Filled in by the LLM pass below when available; stays null
+        // on cold-start, network failure, or no-key, in which case
+        // Margin Notes falls back to the deterministic letter.
+        biancaLetter: null
       };
+
+      // Commit the deterministic pick FIRST so the views paint with
+      // real data instantly. The LLM pass enriches in the background.
       store.update(s => {
         s.tonightSix = s.tonightSix || {};
         if (s.tonightSix.currentPick) {
           s.tonightSix.history = [s.tonightSix.currentPick].concat(s.tonightSix.history || []).slice(0, 10);
         }
         s.tonightSix.currentPick = pick;
-        // The Constellation's active-star state is keyed by bookId,
-        // and a fresh pick may not contain the previously active id.
-        // Clear it so the renderer picks the new highest-fit book.
         constellationActiveId = null;
         s.tonightSix.generationsToday = ((s.tonightSix.generationsToday || []).concat(Date.now()))
           .filter(ts => Date.now() - ts < 24 * 60 * 60 * 1000);
         s.tonightSix.lastError = null;
       });
+      renderView();
+
+      // LLM enrichment — Bianca's letter + per-book summaries. Fire-
+      // and-forget; on any failure the deterministic pick stands.
+      if (window.LumenTonightSix && typeof window.LumenTonightSix.generate === "function") {
+        const heroIdx = candidates.reduce((best, c, i) =>
+          (c.fitScore || 0) > (candidates[best] && candidates[best].fitScore || 0) ? i : best, 0);
+        const heroBookId = candidates[heroIdx] && candidates[heroIdx].book && candidates[heroIdx].book.id;
+        try {
+          const out = await window.LumenTonightSix.generate({
+            profile: st.profile, candidates, angle, heroIdx, heroBookId,
+            favorites: editorialFavorites(),
+            recentReads: editorialRecentReads(),
+            coldStart: pool.length < 5
+          });
+          // Re-read state and update the still-current pick. If the
+          // user has regenerated again in the meantime, we don't
+          // clobber the newer pick.
+          store.update(s => {
+            const cur = s.tonightSix && s.tonightSix.currentPick;
+            if (!cur || cur.id !== pick.id) return;
+            cur.biancaLetter = out.biancaLetter || null;
+            if (out.angleStatement) cur.angleStatement = out.angleStatement;
+            const byId = new Map(out.picks.map(p => [p.bookId, p.summary]));
+            cur.books = cur.books.map(b => byId.has(b.bookId)
+              ? { ...b, summary: byId.get(b.bookId) }
+              : b);
+          });
+          renderView();
+        } catch (llmErr) {
+          // Surface as a soft notice but keep the deterministic pick.
+          // Don't trip the whole rate limit consumer — the pick was
+          // already committed above.
+          console.warn("[Lumen tonightSix] LLM enrichment failed:", llmErr && llmErr.message);
+        }
+      }
     } catch (e) {
       store.update(s => { s.tonightSix.lastError = { at: Date.now(), code: (e && e.code) || "unknown",
         message: (e && e.message) || "Generation failed" }; });
