@@ -6616,6 +6616,86 @@
     return `${heatSentence} ${moodSentence} ${completionSentence}`;
   }
 
+  // Shelf view — books grouped by subgenre, each shelf gets a label
+  // and a row of "spines" (compact cover + title-tag cards). The
+  // wood-plank shelf-bar at the bottom of each row gives the
+  // bookshelf affordance the prototype was after.
+  function renderBoudoirShelf(books, fitById) {
+    const byShelf = {};
+    books.forEach(b => {
+      const k = b.subgenre || b.category || "Uncategorised";
+      (byShelf[k] = byShelf[k] || []).push(b);
+    });
+    // Order shelves by size (largest first) so a tester's most
+    // populated genre lands at the top.
+    const shelves = Object.keys(byShelf).sort((a, b) => byShelf[b].length - byShelf[a].length);
+
+    const wrap = util.el("div", { class: "bd-shelves" });
+    shelves.forEach(shelf => {
+      const row = util.el("div", { class: "bd-shelf" });
+      row.appendChild(util.el("div", { class: "bd-shelf-label" }, [
+        util.el("span", { class: "t-eyebrow", text: shelf }),
+        util.el("span", { class: "bd-shelf-count",
+          text: `${byShelf[shelf].length} volume${byShelf[shelf].length === 1 ? "" : "s"}` })
+      ]));
+      const spineRow = util.el("div", { class: "bd-shelf-row" });
+      byShelf[shelf].forEach(b => {
+        const spine = util.el("article", {
+          class: "bd-spine",
+          title: `${b.title} — ${b.author || "Unknown"}`,
+          onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
+        });
+        const coverWrap = tonightCoverEl(b, "bd-spine-cover");
+        if (isFavorite(b.id))                       coverWrap.appendChild(util.el("span", { class: "bd-fav", text: "❦" }));
+        if (getReadingState(b.id) === "read")       coverWrap.appendChild(util.el("span", { class: "bd-read-mark", "aria-label": "Read" }));
+        spine.appendChild(coverWrap);
+        spine.appendChild(util.el("div", { class: "bd-spine-tag" }, [
+          util.el("em", { text: b.title }),
+          util.el("span", { text: `fit ${fitById.get(b.id) || "—"}` })
+        ]));
+        spineRow.appendChild(spine);
+      });
+      row.appendChild(spineRow);
+      // Wood-plank shelf bar — pure decoration so the row reads as
+      // a physical shelf rather than a generic horizontal scroller.
+      row.appendChild(util.el("div", { class: "bd-shelf-bar", "aria-hidden": "true" }));
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  // Grid view — kept as a sibling to shelf so the toggle is real.
+  // Identical to the Batch 1 inline rendering, lifted into a helper.
+  function renderBoudoirGrid(books, fitById) {
+    const grid = util.el("div", { class: "bd-grid" });
+    books.forEach(b => {
+      const card = util.el("article", {
+        class: "bd-card",
+        onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
+      });
+      const coverWrap = tonightCoverEl(b, "bd-card-cover");
+      if (getReadingState(b.id) === "read") {
+        coverWrap.appendChild(util.el("span", { class: "bd-card-read", text: "read" }));
+      }
+      if (isFavorite(b.id)) {
+        coverWrap.appendChild(util.el("span", { class: "bd-card-fav", text: "❦" }));
+      }
+      card.appendChild(coverWrap);
+      card.appendChild(util.el("div", { class: "bd-card-body" }, [
+        util.el("div", { class: "t-eyebrow", text: b.subgenre || b.category || "" }),
+        util.el("h4", { html: `<em>${util.humanise(b.title)}</em>` }),
+        util.el("div", { class: "bd-card-author", text: b.author || "" }),
+        util.el("div", { class: "bd-card-stats" }, [
+          util.el("span", { class: "lc-fit-pill", text: String(fitById.get(b.id) || "—") }),
+          util.el("span", { text: `HEAT ${b.heat_level || "?"}/5` }),
+          util.el("span", { text: ((b.pacing || [])[0] || "—").toString() })
+        ])
+      ]));
+      grid.appendChild(card);
+    });
+    return grid;
+  }
+
   function renderBoudoir() {
     const wrap = util.el("div", { class: "page page-boudoir lumen-site" });
     const st = store.get();
@@ -6753,7 +6833,7 @@
     });
     library.appendChild(quickTabs);
 
-    // Library — flat grid for Batch 1 (real shelf view ships in Batch 3).
+    // Library — shelf view (default) or grid view based on state.
     if (!sorted.length) {
       library.appendChild(util.el("div", { class: "bd-empty" }, [
         util.el("div", { style: { fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "26px", color: "var(--accent-deep)" },
@@ -6761,35 +6841,10 @@
         util.el("div", { style: { color: "var(--text-soft)", marginTop: "6px" },
           text: "Touch a different signal in the mirror, or clear the lens." })
       ]));
+    } else if (boud.view === "grid") {
+      library.appendChild(renderBoudoirGrid(sorted, fitById));
     } else {
-      const grid = util.el("div", { class: "bd-grid" });
-      sorted.forEach(b => {
-        const card = util.el("article", {
-          class: "bd-card",
-          onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
-        });
-        const coverWrap = tonightCoverEl(b, "bd-card-cover");
-        if (getReadingState(b.id) === "read") {
-          coverWrap.appendChild(util.el("span", { class: "bd-card-read", text: "read" }));
-        }
-        if (isFavorite(b.id)) {
-          coverWrap.appendChild(util.el("span", { class: "bd-card-fav", text: "❦" }));
-        }
-        card.appendChild(coverWrap);
-        const body = util.el("div", { class: "bd-card-body" }, [
-          util.el("div", { class: "t-eyebrow", text: b.subgenre || b.category || "" }),
-          util.el("h4", { html: `<em>${util.humanise(b.title)}</em>` }),
-          util.el("div", { class: "bd-card-author", text: b.author || "" }),
-          util.el("div", { class: "bd-card-stats" }, [
-            util.el("span", { class: "lc-fit-pill", text: String(fitById.get(b.id) || "—") }),
-            util.el("span", { text: `HEAT ${b.heat_level || "?"}/5` }),
-            util.el("span", { text: ((b.pacing || [])[0] || "—").toString() })
-          ])
-        ]);
-        card.appendChild(body);
-        grid.appendChild(card);
-      });
-      library.appendChild(grid);
+      library.appendChild(renderBoudoirShelf(sorted, fitById));
     }
     main.appendChild(library);
 
