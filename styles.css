@@ -6227,7 +6227,8 @@ body[data-sidenav="overlay"] .lumen-terminal {
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
-  grid-template-columns: clamp(150px, 14vw, 200px) minmax(0, 1fr);
+  /* Spread on the left, pile column on the right. */
+  grid-template-columns: minmax(0, 1fr) clamp(170px, 15vw, 220px);
   gap: clamp(12px, 1.6vw, 22px);
   padding: 0 clamp(16px, 3vw, 40px) clamp(10px, 1.6vh, 18px);
   align-items: stretch;
@@ -6329,3 +6330,67 @@ body[data-sidenav="overlay"] .lumen-terminal {
     width: 140px;
   }
 }
+
+/* ============================================================
+   Margin Notes / Constellation — sharp <img> covers + letter
+   overflow fix + sticky-note relocation.
+   ============================================================ */
+
+/* All cover containers now wrap a real <img>. Make it fill the
+   box at full quality with no CSS-background grain. */
+.mn-cover img,
+.mn-pile-cover img,
+.lc-cover img,
+.lc-card-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-deep);
+}
+.mn-cover .cover-fallback,
+.mn-pile-cover .cover-fallback,
+.lc-cover .cover-fallback,
+.lc-card-cover .cover-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: clamp(20px, 3vh, 32px);
+  color: var(--text-mute);
+  background: var(--bg-deep);
+  letter-spacing: 0.08em;
+}
+
+/* Letter overflow + sticky overlap. The sticky was positioned
+   absolutely in the top-right of the right page and the letter
+   text had no margin to clear it, so prose ran under the note.
+   Float the sticky right so the letter wraps around it cleanly,
+   and remove the letter's max-width constraint so it uses the
+   full page minus the sticky's footprint. */
+.page-margin-notes .mn-sticky {
+  position: relative;
+  float: right;
+  top: auto; right: auto;
+  margin: 0 0 clamp(8px, 1vh, 14px) clamp(10px, 1.4vw, 16px);
+  width: clamp(120px, 12vw, 150px);
+}
+.page-margin-notes .mn-handwritten {
+  max-width: none;
+  padding-right: 0;
+}
+/* Make sure the right page itself contains the float so the page
+   numeral at the bottom doesn't shift up. */
+.page-margin-notes .mn-page-right::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+
+/* When the pile lives on the right column and gets short on
+   vertical room, let it scroll on its own without pushing the
+   spread height around. */
+.page-margin-notes .mn-pile-column { min-height: 0; }

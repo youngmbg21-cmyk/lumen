@@ -6031,7 +6031,7 @@
       + '</defs>'
       + `<rect width="${VB}" height="${VB}" fill="url(#starsF)" />`;
     [0.30, 0.55, 0.80, 1.05].forEach((m, i) => {
-      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="${R*m}" fill="none" stroke="var(--border-strong)" stroke-width="${i === 0 ? 1 : 0.5}" stroke-dasharray="${i === 0 ? 'none' : '2 4'}" opacity="0.55" />`;
+      svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="${R*m}" fill="none" stroke="var(--border-strong)" stroke-width="${i === 0 ? 1.8 : 1.4}" stroke-dasharray="${i === 0 ? 'none' : '4 5'}" opacity="0.95" />`;
     });
     [
       { r: R * 0.30, label: "STRONGLY FITS" },
@@ -6039,7 +6039,7 @@
       { r: R * 0.80, label: "ADJACENT" },
       { r: R * 1.05, label: "STRETCH" }
     ].forEach(ring => {
-      svg.innerHTML += `<text x="${cx}" y="${cy - ring.r - 6}" fill="var(--text-mute)" font-size="11" font-family="var(--font-sans)" letter-spacing="0.18em" text-anchor="middle" font-weight="600">${ring.label}</text>`;
+      svg.innerHTML += `<text x="${cx}" y="${cy - ring.r - 8}" fill="var(--text-soft)" font-size="16" font-family="var(--font-sans)" letter-spacing="0.18em" text-anchor="middle" font-weight="700">${ring.label}</text>`;
     });
     svg.innerHTML += `<circle cx="${cx}" cy="${cy}" r="64" fill="url(#poleGradF)" />`;
     if (activePoint) {
@@ -6050,7 +6050,7 @@
     svg.innerHTML +=
       `<circle cx="${cx}" cy="${cy}" r="9" fill="var(--accent-deep)" />`
       + `<circle cx="${cx}" cy="${cy}" r="16" fill="none" stroke="var(--accent-deep)" stroke-width="0.6" />`
-      + `<text x="${cx}" y="${cy + 36}" fill="var(--accent-deep)" font-size="15" font-family="var(--font-serif)" font-style="italic" text-anchor="middle">You · tonight</text>`;
+      + `<text x="${cx}" y="${cy + 38}" fill="var(--accent-deep)" font-size="22" font-family="var(--font-serif)" font-style="italic" font-weight="500" text-anchor="middle">You · tonight</text>`;
     [
       { a: -150, label: "TENDER" }, { a: -90, label: "LITERARY" },
       { a: -30, label: "BRIGHT" }, { a: 30, label: "PLAYFUL" },
@@ -6058,7 +6058,7 @@
     ].forEach(({ a, label }) => {
       const rad = a * Math.PI / 180;
       const lr = R * 1.18;
-      svg.innerHTML += `<text x="${cx + Math.cos(rad) * lr}" y="${cy + Math.sin(rad) * lr}" fill="var(--text-mute)" font-size="11" font-family="var(--font-sans)" letter-spacing="0.24em" text-anchor="middle" font-weight="600">${label}</text>`;
+      svg.innerHTML += `<text x="${cx + Math.cos(rad) * lr}" y="${cy + Math.sin(rad) * lr}" fill="var(--text-soft)" font-size="18" font-family="var(--font-sans)" letter-spacing="0.22em" text-anchor="middle" font-weight="700">${label}</text>`;
     });
     // Star groups — appended via DOM so click handlers attach cleanly.
     points.forEach(p => {
@@ -6068,12 +6068,21 @@
       const g = document.createElementNS(SVG, "g");
       g.setAttribute("transform", `translate(${p.x}, ${p.y})`);
       g.style.cursor = "pointer";
-      g.addEventListener("click", () => { constellationActiveId = p.bookId; renderView(); });
+      // Hover sets active so the rail tracks the cursor; click also
+      // works for touch / accessibility. Avoid re-rendering when the
+      // user is already on this star — saves a paint per pointermove.
+      const setActive = () => {
+        if (constellationActiveId === p.bookId) return;
+        constellationActiveId = p.bookId;
+        renderView();
+      };
+      g.addEventListener("mouseenter", setActive);
+      g.addEventListener("click", setActive);
       g.innerHTML =
-        (isActive ? `<circle r="24" fill="${moodColor}" opacity="0.18" />` : "")
-        + `<circle r="${isActive ? 9 : 6}" fill="${moodColor}" stroke="${isActive ? 'var(--bg-surface)' : 'transparent'}" stroke-width="1.5" />`
-        + `<text y="-14" text-anchor="middle" fill="${isActive ? 'var(--text)' : 'var(--text-soft)'}" font-size="${isActive ? 15 : 13}" font-family="var(--font-serif)" font-style="italic" font-weight="${isActive ? 600 : 400}">${(b && b.title) || "Untitled"}</text>`
-        + `<text y="${isActive ? -32 : -29}" text-anchor="middle" fill="var(--text-mute)" font-size="10" font-family="var(--font-sans)" letter-spacing="0.14em" font-weight="600">FIT ${p.fitScore || "?"}</text>`;
+        (isActive ? `<circle r="28" fill="${moodColor}" opacity="0.18" />` : "")
+        + `<circle r="${isActive ? 11 : 7}" fill="${moodColor}" stroke="${isActive ? 'var(--bg-surface)' : 'transparent'}" stroke-width="2" />`
+        + `<text y="-18" text-anchor="middle" fill="${isActive ? 'var(--text)' : 'var(--text-soft)'}" font-size="${isActive ? 22 : 18}" font-family="var(--font-serif)" font-style="italic" font-weight="${isActive ? 600 : 500}">${(b && b.title) || "Untitled"}</text>`
+        + `<text y="${isActive ? -42 : -38}" text-anchor="middle" fill="var(--text-mute)" font-size="13" font-family="var(--font-sans)" letter-spacing="0.16em" font-weight="700">FIT ${p.fitScore || "?"}</text>`;
       svg.appendChild(g);
     });
 
@@ -6091,8 +6100,7 @@
         text: `by ${activeBook.author || "Unknown"}${activeBook.year ? " · " + activeBook.year : ""}${activeBook.subgenre || activeBook.category ? " · " + (activeBook.subgenre || activeBook.category) : ""}` }));
 
       const meta = util.el("div", { class: "lc-rail-meta" });
-      meta.appendChild(util.el("div", { class: "lc-cover",
-        style: activeBook.thumbnail ? { backgroundImage: `url(${String(activeBook.thumbnail).replace(/^http:/, "https:")})` } : {} }));
+      meta.appendChild(tonightCoverEl(activeBook, "lc-cover"));
       meta.appendChild(util.el("div", {}, [
         util.el("div", { class: "lc-fit-num", text: String(activeEntry.fitScore || "?") }),
         util.el("div", { class: "t-eyebrow", text: `Fit · conf. ${activeEntry.confidence || "?"}%` }),
@@ -6144,12 +6152,20 @@
     sorted.forEach(entry => {
       const b = findBook(entry.bookId);
       if (!b) return;
+      // Hover sets active so the rail tracks the cursor across the
+      // gallery the same way the chart stars do. Click is kept for
+      // touch / accessibility.
+      const setActiveCard = () => {
+        if (constellationActiveId === entry.bookId) return;
+        constellationActiveId = entry.bookId;
+        renderView();
+      };
       const card = util.el("article", {
         class: "lc-card" + (entry.bookId === constellationActiveId ? " active" : ""),
-        onclick: () => { constellationActiveId = entry.bookId; renderView(); }
+        onmouseenter: setActiveCard,
+        onclick: setActiveCard
       });
-      card.appendChild(util.el("div", { class: "lc-card-cover",
-        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {} }));
+      card.appendChild(tonightCoverEl(b, "lc-card-cover"));
       const body = util.el("div", { class: "lc-card-body" }, [
         util.el("div", { class: "t-eyebrow", text: b.subgenre || b.category || "" }),
         util.el("h4", { html: `<em>${util.humanise(b.title)}</em>` }),
@@ -6179,6 +6195,34 @@
 
   // Deterministic Bianca-voice letter for the right page of the
   // open-book spread. Pulls from the engine's why-reasons for the
+  // Build a sharp <img>-based cover block for the Margin Notes
+  // and Constellation surfaces. Using an <img> element instead of
+  // CSS background-image lets the browser pick the best raster
+  // strategy for the box, which keeps Google Books thumbnails crisp
+  // at the larger sizes these layouts use. Also strips Google's
+  // "edge=curl" effect (which adds a fake page-curl dropshadow
+  // that reads as low-fidelity at higher zooms) and forces zoom=5.
+  function tonightCoverEl(book, className, alt) {
+    const wrap = util.el("div", { class: className });
+    const initials = (book && book.title || "??").slice(0, 2).toUpperCase();
+    const buildFallback = () => util.el("div", { class: "cover-fallback", text: initials });
+    const raw = book && book.thumbnail;
+    if (!raw) { wrap.appendChild(buildFallback()); return wrap; }
+    const url = String(raw)
+      .replace(/^http:/, "https:")
+      .replace(/zoom=\d+/, "zoom=5")
+      .replace(/&edge=curl/g, "");
+    const img = util.el("img", {
+      src: url,
+      alt: alt || `Cover of ${book && book.title || ""}`,
+      loading: "lazy",
+      decoding: "async",
+      onerror: function () { this.remove(); wrap.appendChild(buildFallback()); }
+    });
+    wrap.appendChild(img);
+    return wrap;
+  }
+
   // hero book + the user's profile so it grounds in real data
   // without an LLM call. Batch 3 may swap this for an LLM letter.
   function biancaLetterFor(heroBook, heroPickEntry, profile) {
@@ -6267,9 +6311,7 @@
         class: "mn-pile-card",
         onclick: () => { if (window.Lumen && window.Lumen.openBookDetail) window.Lumen.openBookDetail(b.id); }
       });
-      card.appendChild(util.el("div", { class: "mn-pile-cover",
-        style: b.thumbnail ? { backgroundImage: `url(${String(b.thumbnail).replace(/^http:/, "https:")})` } : {}
-      }));
+      card.appendChild(tonightCoverEl(b, "mn-pile-cover"));
       const tag = util.el("div", { class: "mn-pile-tag" }, [
         util.el("em", { text: b.title }),
         util.el("span", { text: `fit ${entry.fitScore || "?"}` })
@@ -6277,7 +6319,8 @@
       card.appendChild(tag);
       pileCol.appendChild(card);
     });
-    mnMain.appendChild(pileCol);
+    // Pile is appended LAST below, after the spread, so the right-side
+    // column reads the pile and the spread anchors the left.
 
     // Open-book spread.
     const spreadWrap = util.el("section", { class: "mn-spread-wrap" });
@@ -6299,9 +6342,7 @@
       text: `by ${hero.author || "Unknown"}${hero.year ? " · " + hero.year : ""}` }));
 
     const bookRow = util.el("div", { class: "mn-bookrow" });
-    const cover = util.el("div", { class: "mn-cover",
-      style: hero.thumbnail ? { backgroundImage: `url(${String(hero.thumbnail).replace(/^http:/, "https:")})` } : {}
-    });
+    const cover = tonightCoverEl(hero, "mn-cover");
     bookRow.appendChild(cover);
     const bookText = util.el("div", { class: "mn-bookrow-text" });
     bookText.appendChild(util.el("p", { class: "mn-desc",
@@ -6380,7 +6421,8 @@
       onclick: () => generateTonightSix()
     }, rl.allowed ? "Regenerate" : `Locked until ${rl.unlockAt && rl.unlockAt.toLocaleTimeString()}`));
     spreadWrap.appendChild(actions);
-    mnMain.appendChild(spreadWrap);
+    mnMain.appendChild(spreadWrap);  // first column = spread (left)
+    mnMain.appendChild(pileCol);     // second column = pile (right)
     wrap.appendChild(mnMain);
 
     return wrap;
