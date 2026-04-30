@@ -4183,15 +4183,18 @@
       .filter(Boolean)
       .slice(0, 8);
 
-    // Truncate the library roster to the 12 highest-fit books so
-    // the model has usable ids to emit in ENHANCED_BOOK_CARD markers
-    // without bloating the prompt.
+    // The roster is the pool of book ids Bianca is allowed to recommend.
+    // Keep it generous: every recommendation must come from this list, so
+    // a roster that's too small forces her to either decline or break the
+    // marker rule. Cap at 40 — caching absorbs the extra system-prompt
+    // tokens, and the model can scan that list cheaply.
+    const ROSTER_CAP = 40;
     const topLibrary = (ctx.dailyPicks || []).concat(
       ctx.biancaPinned.map(p => ({ id: p.id, title: p.title, author: "", fitScore: null }))
     );
     const rosterIds = new Set(topLibrary.map(b => b.id));
-    for (const b of listAllBooks().slice(0, 12)) {
-      if (rosterIds.size >= 14) break;
+    for (const b of listAllBooks()) {
+      if (rosterIds.size >= ROSTER_CAP) break;
       if (!rosterIds.has(b.id) && !(s.hidden || {})[b.id]) {
         topLibrary.push({ id: b.id, title: b.title, author: b.author, fitScore: null });
         rosterIds.add(b.id);
@@ -4246,7 +4249,7 @@
     const wantLines = wantToRead.length
       ? wantToRead.map(b => `- ${b.title} by ${b.author} (id=${b.id})`)
       : ["(nothing saved to want-to-read)"];
-    const rosterLines = topLibrary.slice(0, 14).map(b =>
+    const rosterLines = topLibrary.slice(0, ROSTER_CAP).map(b =>
       `- ${b.title}${b.author ? " by " + b.author : ""} (id=${b.id})`);
 
     const pinnedLines = (ctx.biancaPinned || []).map(p => `- ${p.title} (id=${p.id})`);
